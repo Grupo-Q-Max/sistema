@@ -34,14 +34,33 @@ jobs:
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     steps:
+      - name: Validar Configuração dos Secrets
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+          SSH_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+        run: |
+          MISSING=""
+          [ -z "$SSH_HOST" ] && MISSING="$MISSING SSH_HOST"
+          [ -z "$SSH_USER" ] && MISSING="$MISSING SSH_USER"
+          [ -z "$SSH_KEY" ] && MISSING="$MISSING SSH_PRIVATE_KEY"
+          if [ -n "$MISSING" ]; then
+            echo "::error::Os seguintes secrets estao faltando no GitHub:$MISSING."
+            echo "Configure em: https://github.com/Grupo-Q-Max/sistema/settings/secrets/actions"
+            echo "- SSH_HOST: IP ou dominio do servidor"
+            echo "- SSH_USER: Usuario SSH (ex: root, ubuntu)"
+            echo "- SSH_PRIVATE_KEY: Sua chave OpenSSH completa (-----BEGIN OPENSSH PRIVATE KEY-----)"
+            exit 1
+          fi
+
       - name: Executar Deploy via SSH
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.SSH_HOST }}
           username: ${{ secrets.SSH_USER }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
-          passphrase: ${{ secrets.SSH_PASSPHRASE || '' }}
-          port: ${{ secrets.SSH_PORT || 22 }}
+          passphrase: ${{ secrets.SSH_PASSPHRASE }}
+          port: ${{ secrets.SSH_PORT != '' && secrets.SSH_PORT || 22 }}
           script_stop: true
           script: |
             set -e
