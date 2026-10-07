@@ -6,8 +6,8 @@ on:
   workflow_dispatch:
 
 jobs:
-  test_and_build:
-    name: Build & Validação
+  build_and_deploy:
+    name: Build & Deploy via SSH
     runs-on: ubuntu-latest
     steps:
       - name: Checkout do código
@@ -28,15 +28,9 @@ jobs:
       - name: Checagem de tipos (TypeScript)
         run: npm run typecheck
 
-      - name: Testar build de produção
+      - name: Build de produção (Vite)
         run: npm run build
 
-  deploy:
-    name: Deploy no Servidor via SSH
-    needs: test_and_build
-    if: github.ref == 'refs/heads/main'
-    runs-on: ubuntu-latest
-    steps:
       - name: Validar Configuração dos Secrets
         env:
           SSH_HOST: ${{ secrets.SSH_HOST }}
@@ -49,66 +43,46 @@ jobs:
           [ -z "$SSH_KEY" ] && MISSING="$MISSING SSH_PRIVATE_KEY"
           if [ -n "$MISSING" ]; then
             echo "::error::Os seguintes secrets estao faltando no GitHub:$MISSING."
-            echo "Configure em: https://github.com/Grupo-Q-Max/sistema/settings/secrets/actions"
-            echo "- SSH_HOST: IP ou dominio do servidor"
-            echo "- SSH_USER: Usuario SSH (ex: root, ubuntu)"
-            echo "- SSH_PRIVATE_KEY: Sua chave OpenSSH completa (-----BEGIN OPENSSH PRIVATE KEY-----)"
             exit 1
           fi
 
-      - name: Executar Deploy via SSH
-        uses: appleboy/ssh-action@v1.0.3
-        with:
-          host: ${{ secrets.SSH_HOST }}
-          username: ${{ secrets.SSH_USER }}
-          key: ${{ secrets.SSH_PRIVATE_KEY }}
-          passphrase: ${{ secrets.SSH_PASSPHRASE }}
-          port: ${{ secrets.SSH_PORT != '' && secrets.SSH_PORT || 22 }}
-          script_stop: true
-          script: |
+      - name: Sincronizar arquivos para o servidor (rsync via SSH)
+        env:
+          SSH_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+          SSH_PORT: ${{ secrets.SSH_PORT != '' && secrets.SSH_PORT || 22 }}
+        run: |
+          mkdir -p ~/.ssh
+          echo "$SSH_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+
+          # Sincroniza arquivos construídos diretamente para o servidor sem sobrescrever .env
+          rsync -avz --delete \
+            --exclude '.git' \
+            --exclude '.env' \
+            --exclude 'node_modules' \
+            -e "ssh -i ~/.ssh/deploy_key -p $SSH_PORT -o StrictHostKeyChecking=no" \
+            ./ "$SSH_USER@$SSH_HOST:/var/www/html/grqm/sistema/"
+
+      - name: Instalar dependências de produção e reiniciar serviços no servidor
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+          SSH_PORT: ${{ secrets.SSH_PORT != '' && secrets.SSH_PORT || 22 }}
+        run: |
+          ssh -i ~/.ssh/deploy_key -p $SSH_PORT -o StrictHostKeyChecking=no "$SSH_USER@$SSH_HOST" << 'EOF'
             set -e
-            TARGET_DIR="/var/www/html/grqm/sistema"
-            echo "==> Iniciando deploy em $TARGET_DIR..."
-
-            mkdir -p "$TARGET_DIR"
-            cd "$TARGET_DIR"
-
-            AUTH_REPO="https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/Grupo-Q-Max/sistema.git"
-
-            # Inicializa ou atualiza o repositório Git
-            if [ ! -d ".git" ]; then
-              echo "==> Inicializando repositório Git no servidor..."
-              git init -b main
-              git remote add origin "$AUTH_REPO"
-            else
-              echo "==> Repositório existente. Sincronizando..."
-              git remote set-url origin "$AUTH_REPO"
-            fi
-
-            git fetch origin main
-            git reset --hard origin/main
-            git remote set-url origin https://github.com/Grupo-Q-Max/sistema.git
-
-            # Instala dependências no servidor
-            echo "==> Instalando dependências..."
-            npm ci --prefer-offline --no-audit
-
-            # Gera cliente Prisma
-            echo "==> Gerando Prisma Client..."
+            cd /var/www/html/grqm/sistema
+            echo "==> Instalando dependencias de producao..."
+            npm ci --omit=dev --prefer-offline --no-audit
+            echo "==> Gerando Prisma Client no servidor..."
             npx prisma generate
-
-            # Build dos arquivos estáticos (Vite)
-            echo "==> Gerando build do frontend..."
-            npm run build
-
-            # Reinicia o serviço da API se houver pm2 ou systemd
-            echo "==> Verificando serviços em execução..."
+            echo "==> Verificando servicos..."
             if command -v pm2 >/dev/null 2>&1 && pm2 list | grep -qE "sistema|fechamento"; then
-              echo "==> Reiniciando via PM2..."
               pm2 reload sistema || pm2 restart sistema || pm2 restart fechamento
             elif command -v systemctl >/dev/null 2>&1 && systemctl list-unit-files | grep -q '^fechamento.service'; then
-              echo "==> Reiniciando fechamento.service via systemd..."
               sudo systemctl restart fechamento
             fi
-
-            echo "==> Deploy finalizado com sucesso em $TARGET_DIR!"
+            echo "==> Deploy concluido com sucesso em /var/www/html/grqm/sistema!"
+          EOF
