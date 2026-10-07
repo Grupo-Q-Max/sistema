@@ -75,7 +75,22 @@ function App() {
     }
   };
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    if (currentUser) {
+      try {
+        await fetch(`${API}/api/logout`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            userId: currentUser.id,
+            userEmail: currentUser.email,
+            userName: currentUser.name || currentUser.email,
+          }),
+        });
+      } catch {
+        // Ignora erro de rede no logout
+      }
+    }
     localStorage.removeItem('fechamento_user');
     setCurrentUser(null);
     setCurrentView('login');

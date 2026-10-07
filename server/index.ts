@@ -39,27 +39,35 @@ const pool = mariadb.createPool({
 const adapter = new PrismaMariaDb(pool as any);
 const prisma = new PrismaClient({ adapter }) as any;
 
+export function getClientIp(req: express.Request): string {
+  const forwarded = req.headers['x-forwarded-for'];
+  if (typeof forwarded === 'string') {
+    return forwarded.split(',')[0].trim();
+  }
+  return req.socket?.remoteAddress || req.ip || '0.0.0.0';
+}
+
 export async function logAction(
-  userId: string,
-  userEmail: string,
-  userName: string,
+  userId: string | null | undefined,
+  userEmail: string | null | undefined,
+  userName: string | null | undefined,
   action: string,
-  entity: string,
-  entityId: string,
+  entity: string | null | undefined,
+  entityId: string | null | undefined,
   details: any,
   ipAddress: string = '0.0.0.0'
 ) {
   try {
     await prisma.systemLog.create({
       data: {
-        userId,
-        userEmail,
-        userName,
+        userId: userId || null,
+        userEmail: userEmail || null,
+        userName: userName || null,
         action,
-        entity,
-        entityId,
+        entity: entity || null,
+        entityId: entityId || null,
         details: details || {},
-        ipAddress
+        ipAddress: ipAddress || '0.0.0.0'
       }
     });
   } catch (error) {
@@ -88,6 +96,7 @@ const ALL_SCREENS = [
 // 1. AUTENTICAÇÃO
 // ========================
 app.post('/api/login', async (req, res) => {
+  const clientIp = getClientIp(req);
   try {
     const { password } = req.body;
     const email = normalizeLoginEmail(req.body.email);
@@ -107,17 +116,74 @@ app.post('/api/login', async (req, res) => {
     });
 
     if (!user) {
+      await logAction(
+        null,
+        email,
+        'Desconhecido',
+        'LOGIN_FALHA',
+        'AUTENTICACAO',
+        null,
+        { motivo: 'Usuário não encontrado' },
+        clientIp
+      );
       return res.status(401).json({ error: 'Usuário não encontrado' });
     }
 
     if (!user.active) {
+      await logAction(
+        user.id,
+        user.email,
+        user.name || 'Usuário Inativo',
+        'LOGIN_FALHA',
+        'AUTENTICACAO',
+        user.id,
+        { motivo: 'Usuário inativo' },
+        clientIp
+      );
       return res.status(403).json({ error: 'Usuário inativo. Contate o administrador.' });
     }
 
     // A sessão de parcelamentos precisa de uma identidade validada pela senha.
-    if(typeof password!=='string'||!password)return res.status(401).json({error:'Informe sua senha.'});
+    if(typeof password!=='string'||!password) {
+      await logAction(
+        user.id,
+        user.email,
+        user.name || 'Usuário',
+        'LOGIN_FALHA',
+        'AUTENTICACAO',
+        user.id,
+        { motivo: 'Senha não informada' },
+        clientIp
+      );
+      return res.status(401).json({error:'Informe sua senha.'});
+    }
+
     const valid=verifyLoginPassword(user.password,password);
-    if(!valid)return res.status(401).json({error:'Senha incorreta.'});
+    if(!valid) {
+      await logAction(
+        user.id,
+        user.email,
+        user.name || 'Usuário',
+        'LOGIN_FALHA',
+        'AUTENTICACAO',
+        user.id,
+        { motivo: 'Senha incorreta' },
+        clientIp
+      );
+      return res.status(401).json({error:'Senha incorreta.'});
+    }
+
+    // Sucesso no Login
+    await logAction(
+      user.id,
+      user.email,
+      user.name || 'Usuário',
+      'LOGIN',
+      'AUTENTICACAO',
+      user.id,
+      { motivo: 'Login realizado com sucesso', role: user.role },
+      clientIp
+    );
 
     // Formata retorno seguro
     const { password: _, ...userSafe } = user;
@@ -125,6 +191,99 @@ app.post('/api/login', async (req, res) => {
   } catch (error) {
     console.error('Erro no login:', error);
     res.status(500).json({ error: 'Erro ao processar login' });
+  }
+});
+
+app.post('/api/logout', async (req, res) => {
+  const clientIp = getClientIp(req);
+  try {
+    const { userId, userEmail, userName } = req.body;
+    if (userId || userEmail) {
+      await logAction(
+        userId || null,
+        userEmail || null,
+        userName || 'Usuário',
+        'LOGOUT',
+        'AUTENTICACAO',
+        userId || null,
+        { motivo: 'Logout efetuado com sucesso' },
+        clientIp
+      );
+    }
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Erro no logout:', error);
+    res.status(500).json({ error: 'Erro ao registrar logout' });
+  }
+});
+
+// Endpoint seguro para troca de senha pelo próprio usuário ou admin
+app.post('/api/user/change-password', async (req, res) => {
+  const clientIp = getClientIp(req);
+  try {
+    const { userId, currentPassword, newPassword, requesterId } = req.body;
+
+    if (!userId || !newPassword) {
+      return res.status(400).json({ error: 'ID do usuário e nova senha são obrigatórios.' });
+    }
+
+    if (typeof newPassword !== 'string' || newPassword.trim().length < 6) {
+      return res.status(400).json({ error: 'A nova senha deve ter no mínimo 6 caracteres.' });
+    }
+
+    const targetUser = await prisma.user.findUnique({ where: { id: userId } });
+    if (!targetUser) {
+      return res.status(404).json({ error: 'Usuário não encontrado.' });
+    }
+
+    // Se o solicitante for o próprio usuário (ou requesterId não informado ou igual ao target), exige validação da senha atual
+    const isSelf = !requesterId || requesterId === userId;
+    if (isSelf) {
+      if (!currentPassword) {
+        return res.status(400).json({ error: 'Informe sua senha atual para continuar.' });
+      }
+      const valid = verifyLoginPassword(targetUser.password, currentPassword);
+      if (!valid) {
+        return res.status(401).json({ error: 'A senha atual digitada está incorreta.' });
+      }
+    } else {
+      // Se for outro usuário alterando, verificar se quem está alterando é ADMIN ou SOCIO
+      const requester = await prisma.user.findUnique({ where: { id: requesterId } });
+      if (!requester || !['ADMIN', 'SOCIO'].includes(requester.role)) {
+        return res.status(403).json({ error: 'Permissão negada para alterar a senha deste usuário.' });
+      }
+      if (requester.role === 'SOCIO' && targetUser.role === 'ADMIN') {
+        return res.status(403).json({ error: 'Sócios não podem alterar a senha de administradores.' });
+      }
+    }
+
+    const hashedPassword = bcrypt.hashSync(newPassword.trim(), 10);
+    await prisma.user.update({
+      where: { id: userId },
+      data: { password: hashedPassword },
+    });
+
+    const actor = isSelf ? targetUser : ((await prisma.user.findUnique({ where: { id: requesterId } })) || targetUser);
+
+    await logAction(
+      actor.id,
+      actor.email,
+      actor.name || actor.email,
+      'ALTEROU_SENHA',
+      'USUARIO',
+      targetUser.id,
+      {
+        alvoEmail: targetUser.email,
+        alvoNome: targetUser.name,
+        alteradoPorAdmin: !isSelf,
+      },
+      clientIp
+    );
+
+    res.json({ success: true, message: 'Senha alterada com sucesso!' });
+  } catch (error) {
+    console.error('Erro ao alterar senha:', error);
+    res.status(500).json({ error: 'Erro ao alterar a senha.' });
   }
 });
 
@@ -170,9 +329,18 @@ app.get('/api/competences', async (_req, res) => {
 // Logs endpoint
 app.get('/api/logs', async (req, res) => {
   try {
+    const { action, entity, userId, limit } = req.query;
+    const where: any = {};
+    if (action && typeof action === 'string') where.action = action;
+    if (entity && typeof entity === 'string') where.entity = entity;
+    if (userId && typeof userId === 'string') where.userId = userId;
+
+    const take = limit ? Math.min(Number(limit) || 2000, 5000) : 2000;
+
     const logs = await prisma.systemLog.findMany({
+      where,
       orderBy: { createdAt: 'desc' },
-      take: 1000
+      take
     });
     res.json(logs);
   } catch (error) {

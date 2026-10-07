@@ -24,8 +24,10 @@ import {
   LayoutDashboard,
   FileCheck,
   TrendingUp,
+  KeyRound,
 } from 'lucide-react';
 import { Sidebar } from './Sidebar';
+import { ChangePasswordModal } from './ChangePasswordModal';
 import { SettingsSkeleton, ButtonSpinner } from './LoadingSkeleton';
 import type { CurrentUser } from '../types/auth';
 import './Dashboard.css';
@@ -96,6 +98,8 @@ export function Settings({ currentView, onNavigate, currentUser, onLogout }: Set
   const [editingUser, setEditingUser] = useState<any | null>(null);
   const [isColumnModalOpen, setIsColumnModalOpen] = useState(false);
   const [editingColumn, setEditingColumn] = useState<any | null>(null);
+  const [pwdTargetUser, setPwdTargetUser] = useState<any | null>(null);
+  const [isPwdModalOpen, setIsPwdModalOpen] = useState(false);
 
   // Feedback Toast
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
@@ -638,6 +642,16 @@ export function Settings({ currentView, onNavigate, currentUser, onLogout }: Set
                           </div>
 
                           <div className="col-actions">
+                            <button
+                              className="icon-btn edit"
+                              title="Redefinir Senha do Usuário"
+                              onClick={() => {
+                                setPwdTargetUser(user);
+                                setIsPwdModalOpen(true);
+                              }}
+                            >
+                              <KeyRound size={16} />
+                            </button>
                             <button
                               className="icon-btn edit"
                               title="Editar Usuário e Permissões"
@@ -1256,6 +1270,19 @@ export function Settings({ currentView, onNavigate, currentUser, onLogout }: Set
           </div>
         </div>
       )}
+
+      <ChangePasswordModal
+        isOpen={isPwdModalOpen}
+        onClose={() => {
+          setIsPwdModalOpen(false);
+          setPwdTargetUser(null);
+        }}
+        currentUser={currentUser || null}
+        targetUser={pwdTargetUser}
+        onSuccess={() => {
+          showToast('Senha redefinida com sucesso!', 'success');
+        }}
+      />
     </div>
   );
 }

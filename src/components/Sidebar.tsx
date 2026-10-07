@@ -16,8 +16,10 @@ import {
   AlertTriangle,
   Activity,
   BarChart3,
+  KeyRound,
 } from 'lucide-react';
 import type { CurrentUser } from '../types/auth';
+import { ChangePasswordModal } from './ChangePasswordModal';
 import './Dashboard.css';
 import './Sidebar.css';
 import './CompanyQuality.css';
@@ -33,6 +35,7 @@ interface SidebarProps {
 
 export function Sidebar({ currentView, onNavigate, currentUser, onLogout }: SidebarProps) {
   const [mobileOpen,setMobileOpen]=useState(false);
+  const [isPasswordModalOpen, setIsPasswordModalOpen] = useState(false);
   const menuButton=useRef<HTMLButtonElement>(null);
   const sidebar=useRef<HTMLElement>(null);
   const closeButton=useRef<HTMLButtonElement>(null);
@@ -280,14 +283,33 @@ export function Sidebar({ currentView, onNavigate, currentUser, onLogout }: Side
               <span>{roleLabelMap[currentUser.role] || currentUser.role}</span>
             </div>
           </div>
-          {onLogout && (
-            <button type="button" className="logout-btn" title="Encerrar sessão" aria-label="Sair do sistema" onClick={onLogout}>
-              <LogOut size={16} /><span>Sair</span>
+          <div className="sidebar-footer-actions">
+            <button
+              type="button"
+              className="change-password-btn"
+              title="Alterar minha senha"
+              aria-label="Alterar minha senha"
+              onClick={() => setIsPasswordModalOpen(true)}
+            >
+              <KeyRound size={15} />
             </button>
-          )}
+            {onLogout && (
+              <button type="button" className="logout-btn" title="Encerrar sessão" aria-label="Sair do sistema" onClick={onLogout}>
+                <LogOut size={16} /><span>Sair</span>
+              </button>
+            )}
+          </div>
         </div>
       )}
     </aside>
+
+    {currentUser && (
+      <ChangePasswordModal
+        isOpen={isPasswordModalOpen}
+        onClose={() => setIsPasswordModalOpen(false)}
+        currentUser={currentUser}
+      />
+    )}
     </>
   );
 }
