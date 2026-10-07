@@ -30,6 +30,8 @@ export interface CurrentUser {
   email: string;
   role: 'ADMIN' | 'SOCIO' | 'FISCAL' | 'DP' | 'CONTABIL' | 'FINANCEIRO' | 'CADASTRO';
   active: boolean;
+  leftAt?: string | null;
+  exitReason?: string | null;
   companyScope: 'ALL' | 'RESPONSIBLE' | 'CUSTOM';
   canViewAllCompanies?: boolean;
   sectorPermissions?: UserSectorPermission[];

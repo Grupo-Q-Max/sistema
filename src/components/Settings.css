@@ -411,6 +411,20 @@
 }
 .status-pill.active { background: rgba(16, 185, 129, 0.15); color: #34d399; }
 .status-pill.inactive { background: rgba(239, 68, 68, 0.15); color: #f87171; }
+.status-pill.offboarded {
+  background: rgba(244, 63, 94, 0.16);
+  color: #fb7185;
+  border: 1px solid rgba(244, 63, 94, 0.35);
+  white-space: nowrap;
+}
+
+.icon-btn.offboard {
+  color: #fda4af;
+}
+.icon-btn.offboard:hover {
+  background: rgba(244, 63, 94, 0.2);
+  color: #fff;
+}
 
 .status-yes,
 .status-no,

@@ -73,6 +73,10 @@ model User {
   role     Role    @default(CADASTRO)
   active   Boolean @default(true)
 
+  // Desligamento do usuário (não faz mais parte da empresa)
+  leftAt     DateTime?
+  exitReason String?
+
   // Escopo de visualização de empresas: ALL (todas), RESPONSIBLE (onde é o responsável), CUSTOM (seleção manual)
   companyScope CompanyAccessScope @default(ALL)
 

@@ -17,6 +17,8 @@ import {
   X,
   Eye,
   Globe,
+  UserX,
+  UserCheck,
 } from 'lucide-react';
 import './SystemLogs.css';
 
@@ -153,7 +155,7 @@ export function SystemLogs() {
         } else if (categoryFilter === 'OBRIGACOES') {
           if (!['ATUALIZOU_OBRIGACAO', 'OBRIGACAO_CONCLUIDA'].includes(log.action)) return false;
         } else if (categoryFilter === 'SEGURANCA') {
-          if (!['ALTEROU_SENHA', 'RESET_SENHA'].includes(log.action)) return false;
+          if (!['ALTEROU_SENHA', 'RESET_SENHA', 'DESLIGOU_USUARIO', 'REATIVOU_USUARIO'].includes(log.action)) return false;
         } else if (categoryFilter === 'EMPRESAS') {
           if (!log.action.includes('EMPRESA')) return false;
         }
@@ -247,6 +249,18 @@ export function SystemLogs() {
             <FileCheck size={13} /> Obrigação
           </span>
         );
+      case 'DESLIGOU_USUARIO':
+        return (
+          <span className="log-badge badge-offboard">
+            <UserX size={13} /> Desligamento
+          </span>
+        );
+      case 'REATIVOU_USUARIO':
+        return (
+          <span className="log-badge badge-login">
+            <UserCheck size={13} /> Reativou Usuário
+          </span>
+        );
       case 'ATUALIZOU_EMPRESA':
       case 'CRIOU_EMPRESA':
         return (
@@ -283,6 +297,25 @@ export function SystemLogs() {
       return (
         <span className="details-text text-warning">
           {d.alteradoPorAdmin ? 'Redefinida por Administrador' : 'Alterada pelo próprio usuário'}
+        </span>
+      );
+    }
+
+    if (log.action === 'DESLIGOU_USUARIO') {
+      const saida = d.dataSaida ? ` (Saída em ${new Date(d.dataSaida).toLocaleDateString('pt-BR')})` : '';
+      const dest = d.novoResponsavel ? ` → transferido para ${d.novoResponsavel}` : '';
+      const total = d.empresasTransferidas ? ` [${d.empresasTransferidas} emp. transferidas]` : '';
+      return (
+        <span className="details-text text-danger">
+          <strong>{d.usuarioDesligado || 'Colaborador'}</strong>: Não faz mais parte da empresa{saida}{dest}{total}
+        </span>
+      );
+    }
+
+    if (log.action === 'REATIVOU_USUARIO') {
+      return (
+        <span className="details-text" style={{ color: '#34d399' }}>
+          <strong>{d.usuarioReativado || 'Colaborador'}</strong> foi reativado no sistema
         </span>
       );
     }

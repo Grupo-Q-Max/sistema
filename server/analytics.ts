@@ -51,14 +51,14 @@ export function registerAnalytics(app: any, prisma: any) {
       const rangeStart = periods[0];
       const rangeEnd = monthStartUTC(lastY, lastM + 1);
 
-      const [companies, closings, plans] = await Promise.all([
+      const [companies, closings, plans, activeUsersCount, formerUsersCount] = await Promise.all([
         prisma.company.findMany({
           where: externalCompaniesExcluded,
           select: {
             id: true, code: true, name: true, taxRegime: true, city: true, groupName: true, companyType: true,
             deliveryMethod: true, activeSectors: true, obligationStartDate: true, exitDate: true, exitMonthHasObligations: true,
             hasClientCertificate: true, certificateType: true, certificateExpiration: true, targetProxyDate: true,
-            responsibles: {select: {sector: true, user: {select: {id: true, name: true, email: true, active: true}}}},
+            responsibles: {select: {sector: true, user: {select: {id: true, name: true, email: true, active: true, leftAt: true}}}},
           },
         }),
         prisma.closing.findMany({
@@ -66,6 +66,8 @@ export function registerAnalytics(app: any, prisma: any) {
           select: {companyId: true, type: true, status: true, referencePeriod: true, dashboardMetrics: true},
         }),
         prisma.installmentPlan.findMany({select: {status: true, totalAmount: true, typeName: true}}).catch(() => []),
+        prisma.user.count({ where: { active: true } }),
+        prisma.user.count({ where: { leftAt: { not: null } } }),
       ]);
 
       // Fechamentos agrupados por mês
@@ -145,7 +147,9 @@ export function registerAnalytics(app: any, prisma: any) {
         for (const r of c.responsibles || []) {
           if (!r.user) continue;
           const id = r.user.id;
-          if (!workload.has(id)) workload.set(id, {name: r.user.name || r.user.email, total: 0, FISCAL: 0, DP: 0, CONTABIL: 0, CUSHMAN: 0, GERAL: 0});
+          const isFormer = !r.user.active || Boolean(r.user.leftAt);
+          const name = isFormer ? `${r.user.name || r.user.email} (Desligado)` : (r.user.name || r.user.email);
+          if (!workload.has(id)) workload.set(id, {name, total: 0, FISCAL: 0, DP: 0, CONTABIL: 0, CUSHMAN: 0, GERAL: 0, isFormer} as any);
           const w = workload.get(id)!;
           const sector = r.sector && r.sector in w ? r.sector : 'GERAL';
           (w as any)[sector]++;
@@ -214,6 +218,8 @@ export function registerAnalytics(app: any, prisma: any) {
           withoutResponsible,
           totalRegistered: companies.length,
           inactiveTotal: companies.filter((c: any) => c.exitDate && new Date(c.exitDate) <= now).length,
+          activeTeamMembers: activeUsersCount,
+          formerTeamMembers: formerUsersCount,
         },
         timeline,
         distribution: {

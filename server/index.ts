@@ -1649,6 +1649,258 @@ app.put('/api/users/:id', async (req, res) => {
   }
 });
 
+// Buscar atribuições de empresas de um usuário (para conferência ou desligamento)
+app.get('/api/users/:id/assignments', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const user = await prisma.user.findUnique({
+      where: { id },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        role: true,
+        active: true,
+        leftAt: true,
+        exitReason: true,
+      },
+    });
+
+    if (!user) {
+      return res.status(404).json({ error: 'Usuário não encontrado' });
+    }
+
+    const [responsibleAssignments, companyAccess, installmentPlans] = await Promise.all([
+      prisma.companyResponsible.findMany({
+        where: { userId: id },
+        include: {
+          company: {
+            select: { id: true, name: true, cnpj: true, city: true, taxRegime: true },
+          },
+        },
+      }),
+      prisma.userCompanyAccess.findMany({
+        where: { userId: id },
+        include: {
+          company: {
+            select: { id: true, name: true, cnpj: true, city: true, taxRegime: true },
+          },
+        },
+      }),
+      prisma.installmentPlan.findMany({
+        where: { responsibleId: id },
+        include: {
+          company: { select: { id: true, name: true, cnpj: true } },
+        },
+      }),
+    ]);
+
+    res.json({
+      user,
+      responsibleAssignments,
+      companyAccess,
+      installmentPlans,
+      totalCount: responsibleAssignments.length,
+    });
+  } catch (error) {
+    console.error('Erro ao buscar atribuições do usuário:', error);
+    res.status(500).json({ error: 'Erro ao buscar atribuições' });
+  }
+});
+
+// Desligar Usuário (marcar como 'Não faz mais parte da empresa') e transferir empresas
+app.post('/api/users/:id/offboard', async (req, res) => {
+  const clientIp = getClientIp(req);
+  try {
+    const { id } = req.params;
+    const {
+      leftAt,
+      exitReason,
+      transferMode = 'ALL',
+      targetUserId,
+      reassignments = [],
+      actorRole = 'ADMIN',
+      actorId,
+    } = req.body;
+
+    const targetUser = await prisma.user.findUnique({ where: { id } });
+    if (!targetUser) {
+      return res.status(404).json({ error: 'Usuário não encontrado' });
+    }
+
+    if (actorId && actorId === id) {
+      return res.status(400).json({ error: 'Você não pode desligar sua própria conta.' });
+    }
+
+    if (actorRole === 'SOCIO' && (targetUser.role === 'ADMIN' || targetUser.role === 'SOCIO')) {
+      return res.status(403).json({ error: 'Sócios não podem desligar administradores ou outros sócios.' });
+    }
+
+    // Parse da data de saída
+    const exitDate = leftAt ? new Date(leftAt) : new Date();
+
+    // 1. Atualiza usuário para inativo e registra a data e motivo da saída
+    await prisma.user.update({
+      where: { id },
+      data: {
+        active: false,
+        leftAt: exitDate,
+        exitReason: exitReason || 'Não faz mais parte da empresa',
+      },
+    });
+
+    let transferredCount = 0;
+    let targetUserName: string | null = null;
+
+    // 2. Transferência de empresas
+    if (transferMode === 'ALL' && targetUserId) {
+      const newResponsible = await prisma.user.findUnique({ where: { id: targetUserId } });
+      if (newResponsible) {
+        targetUserName = newResponsible.name || newResponsible.email;
+        const currentAssignments = await prisma.companyResponsible.findMany({ where: { userId: id } });
+
+        for (const a of currentAssignments) {
+          const alreadyAssigned = await prisma.companyResponsible.findFirst({
+            where: { companyId: a.companyId, userId: targetUserId, sector: a.sector },
+          });
+
+          if (alreadyAssigned) {
+            await prisma.companyResponsible.delete({ where: { id: a.id } });
+          } else {
+            await prisma.companyResponsible.update({
+              where: { id: a.id },
+              data: { userId: targetUserId },
+            });
+          }
+          transferredCount++;
+        }
+
+        // Se o novo responsável tiver escopo CUSTOM, transfere os acessos manuais
+        if (newResponsible.companyScope === 'CUSTOM') {
+          const userAccesses = await prisma.userCompanyAccess.findMany({ where: { userId: id } });
+          for (const acc of userAccesses) {
+            const accExists = await prisma.userCompanyAccess.findUnique({
+              where: { userId_companyId: { userId: targetUserId, companyId: acc.companyId } },
+            });
+            if (!accExists) {
+              await prisma.userCompanyAccess.create({
+                data: { userId: targetUserId, companyId: acc.companyId },
+              });
+            }
+          }
+        }
+
+        // Transfere parcelamentos
+        await prisma.installmentPlan.updateMany({
+          where: { responsibleId: id },
+          data: { responsibleId: targetUserId },
+        });
+      }
+    } else if (transferMode === 'MANUAL' && Array.isArray(reassignments)) {
+      for (const item of reassignments) {
+        const { companyId, sector, newUserId } = item;
+        const current = await prisma.companyResponsible.findFirst({
+          where: { companyId, userId: id, sector: sector || null },
+        });
+
+        if (current) {
+          if (newUserId) {
+            const alreadyAssigned = await prisma.companyResponsible.findFirst({
+              where: { companyId, userId: newUserId, sector: sector || null },
+            });
+            if (alreadyAssigned) {
+              await prisma.companyResponsible.delete({ where: { id: current.id } });
+            } else {
+              await prisma.companyResponsible.update({
+                where: { id: current.id },
+                data: { userId: newUserId },
+              });
+            }
+            transferredCount++;
+          } else {
+            // Deixar sem responsável
+            await prisma.companyResponsible.delete({ where: { id: current.id } });
+          }
+        }
+      }
+    } else if (transferMode === 'NONE') {
+      // Remove vínculos deixando sem responsável
+      await prisma.companyResponsible.deleteMany({ where: { userId: id } });
+    }
+
+    // 3. Log de Auditoria
+    const actorUser = actorId ? await prisma.user.findUnique({ where: { id: actorId } }) : null;
+    await logAction(
+      actorId || null,
+      actorUser?.email || '',
+      actorUser?.name || 'Administrador',
+      'DESLIGOU_USUARIO',
+      'USUARIO',
+      targetUser.id,
+      {
+        usuarioDesligado: targetUser.name || targetUser.email,
+        emailDesligado: targetUser.email,
+        dataSaida: exitDate.toISOString().slice(0, 10),
+        motivo: exitReason || 'Não faz mais parte da empresa',
+        modoTransferencia: transferMode,
+        novoResponsavel: targetUserName,
+        empresasTransferidas: transferredCount,
+      },
+      clientIp
+    );
+
+    res.json({
+      success: true,
+      message: 'Colaborador marcado como desligado e empresas reatribuídas com sucesso.',
+      transferredCount,
+    });
+  } catch (error) {
+    console.error('Erro ao desligar usuário:', error);
+    res.status(500).json({ error: 'Erro ao processar desligamento do usuário' });
+  }
+});
+
+// Reativar Usuário
+app.post('/api/users/:id/rehire', async (req, res) => {
+  const clientIp = getClientIp(req);
+  try {
+    const { id } = req.params;
+    const { actorId } = req.body;
+
+    const user = await prisma.user.findUnique({ where: { id } });
+    if (!user) return res.status(404).json({ error: 'Usuário não encontrado' });
+
+    await prisma.user.update({
+      where: { id },
+      data: {
+        active: true,
+        leftAt: null,
+        exitReason: null,
+      },
+    });
+
+    const actorUser = actorId ? await prisma.user.findUnique({ where: { id: actorId } }) : null;
+    await logAction(
+      actorId || null,
+      actorUser?.email || '',
+      actorUser?.name || 'Administrador',
+      'REATIVOU_USUARIO',
+      'USUARIO',
+      user.id,
+      {
+        usuarioReativado: user.name || user.email,
+        emailReativado: user.email,
+      },
+      clientIp
+    );
+
+    res.json({ success: true, message: 'Usuário reativado com sucesso.' });
+  } catch (error) {
+    console.error('Erro ao reativar usuário:', error);
+    res.status(500).json({ error: 'Erro ao reativar usuário' });
+  }
+});
+
 // Deletar Usuário (com validação de hierarquia)
 app.delete('/api/users/:id', async (req, res) => {
   try {

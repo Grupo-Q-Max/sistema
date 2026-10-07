@@ -20,12 +20,13 @@ interface TimelinePoint {
   regimes: Record<string, number>; sectors: Record<string, SectorPoint>;
 }
 interface NamedValue { name: string; value: number }
-interface Workload { name: string; total: number; FISCAL: number; DP: number; CONTABIL: number; CUSHMAN: number; GERAL: number }
+interface Workload { name: string; total: number; FISCAL: number; DP: number; CONTABIL: number; CUSHMAN: number; GERAL: number; isFormer?: boolean; }
 interface AnalyticsData {
   generatedAt: string; referencePeriod: string; months: number;
   kpis: {
     active: number; activePrev: number; activeFirst: number; activeYearAgo: number; entriesPeriod: number; exitsPeriod: number;
     employees: number; employeesPrev: number; withoutResponsible: number; totalRegistered: number; inactiveTotal: number;
+    activeTeamMembers?: number; formerTeamMembers?: number;
   };
   timeline: TimelinePoint[];
   distribution: { regimes: NamedValue[]; companyTypes: NamedValue[]; cities: NamedValue[]; groups: NamedValue[]; delivery: NamedValue[]; sectors: NamedValue[] };
@@ -430,7 +431,11 @@ export function Analytics({ currentView, onNavigate, currentUser, onLogout }: An
 
             {/* Equipe */}
             <div className="an-grid two-one">
-              <Panel title="Carga por responsável" subtitle="Empresas vinculadas por setor (top 12)" icon={Briefcase}>
+              <Panel
+                title="Carga por responsável"
+                subtitle={k.formerTeamMembers ? `Empresas vinculadas por setor · ${k.activeTeamMembers || 0} ativos · ${k.formerTeamMembers} ex-colaborador(es)` : "Empresas vinculadas por setor (top 12)"}
+                icon={Briefcase}
+              >
                 {workloadTop.length === 0 ? <div className="an-empty">Nenhum responsável vinculado.</div> : (
                   <ResponsiveContainer width="100%" height={Math.max(260, workloadTop.length * 32)}>
                     <BarChart data={workloadTop} layout="vertical" margin={{ left: 8, right: 24, top: 4, bottom: 4 }}>

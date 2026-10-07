@@ -25,9 +25,11 @@ import {
   FileCheck,
   TrendingUp,
   KeyRound,
+  UserX,
 } from 'lucide-react';
 import { Sidebar } from './Sidebar';
 import { ChangePasswordModal } from './ChangePasswordModal';
+import { UserOffboardModal } from './UserOffboardModal';
 import { SettingsSkeleton, ButtonSpinner } from './LoadingSkeleton';
 import type { CurrentUser } from '../types/auth';
 import './Dashboard.css';
@@ -100,6 +102,8 @@ export function Settings({ currentView, onNavigate, currentUser, onLogout }: Set
   const [editingColumn, setEditingColumn] = useState<any | null>(null);
   const [pwdTargetUser, setPwdTargetUser] = useState<any | null>(null);
   const [isPwdModalOpen, setIsPwdModalOpen] = useState(false);
+  const [offboardingUser, setOffboardingUser] = useState<any | null>(null);
+  const [isOffboardModalOpen, setIsOffboardModalOpen] = useState(false);
 
   // Feedback Toast
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
@@ -306,38 +310,20 @@ export function Settings({ currentView, onNavigate, currentUser, onLogout }: Set
     }
   };
 
-  // Excluir Usuário
-  const handleDeleteUser = async (user: any) => {
+  // Desligamento de Usuário (Não faz mais parte da empresa)
+  const handleOpenOffboard = (user: any) => {
     if (user.id === currentUser?.id) {
-      showToast('Você não pode excluir sua própria conta.', 'error');
+      showToast('Você não pode desligar sua própria conta.', 'error');
       return;
     }
 
     if (isActorSocio && (user.role === 'ADMIN' || user.role === 'SOCIO')) {
-      showToast('Sócios não podem excluir Administradores ou outros Sócios.', 'error');
+      showToast('Sócios não podem desligar Administradores ou outros Sócios.', 'error');
       return;
     }
 
-    if (!window.confirm(`Tem certeza que deseja remover o usuário ${user.email}?`)) {
-      return;
-    }
-
-    try {
-      const res = await fetch(
-        `${API}/api/users/${user.id}?actorRole=${currentUser?.role || 'ADMIN'}`,
-        { method: 'DELETE' }
-      );
-      const data = await res.json();
-      if (!res.ok) {
-        showToast(data.error || 'Erro ao excluir usuário', 'error');
-        return;
-      }
-      showToast('Usuário excluído com sucesso');
-      loadData();
-    } catch (err) {
-      console.error(err);
-      showToast('Erro ao excluir usuário', 'error');
-    }
+    setOffboardingUser(user);
+    setIsOffboardModalOpen(true);
   };
 
   // Abrir Modal de Coluna
@@ -634,7 +620,14 @@ export function Settings({ currentView, onNavigate, currentUser, onLogout }: Set
                           </div>
 
                           <div className="col-status">
-                            {user.active ? (
+                            {user.leftAt ? (
+                              <span
+                                className="status-pill offboarded"
+                                title={`Saiu em ${new Date(user.leftAt).toLocaleDateString('pt-BR')}${user.exitReason ? ` - ${user.exitReason}` : ''}`}
+                              >
+                                Não faz mais parte
+                              </span>
+                            ) : user.active ? (
                               <span className="status-pill active">Ativo</span>
                             ) : (
                               <span className="status-pill inactive">Inativo</span>
@@ -660,12 +653,12 @@ export function Settings({ currentView, onNavigate, currentUser, onLogout }: Set
                               <Edit2 size={16} />
                             </button>
                             <button
-                              className="icon-btn delete"
-                              title="Excluir Usuário"
+                              className="icon-btn offboard"
+                              title={user.leftAt ? "Gerenciar Saída / Reatribuir Empresas" : "Não faz mais parte da empresa (Desligar & Transferir Empresas)"}
                               disabled={isActorSocio && (user.role === 'ADMIN' || user.role === 'SOCIO')}
-                              onClick={() => handleDeleteUser(user)}
+                              onClick={() => handleOpenOffboard(user)}
                             >
-                              <Trash2 size={16} />
+                              <UserX size={16} />
                             </button>
                           </div>
                         </div>
@@ -1281,6 +1274,21 @@ export function Settings({ currentView, onNavigate, currentUser, onLogout }: Set
         targetUser={pwdTargetUser}
         onSuccess={() => {
           showToast('Senha redefinida com sucesso!', 'success');
+        }}
+      />
+
+      <UserOffboardModal
+        isOpen={isOffboardModalOpen}
+        onClose={() => {
+          setIsOffboardModalOpen(false);
+          setOffboardingUser(null);
+        }}
+        targetUser={offboardingUser}
+        currentUser={currentUser || null}
+        allUsers={users}
+        onSuccess={() => {
+          showToast('Colaborador e empresas atualizados com sucesso!', 'success');
+          loadData();
         }}
       />
     </div>
