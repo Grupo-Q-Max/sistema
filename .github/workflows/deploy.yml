@@ -72,16 +72,18 @@ jobs:
 
             AUTH_REPO="https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/Grupo-Q-Max/sistema.git"
 
-            # Se o diretório já for um repositório git, atualiza; senão, clona
-            if [ -d ".git" ]; then
-              echo "==> Repositório existente. Sincronizando com origin/main..."
-              git remote set-url origin "$AUTH_REPO"
-              git fetch origin main
-              git reset --hard origin/main
+            # Inicializa ou atualiza o repositório Git
+            if [ ! -d ".git" ]; then
+              echo "==> Inicializando repositório Git no servidor..."
+              git init -b main
+              git remote add origin "$AUTH_REPO"
             else
-              echo "==> Clonando repositório inicial..."
-              git clone "$AUTH_REPO" .
+              echo "==> Repositório existente. Sincronizando..."
+              git remote set-url origin "$AUTH_REPO"
             fi
+
+            git fetch origin main
+            git reset --hard origin/main
             git remote set-url origin https://github.com/Grupo-Q-Max/sistema.git
 
             # Instala dependências no servidor
