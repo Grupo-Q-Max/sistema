@@ -1677,8 +1677,9 @@ async function runAutomaticRollover() {
 
 const distPath = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'dist');
 app.use(express.static(distPath));
+app.use('/sistema', express.static(distPath));
 app.use((req, res, next) => {
-  if (req.path.startsWith('/api')) return next();
+  if (req.path.startsWith('/api') || req.path.startsWith('/sistema/api')) return next();
   if (req.method !== 'GET' && req.method !== 'HEAD') return next();
   res.sendFile(path.join(distPath, 'index.html'), (err) => { if (err) next(); });
 });
