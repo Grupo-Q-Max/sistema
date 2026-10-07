@@ -1,0 +1,18 @@
+.popup-config-editor { border-top: 1px solid #cbd5e1; margin-top: 20px; padding-top: 18px; }
+.popup-config-editor h3,.popup-config-editor h4 { margin: 12px 0; }
+.popup-config-editor p,.popup-config-editor small { color: #64748b; font-size: 13px; }
+.popup-config-editor label { display: flex; flex-direction: column; gap: 6px; font-size: 13px; }
+.popup-config-editor input:not([type=checkbox]),.popup-config-editor select,.popup-config-editor textarea { width: 100%; box-sizing: border-box; padding: 9px; border: 1px solid #334155; border-radius: 8px; background: #15151c; color: #e2e8f0; }
+.popup-editor-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.popup-editor-field { padding: 14px; border: 1px solid #334155; border-radius: 10px; margin-bottom: 12px; }
+.popup-editor-tools { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 10px; }
+.popup-editor-tools label,.popup-editor-action label,.popup-config-editor .popup-editor-check { flex-direction: row; align-items: center; }
+.popup-editor-tools button { padding: 7px 10px; border: 1px solid #334155; border-radius: 6px; cursor: pointer; }
+.popup-editor-action { display: grid; grid-template-columns: 140px 1fr; gap: 10px; align-items: center; margin-bottom: 9px; }
+.popup-config-editor .popup-editor-check { margin: 10px 0; }
+.popup-editor-preview { padding: 15px; background: #f8fafc; color: #0f172a; border-radius: 10px; margin: 16px 0; }
+.popup-editor-preview label { margin: 9px 0; }
+.popup-column-summary { display: block; color: #94a3b8; font-size: 11px; margin-top: 4px; }
+@media (max-width: 650px) { .popup-editor-grid,.popup-editor-action { grid-template-columns: 1fr; } }
+
+.popup-editor-preview input { background: #fff !important; color: #0f172a !important; }

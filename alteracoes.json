@@ -1,0 +1,36 @@
+[
+  {
+    "file": "server/index.ts",
+    "before": "    const activeWhere = {\n      AND: [externalCompaniesExcluded],\n      OR: [\n        { AND: [{ OR: [{ activeSectors: null }, { activeSectors: 'TODOS' }, { activeSectors: '' }, { activeSectors: { contains: sector } }] }, { obligationStartDate: { lt: nextMonthStart }, OR: [{ exitDate: null }, { exitDate: { gte: monthStart } }] }] },\n        { closings: { some: { type: sector, referencePeriod: monthStart } } },\n      ],\n    };",
+    "after": "    const activeWhere = {\n      AND: [externalCompaniesExcluded, { OR: [{ exitDate: null }, { exitDate: { gte: nextMonthStart } }] }],\n      OR: [\n        { AND: [{ OR: [{ activeSectors: null }, { activeSectors: 'TODOS' }, { activeSectors: '' }, { activeSectors: { contains: sector } }] }, { obligationStartDate: { lt: nextMonthStart }, OR: [{ exitDate: null }, { exitDate: { gte: monthStart } }] }] },\n        { closings: { some: { type: sector, referencePeriod: monthStart } } },\n      ],\n    };",
+    "label": "Listas Fiscal e DP",
+    "alternatives": [
+      "    const activeWhere = {\n      AND: [externalCompaniesExcluded, { OR: [{ exitDate: null }, { exitDate: { gte: monthStart } }] }],\n      OR: [\n        { AND: [{ OR: [{ activeSectors: null }, { activeSectors: 'TODOS' }, { activeSectors: '' }, { activeSectors: { contains: sector } }] }, { obligationStartDate: { lt: nextMonthStart }, OR: [{ exitDate: null }, { exitDate: { gte: monthStart } }] }] },\n        { closings: { some: { type: sector, referencePeriod: monthStart } } },\n      ],\n    };"
+    ]
+  },
+  {
+    "file": "server/index.ts",
+    "before": "    // Inclui cadastros que ja possuem fechamento mensal nesta competencia,\n    // mesmo quando o legado nao informou a data de inicio da obrigacao.\n    // O fechamento CONTABIL anual nao comprova participacao em todos os meses.\n    const activeWhere = {\n      AND: [externalCompaniesExcluded],\n      OR: [\n        {\n          obligationStartDate: { lt: nextMonthStart },\n          OR: [{ exitDate: null }, { exitDate: { gte: monthStart } }],\n        },\n        {\n          closings: {\n            some: {\n              type: { not: 'CONTABIL' },\n              referencePeriod: { gte: monthStart, lt: nextMonthStart },\n            },\n          },\n        },\n      ],\n    };",
+    "after": "    // Inclui cadastros que ja possuem fechamento mensal nesta competencia,\n    // mesmo quando o legado nao informou a data de inicio da obrigacao.\n    // A ultima competencia visivel e o mes anterior ao mes da saida.\n    // O fechamento CONTABIL anual nao comprova participacao em todos os meses.\n    const activeWhere = {\n      AND: [externalCompaniesExcluded, { OR: [{ exitDate: null }, { exitDate: { gte: nextMonthStart } }] }],\n      OR: [\n        {\n          obligationStartDate: { lt: nextMonthStart },\n          OR: [{ exitDate: null }, { exitDate: { gte: monthStart } }],\n        },\n        {\n          closings: {\n            some: {\n              type: { not: 'CONTABIL' },\n              referencePeriod: { gte: monthStart, lt: nextMonthStart },\n            },\n          },\n        },\n      ],\n    };",
+    "label": "Dashboard respeita saida",
+    "alternatives": [
+      "    // Inclui cadastros que ja possuem fechamento mensal nesta competencia,\n    // mesmo quando o legado nao informou a data de inicio da obrigacao.\n    // A data de saida limita ambas as formas de inclusao.\n    // O fechamento CONTABIL anual nao comprova participacao em todos os meses.\n    const activeWhere = {\n      AND: [externalCompaniesExcluded, { OR: [{ exitDate: null }, { exitDate: { gte: monthStart } }] }],\n      OR: [\n        {\n          obligationStartDate: { lt: nextMonthStart },\n          OR: [{ exitDate: null }, { exitDate: { gte: monthStart } }],\n        },\n        {\n          closings: {\n            some: {\n              type: { not: 'CONTABIL' },\n              referencePeriod: { gte: monthStart, lt: nextMonthStart },\n            },\n          },\n        },\n      ],\n    };"
+    ]
+  },
+  {
+    "file": "server/index.ts",
+    "before": "        where: { OR:[{type:{not:'CONTABIL'},referencePeriod:{gte:monthStart,lt:nextMonthStart}},{type:'CONTABIL',referencePeriod:new Date(Date.UTC(y,0,1))}] },",
+    "after": "        where: { company: activeWhere, OR:[{type:{not:'CONTABIL'},referencePeriod:{gte:monthStart,lt:nextMonthStart}},{type:'CONTABIL',referencePeriod:new Date(Date.UTC(y,0,1))}] },",
+    "label": "Indicadores do dashboard",
+    "alternatives": []
+  },
+  {
+    "file": "server/cushman.ts",
+    "before": "  const rows=companies.filter((company:any)=>cushmanCompanyAllowed(user,company)&&(mode==='ALL'||cushmanCompanyEligible(company,period)||!!mapped.get(company.id)?.columnsData?._legacy)).map((company:any)=>{",
+    "after": "  const rows=companies.filter((company:any)=>cushmanCompanyAllowed(user,company)&&(!company.exitDate||new Date(company.exitDate).getTime()>=Date.UTC(period.getUTCFullYear(),period.getUTCMonth()+1,1))&&(mode==='ALL'||cushmanCompanyEligible(company,period)||!!mapped.get(company.id)?.columnsData?._legacy)).map((company:any)=>{",
+    "label": "Lista Cushman",
+    "alternatives": [
+      "  const rows=companies.filter((company:any)=>cushmanCompanyAllowed(user,company)&&(!company.exitDate||new Date(company.exitDate).getTime()>=period.getTime())&&(mode==='ALL'||cushmanCompanyEligible(company,period)||!!mapped.get(company.id)?.columnsData?._legacy)).map((company:any)=>{"
+    ]
+  }
+]

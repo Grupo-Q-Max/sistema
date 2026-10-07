@@ -1,0 +1,92 @@
+import {companyExitAllowsPeriod,exitDecisionError,exitDecisionValue} from '../src/config/companyExit';
+import {sessionUser} from './installments';
+import {CUSHMAN_API_VERSION,CUSHMAN_COLUMNS,CUSHMAN_COMPANY_FIELDS,resolveCushmanKey,cushmanAccess,cushmanCompanyAllowed,cushmanCompanyEligible,cushmanApplicableColumns} from '../src/config/cushmanColumns';
+import {periodIsOpen,blockedPeriodMessage} from '../src/config/competenceCalendar';
+import {isColumnActive,calculateColumnProgress} from '../src/config/columnVisibility';
+import {effectivePopup} from '../src/config/fiscalPopups';
+import {validatePayrollValue} from '../src/config/payrollColumns';
+import {validDate} from '../src/config/installments';
+const fail=(status:number,message:string):never=>{throw Object.assign(new Error(message),{status});};
+export function validateCushmanCompanyPatch(body:any,existing:any,encrypt:(value:any)=>any):any {
+ if(!body||typeof body!=='object'||Array.isArray(body))fail(400,'Dados de cadastro inválidos.');
+ const allowed=new Set<string>([...CUSHMAN_COMPANY_FIELDS.map(field=>field.key),'expectedUpdatedAt','exitMonthHasObligations']);
+ if(Object.keys(body).some(key=>!allowed.has(key)))fail(400,'Este painel permite alterar somente município, certificado, procuração, datas, inscrições e acessos da prefeitura.');
+ const data:any={};
+ for(const field of CUSHMAN_COMPANY_FIELDS){if(!Object.prototype.hasOwnProperty.call(body,field.key))continue;const value=body[field.key];
+  if(field.type==='checkbox'){if(typeof value!=='boolean')fail(400,'Informe se a empresa possui certificado.');data[field.key]=value;continue;}
+  if(typeof value!=='string')fail(400,`${field.label}: informe um texto válido.`);
+  const text=value.trim();if(text.length>190)fail(400,`${field.label}: máximo de 190 caracteres.`);
+  if(field.type==='date'){const parsed=text?validDate(text):null;if(text&&!parsed)fail(400,`${field.label}: data inválida.`);if(!parsed&&['contractDate','obligationStartDate'].includes(field.key))fail(400,`${field.label} é obrigatória.`);data[field.key]=parsed;}
+  else if(field.type==='password'){const protectedValue=value?encrypt(value):null;data[field.key]=protectedValue;}
+  else if(field.type==='url'){if(text){try{const url=new URL(text);if(!['http:','https:'].includes(url.protocol))throw new Error();}catch{fail(400,'Link Prefeitura: informe uma URL começando com https:// ou http://.');}}data[field.key]=text||null;}
+  else if(field.type==='certificate'){if(text&&!['A1','A3 CARTÃO','A3 TOKEN'].includes(text)&&text!==existing.certificateType)fail(400,'Selecione um tipo de certificado válido.');data[field.key]=text||null;}
+  else{if(['certificateIssue','certificateExpiration'].includes(field.key)&&text){const month=text.match(/^(\d{2})\/(\d{4})$/);const br=text.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);if(!(month&&Number(month[1])>=1&&Number(month[1])<=12&&Number(month[2])>=1900)&&!(br&&validDate(`${br[3]}-${br[2]}-${br[1]}`))&&!validDate(text))fail(400,`${field.label}: use MM/AAAA, DD/MM/AAAA ou AAAA-MM-DD.`);}data[field.key]=text||null;}
+ }
+ const start=data.obligationStartDate??existing.obligationStartDate,exit=data.exitDate!==undefined?data.exitDate:existing.exitDate;
+ if(start&&exit&&new Date(exit)<new Date(start))fail(400,'A saída não pode ser anterior ao início da obrigação.');
+ const has=data.hasClientCertificate??existing.hasClientCertificate;
+ if(!has)for(const key of ['certificateType','certificatePassword','certificateIssue','certificateExpiration'])data[key]=null;
+ const exitError=exitDecisionError(body,existing,data.exitDate);
+ if(exitError)fail(400,exitError);
+ if(body.exitDate!==undefined||body.exitMonthHasObligations!==undefined)data.exitMonthHasObligations=exitDecisionValue(body,existing,data.exitDate);
+ return data;
+}
+export function validateCushmanPopup(column:any,value:any,key:string):string|null {
+ if(!value||typeof value!=='object'||Array.isArray(value))return 'Informações do popup inválidas.';
+ const actionOf:Record<string,string>={'N/A':'NA',PENDENCIA:'PENDENCIA','OK - SEM MOVIMENTO':'SEM_MOV',CONCLUIDO:'SALVAR','OK - DATA':'OK_DATA',PENDENTE:'LIMPAR'};
+ const action=actionOf[value.status];if(!action)return 'Situação inválida.';
+ const popup=effectivePopup(column,key);if(!popup.actions.some(item=>item.id===action&&item.enabled))return 'Esta ação está desativada na configuração da coluna.';
+ if(value.data!==undefined&&(!value.data||typeof value.data!=='object'||Array.isArray(value.data)))return 'Campos do popup inválidos.';
+ for(const [field,item] of Object.entries(value.data||{})){
+  if(typeof item!=='string'&&typeof item!=='number'&&typeof item!=='boolean'&&item!==null)return `Campo inválido: ${field}`;
+  const definition=popup.fields.find(candidate=>candidate.key===field);if(!definition)continue;const text=String(item??'').trim();
+  if(text&&definition.type==='NUMBER'&&!Number.isFinite(Number(text)))return `Informe um número em ${definition.label}.`;
+  if(text&&definition.type==='DATE'&&!validDate(text))return `Data inválida em ${definition.label}.`;
+  if(text&&definition.type==='SELECT'&&!definition.options.includes(text))return `Escolha uma opção em ${definition.label}.`;
+ }
+ if(value.status==='CONCLUIDO'){const missing=popup.fields.find(field=>field.required&&!String(value.data?.[field.key]??'').trim());if(missing)return `Preencha o campo: ${missing.label}`;}
+ if(['CONCLUIDO','OK - DATA'].includes(value.status)&&popup.askDate&&!validDate(value.completionDate))return 'Informe a data da conclusão.';
+ if(value.status==='PENDENCIA'&&!String(value.pendingReason||'').trim())return 'Informe o motivo da pendência.';
+ return null;
+}
+export function registerCushman(app:any,prisma:any,options:{sync:(period:Date)=>Promise<any>;encrypt:(value:any)=>any;decrypt:(value:any)=>any}){
+ const endpoint=(handler:any)=>async(req:any,res:any)=>{try{
+  const id=sessionUser(String(req.headers.authorization||'').replace(/^Bearer /,''),process.env.APP_SESSION_SECRET||'');if(!id)fail(401,'Sua sessão expirou. Saia e entre novamente.');
+  const user=await prisma.user.findUnique({where:{id},include:{sectorPermissions:true,screenPermissions:true,companyAccess:true,responsibleAssignments:true}});if(!cushmanAccess(user))fail(403,'Sem acesso ao fechamento Cushman.');await handler(req,res,user);
+ }catch(error:any){if(!error.status)console.error('Erro no Cushman:',error);res.status(error.status||500).json({error:error.status?error.message:'Não foi possível concluir a operação no Cushman.'});}};
+ const reference=(query:any)=>{const year=Number(query.year),month=Number(query.month);if(!Number.isInteger(year)||year<1900||year>9999||!Number.isInteger(month)||month<1||month>12)fail(400,'Competência inválida.');const period=new Date(Date.UTC(year,month-1,1));if(!periodIsOpen(period))fail(423,blockedPeriodMessage(period));return period;};
+ const safeCompany=(company:any)=>{const {certificatePassword,ginfessPassword,gissOnlinePassword,...safe}=company;return {...safe,certificatePasswordDecrypted:options.decrypt(certificatePassword),ginfessPasswordDecrypted:options.decrypt(ginfessPassword),gissOnlinePasswordDecrypted:options.decrypt(gissOnlinePassword)};};
+ const companyAllowed=async(user:any,id:string)=>{const company=await prisma.company.findUnique({where:{id},include:{responsibles:true}});if(!company)fail(404,'Empresa não encontrada.');if(!cushmanCompanyAllowed(user,company))fail(403,'Empresa fora do seu acesso no Cushman.');return company;};
+ app.get('/api/cushman-closings',endpoint(async(req:any,res:any,user:any)=>{
+  const period=reference(req.query);const mode=req.query.companies||'CUSHMAN';if(!['CUSHMAN','ALL'].includes(mode))fail(400,'Filtro de empresas inválido.');
+  await options.sync(period);
+  const [companies,closings,storedColumns]=await Promise.all([prisma.company.findMany({include:{responsibles:true},orderBy:[{code:'asc'},{name:'asc'}]}),prisma.closing.findMany({where:{type:'CUSHMAN',referencePeriod:period}}),prisma.departmentColumn.findMany({where:{department:'CUSHMAN'},orderBy:{orderIndex:'asc'}})]);
+  const columns=cushmanApplicableColumns(storedColumns,period);const mapped=new Map<string,any>(closings.map((closing:any)=>[closing.companyId,closing]));
+  const rows=companies.filter((company:any)=>cushmanCompanyAllowed(user,company)&&companyExitAllowsPeriod(company,period)&&(mode==='ALL'||cushmanCompanyEligible(company,period)||!!mapped.get(company.id)?.columnsData?._legacy)).map((company:any)=>{
+   const closing=mapped.get(company.id);const participates=cushmanCompanyEligible(company,period)||!!closing?.columnsData?._legacy;const data={...(closing?.columnsData||{})};
+   for(const column of columns){const key=resolveCushmanKey(column)||column.id;if(column.inputType==='PASSWORD'&&data[key])data[key]=options.decrypt(data[key]);}
+   if(data.cush_observacao===undefined&&company.notesScope==='CUSHMAN')data.cush_observacao=company.notes||'';
+   const progress=calculateColumnProgress(participates?columns.filter((column:any)=>column.countsProgress):[],data,column=>resolveCushmanKey(column)||column.id);
+   return {company:safeCompany(company),closingId:closing?.id||null,columnsData:data,participates,...progress,calculatedStatus:participates?progress.calculatedStatus:'NOT_APPLICABLE',updatedAt:closing?.updatedAt||null};
+  });
+  res.json({cushmanApiVersion:CUSHMAN_API_VERSION,rows,columns,configured:CUSHMAN_COLUMNS.every(template=>storedColumns.some((column:any)=>column.columnKey===template.key)),access:{edit:cushmanAccess(user,true)}});
+ }));
+ app.put('/api/cushman-companies/:id',endpoint(async(req:any,res:any,user:any)=>{
+  if(!cushmanAccess(user,true))fail(403,'Permissão somente de leitura no Cushman.');const company=await companyAllowed(user,req.params.id);
+  if(!req.body.expectedUpdatedAt||new Date(req.body.expectedUpdatedAt).getTime()!==new Date(company.updatedAt).getTime())fail(409,'O cadastro foi alterado por outra pessoa. Atualize a tela antes de editar novamente.');
+  const data=validateCushmanCompanyPatch(req.body,company,options.encrypt);const updated=await prisma.company.updateMany({where:{id:company.id,updatedAt:company.updatedAt},data});if(!updated.count)fail(409,'O cadastro mudou durante a edição. Atualize a tela.');
+  res.json({company:safeCompany(await prisma.company.findUnique({where:{id:company.id},include:{responsibles:true}}))});
+ }));
+ app.put('/api/cushman-closings/:id/column',endpoint(async(req:any,res:any,user:any)=>{
+  if(!cushmanAccess(user,true))fail(403,'Permissão somente de leitura no Cushman.');const closing=await prisma.closing.findUnique({where:{id:req.params.id}});if(!closing||closing.type!=='CUSHMAN')fail(404,'Fechamento Cushman não encontrado.');
+  const company=await companyAllowed(user,closing.companyId);const period=new Date(closing.referencePeriod);if(!periodIsOpen(period))fail(423,blockedPeriodMessage(period));if(!companyExitAllowsPeriod(company,period)||(!cushmanCompanyEligible(company,period)&&!closing.columnsData?._legacy))fail(403,'Esta empresa não tem obrigação Cushman nesta competência.');
+  const {columnKey,columnValue,expectedUpdatedAt}=req.body;const columns=await prisma.departmentColumn.findMany({where:{department:'CUSHMAN'}});const column=columns.find((item:any)=>resolveCushmanKey(item)===columnKey);
+  if(!column||!isColumnActive(column,period)||column.isEditable===false||column.inputType==='READONLY')fail(403,'Coluna indisponível para edição.');
+  if(!expectedUpdatedAt||new Date(expectedUpdatedAt).getTime()!==new Date(closing.updatedAt).getTime())fail(409,'O fechamento foi alterado. Atualize a tela antes de editar novamente.');
+  const error=column.inputType==='POPUP'?validateCushmanPopup(column,columnValue,columnKey):validatePayrollValue(column,columnValue);if(error)fail(400,error);
+  const data={...(closing.columnsData||{}),[columnKey]:column.inputType==='PASSWORD'?options.encrypt(columnValue):columnValue};const progress=calculateColumnProgress(columns.filter((item:any)=>item.countsProgress&&isColumnActive(item,period)),data,column=>resolveCushmanKey(column)||column.id);
+  const updated=await prisma.closing.updateMany({where:{id:closing.id,updatedAt:closing.updatedAt},data:{columnsData:data,status:progress.calculatedStatus}});if(!updated.count)fail(409,'O fechamento mudou durante a edição. Atualize a tela.');
+  const fresh=await prisma.closing.findUnique({where:{id:closing.id}});const responseData={...(fresh.columnsData||{})};for(const item of columns)if(item.inputType==='PASSWORD'){const key=resolveCushmanKey(item)||item.id;if(responseData[key])responseData[key]=options.decrypt(responseData[key]);}
+  res.json({closing:{...fresh,columnsData:responseData},...progress});
+ }));
+}

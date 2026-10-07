@@ -1,0 +1,8 @@
+.closing-modal-content .modal-input-group textarea,
+.closing-modal-content .modal-input-group select {
+  width: 100%; box-sizing: border-box; padding: 10px 12px; border: 1px solid #cbd5e1;
+  border-radius: 8px; font-size: 14px; background: #fff; color: #334155;
+}
+.closing-modal-content .modal-input-group textarea { resize: vertical; }
+.closing-modal-content button:disabled { opacity: .55; cursor: not-allowed; }
+.fiscal-column-text { width: 135px; border: 1px solid #475569; border-radius: 7px; padding: 8px; background: #171720; color: #f1f5f9; }

@@ -1,0 +1,15 @@
+.column-visibility-editor { padding-top: 18px; margin-top: 18px; border-top: 1px solid #334155; }
+.column-visibility-editor h3,.column-visibility-editor h4 { margin: 12px 0; color: #f1f5f9; }
+.column-visibility-editor p { color: #a7b4c7; font-size: 13px; line-height: 1.5; }
+.visibility-mode-grid { display: grid; grid-template-columns: repeat(3,1fr); gap: 10px; }
+.column-visibility-editor .visibility-mode { display: flex; align-items: flex-start; gap: 10px; border: 1px solid #334155; padding: 12px; border-radius: 10px; background: #14141c; cursor: pointer; }
+.visibility-mode span { display: flex; flex-direction: column; gap: 6px; }
+.visibility-mode small { color: #a7b4c7; font-size: 12px; font-weight: 400; }
+.column-visibility-editor .selected { border-color: #d90f81; background: #271325; }
+.visibility-month-grid { display: grid; grid-template-columns: repeat(4,1fr); gap: 8px; }
+.column-visibility-editor .visibility-month-grid label { display: flex; align-items: center; gap: 8px; padding: 10px; border: 1px solid #334155; border-radius: 8px; cursor: pointer; }
+.visibility-tools { display: flex; gap: 8px; flex-wrap: wrap; margin: 12px 0; }
+.visibility-tools button { color: #f1f5f9; background: #20212c; padding: 8px 12px; border: 1px solid #475569; border-radius: 8px; cursor: pointer; }
+.visibility-tools input { max-width: 120px; color: #f1f5f9; background: #15151c; padding: 8px; border: 1px solid #475569; border-radius: 8px; }
+.visibility-summary { padding: 12px; border-radius: 8px; background: #171f2e; color: #d5e3fb; font-size: 13px; }
+@media(max-width:650px) { .visibility-mode-grid { grid-template-columns: 1fr; } .visibility-month-grid { grid-template-columns: repeat(2,1fr); } }

@@ -1,0 +1,19 @@
+/* Solid option backgrounds prevent white-on-white native dropdowns on Windows. */
+.settings-modal select, .settings-modal select option, .popup-config-editor select, .popup-config-editor select option {
+  color-scheme: dark; background-color: #191923; color: #f1f5f9;
+}
+.settings-modal select { min-height: 44px; border: 1px solid #475569; }
+.settings-modal select option { font-size: 14px; padding: 10px; }
+.settings-modal select:disabled { opacity: .65; }
+.column-type-options { display: grid; grid-template-columns: repeat(3,1fr); gap: 10px; }
+.column-type-options button { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; padding: 14px; border: 1px solid #475569; border-radius: 12px; background: #171720; color: #f1f5f9; font-family: inherit; text-align: left; cursor: pointer; }
+.column-type-options button.selected { border-color: #d90f81; background: #2b1327; box-shadow: 0 0 0 1px #d90f81; }
+.column-type-options button small { color: #a7b4c7; line-height: 1.4; }
+.column-type-options button:focus-visible { outline: 2px solid #f472b6; outline-offset: 3px; }
+.column-type-options button:disabled { opacity: .4; cursor: not-allowed; }
+@media(max-width:650px) { .column-type-options { grid-template-columns: 1fr; } }
+.dp-field-config { padding: 14px; border: 1px solid #334155; border-radius: 10px; margin-top: 12px; }
+.dp-field-config label { display: flex; flex-direction: column; gap: 7px; margin: 10px 0; }
+.dp-field-config input,.dp-field-config textarea { background: #171720; color: #f1f5f9; border: 1px solid #475569; border-radius: 8px; padding: 10px; font: inherit; }
+.dp-base-column-guide { padding: 14px; margin: 0 14px 14px; background: #141420; border: 1px solid #334155; border-radius: 9px; color: #cbd5e1; font-size: 13px; line-height: 1.6; }
+.dp-base-column-guide summary { cursor: pointer; font-weight: 700; }

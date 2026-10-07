@@ -1,0 +1,71 @@
+/* Sidebar presa à janela; somente a navegação rola, preservando o rodapé. */
+.crm-dashboard > .crm-sidebar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  height: 100vh;
+  height: 100dvh;
+  overflow: hidden;
+  z-index: 80;
+}
+.crm-dashboard > .crm-main { margin-left: 260px; }
+.crm-sidebar .crm-sidebar__brand { flex-shrink: 0; }
+.crm-sidebar .crm-sidebar__nav {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  scrollbar-width: thin;
+  scrollbar-color: #475569 transparent;
+}
+.crm-sidebar .crm-sidebar__nav > * { flex-shrink: 0; }
+.crm-sidebar .sidebar-group-toggle {
+  width: 100%;
+  justify-content: space-between;
+  border: 0;
+  background: transparent;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.crm-sidebar .sidebar-group-toggle:hover,
+.crm-sidebar .sidebar-group-toggle.active { background: rgba(217,15,129,.1); }
+.crm-sidebar .sidebar-group-label { display: inline-flex; align-items: center; gap: 12px; }
+.crm-sidebar .nav-subitem { display: flex; align-items: center; gap: 9px; }
+.crm-sidebar .nav-subitem.active { color: var(--accent); background: rgba(217,15,129,.1); }
+.crm-sidebar .sidebar-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-shrink: 0;
+  margin-top: auto;
+  padding: 18px 16px;
+  padding-bottom: max(18px,env(safe-area-inset-bottom));
+  border-top: 1px solid var(--border-color);
+  background: var(--card-bg);
+}
+.crm-sidebar .user-profile-badge { display: flex; align-items: center; gap: 9px; flex: 1; min-width: 0; }
+.crm-sidebar .user-avatar-small { flex-shrink: 0; }
+.crm-sidebar .user-profile-details { min-width: 0; }
+.crm-sidebar .user-profile-details strong { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.crm-sidebar .logout-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  flex-shrink: 0;
+  width: auto;
+  height: auto;
+  padding: 9px 10px;
+  border: 1px solid rgba(244,63,94,.25);
+  border-radius: 8px;
+  background: rgba(244,63,94,.08);
+  color: #fda4af;
+  font: inherit;
+  font-size: .78rem;
+  cursor: pointer;
+}
+.crm-sidebar .logout-btn:hover { background: rgba(244,63,94,.16); border-color: rgba(244,63,94,.5); color: #fecdd3; }
+.crm-sidebar button:focus-visible,.crm-sidebar a:focus-visible { outline: 2px solid #818cf8; outline-offset: 2px; }

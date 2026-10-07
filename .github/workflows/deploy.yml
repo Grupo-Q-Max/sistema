@@ -1,0 +1,86 @@
+name: CI & Deploy (Grupo Q-Max)
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  test_and_build:
+    name: Build & Validação
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout do código
+        uses: actions/checkout@v4
+
+      - name: Configurar Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Instalar dependências
+        run: npm ci
+
+      - name: Checagem de tipos (TypeScript)
+        run: npm run typecheck
+
+      - name: Testar build de produção
+        run: npm run build
+
+  deploy:
+    name: Deploy no Servidor via SSH
+    needs: test_and_build
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Executar Deploy via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          passphrase: ${{ secrets.SSH_PASSPHRASE || '' }}
+          port: ${{ secrets.SSH_PORT || 22 }}
+          script_stop: true
+          script: |
+            set -e
+            TARGET_DIR="/var/www/html/grqm/sistema"
+            echo "==> Iniciando deploy em $TARGET_DIR..."
+
+            mkdir -p "$TARGET_DIR"
+            cd "$TARGET_DIR"
+
+            # Se o diretório já for um repositório git, atualiza; senão, clona
+            if [ -d ".git" ]; then
+              echo "==> Repositório existente. Sincronizando com origin/main..."
+              git fetch origin main
+              git reset --hard origin/main
+            else
+              echo "==> Clonando repositório inicial..."
+              git clone https://github.com/Grupo-Q-Max/sistema.git .
+            fi
+
+            # Instala dependências no servidor
+            echo "==> Instalando dependências..."
+            npm ci --prefer-offline --no-audit
+
+            # Gera cliente Prisma
+            echo "==> Gerando Prisma Client..."
+            npx prisma generate
+
+            # Build dos arquivos estáticos (Vite)
+            echo "==> Gerando build do frontend..."
+            npm run build
+
+            # Reinicia o serviço da API se houver pm2 ou systemd
+            echo "==> Verificando serviços em execução..."
+            if command -v pm2 >/dev/null 2>&1 && pm2 list | grep -qE "sistema|fechamento"; then
+              echo "==> Reiniciando via PM2..."
+              pm2 reload sistema || pm2 restart sistema || pm2 restart fechamento
+            elif command -v systemctl >/dev/null 2>&1 && systemctl list-unit-files | grep -q '^fechamento.service'; then
+              echo "==> Reiniciando fechamento.service via systemd..."
+              sudo systemctl restart fechamento
+            fi
+
+            echo "==> Deploy finalizado com sucesso em $TARGET_DIR!"

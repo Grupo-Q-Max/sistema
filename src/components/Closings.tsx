@@ -1,0 +1,1426 @@
+import {AllInstallmentsModal} from './AllInstallmentsModal';
+import {ClosingProgressDetails} from './ClosingProgressDetails';
+import { InstallmentCompanyPicker } from './InstallmentCompanyPicker';
+import { InstallmentsModal } from './InstallmentsModal';
+import { installmentAccess, canCreateInstallment, installmentHeaders } from '../config/installments';
+import { latestOpenPeriod } from '../config/competenceCalendar';
+import { useCompetenceCalendar } from './useCompetenceCalendar';
+import { useState, useEffect, useMemo, useRef, useDeferredValue } from 'react';
+import { Sidebar } from './Sidebar';
+import {
+  FileCheck,
+  Plus,
+  Search,
+  Filter,
+  ChevronLeft,
+  ChevronRight,
+  CheckCircle2,
+  Clock,
+  AlertCircle,
+  AlertTriangle,
+  Copy,
+  ExternalLink,
+  Building2,
+  FileSpreadsheet,
+  Calendar,
+  Check,
+  Sparkles,
+  Info,
+  Send,
+} from 'lucide-react';
+import type { CurrentUser } from '../types/auth';
+import { API } from '../api';
+import { TableSkeleton, ButtonSpinner } from './LoadingSkeleton';
+import './Closings.css';
+import './PayrollClosings.css';
+import { CompanyDetailsModal, getCertificateStatus, formatCnpj, formatRegimeLabel } from './CompanyDetailsModal';
+import { ClosingSectorTabs, hasSectorAccess } from './ClosingSectorTabs';
+import './FiscalPopup.css';
+import { visibilitySummary, isColumnComplete } from '../config/columnVisibility';
+import { FISCAL_POPUPS, effectivePopup, type PopupAction } from '../config/fiscalPopups';
+import { exportToCsv } from '../utils/exportCsv';
+
+interface ClosingsProps {
+  currentView: string;
+  onNavigate: (view: string) => void;
+  currentUser?: CurrentUser | null;
+  onLogout?: () => void;
+}
+
+// Utilitário para formatar classe de cor do regime tributário
+function getRegimeClass(regime?: string | null) {
+  if (!regime) return '';
+  if (regime === 'SIMPLES_NACIONAL') return 'simples';
+  if (regime.includes('PRESUMIDO')) return 'presumido';
+  if (regime.includes('REAL')) return 'real';
+  if (regime === 'MEI') return 'mei';
+  return '';
+}
+
+// Utilitário para calcular status e dias restantes de vencimento do certificado digital
+
+export function Closings({ currentView, onNavigate, currentUser, onLogout }: ClosingsProps) {
+  const [progressOpen,setProgressOpen]=useState(false);
+  // Popover de filtro do cabeçalho aberto
+  const [openHeaderFilter, setOpenHeaderFilter] = useState<string | null>(null);
+
+  // Competência (mês/ano)
+  const latestPeriod = useCompetenceCalendar();
+  const [selectedYear, setSelectedYear] = useState(() => latestOpenPeriod().getUTCFullYear());
+  const [selectedMonth, setSelectedMonth] = useState(() => latestOpenPeriod().getUTCMonth()+1);
+  const canGoNext = Date.UTC(selectedYear,selectedMonth-1,1) < latestPeriod.getTime();
+  const [calendarError,setCalendarError]=useState('');
+  const [installmentCompany,setInstallmentCompany]=useState<any|null>(null);
+  const [installmentCreate,setInstallmentCreate]=useState(false);
+  const [allInstallmentsOpen,setAllInstallmentsOpen]=useState(false);
+  const [installmentFocus,setInstallmentFocus]=useState<{id:string;action:'VIEW'|'EDIT'}|null>(null);
+  const [chooseInstallmentCompany,setChooseInstallmentCompany]=useState(false);
+  const [installmentFilter,setInstallmentFilter]=useState('ALL');
+  const [installmentSummaries,setInstallmentSummaries]=useState<Record<string,any>>({});
+  const [installmentError,setInstallmentError]=useState('');
+  const viewInstallments=installmentAccess(currentUser);
+  const canEditFiscal=hasSectorAccess(currentUser,'FISCAL',true);
+  async function loadInstallmentSummaries(companies:any[],requestId=fetchSequence.current){
+    if(!viewInstallments)return;
+    setInstallmentError('');
+    try{const response=await fetch(`${API}/api/installments/summary?year=${selectedYear}&month=${selectedMonth}`,{method:'POST',headers:installmentHeaders(currentUser),body:JSON.stringify({companyIds:companies.map(row=>row.company.id)})});const data=await response.json();if(!response.ok)throw new Error(data.error||'Não foi possível consultar parcelamentos.');if(requestId===fetchSequence.current)setInstallmentSummaries(data.summaries||{});}
+    catch(cause){if(requestId===fetchSequence.current)setInstallmentError(cause instanceof Error?cause.message:'Erro nos parcelamentos.');}
+  }
+
+
+  const fetchSequence = useRef(0);
+  const [loading, setLoading] = useState(true);
+  const [rows, setRows] = useState<any[]>([]);
+  const [fiscalUsers, setFiscalUsers] = useState<any[]>([]);
+  const [summary, setSummary] = useState({
+    total: 0,
+    completed: 0,
+    inProgress: 0,
+    pending: 0,
+    overallPercent: 0,
+  });
+
+  // Filtros
+  const [searchTerm, setSearchTerm] = useState('');
+  const [statusFilter, setStatusFilter] = useState('ALL');
+  const [regimeFilter, setRegimeFilter] = useState('ALL');
+  const [responsibleFilter, setResponsibleFilter] = useState('ALL');
+
+  // Senhas reveladas
+
+  // Modais
+  const [activeModal, setActiveModal] = useState<{
+    type: 'POPUP' | 'COMPANY_INFO' | 'CARNE_LEAO' | 'REINF' | 'IMPOSTOS' | 'ISS' | 'MIT' | 'SPED_FISCAL' | 'SPED_CONTRIBUICAO' | 'DESTDA' | 'NOTES';
+    row: any;
+    colKey?: string;
+  } | null>(null);
+
+  // Sub-modais (Perguntas de API, Data e Motivo de Pendência)
+  const [apiPrompt, setApiPrompt] = useState<{
+    show: boolean;
+    colKey: string;
+    actionType: 'SEM_MOV' | 'OK_DATA' | 'SALVAR';
+    pendingData?: any;
+  } | null>(null);
+
+  const [datePrompt, setDatePrompt] = useState<{
+    show: boolean;
+    colKey: string;
+    sentWithApi?: boolean;
+    formData?: any;
+  } | null>(null);
+
+  const [pendencyPrompt, setPendencyPrompt] = useState<{
+    show: boolean;
+    colKey: string;
+    reason: string;
+  } | null>(null);
+
+  const [inputDateValue, setInputDateValue] = useState('');
+  const [savingAction, setSavingAction] = useState(false);
+
+  const [popupColumns, setPopupColumns] = useState<any[]>(Object.entries(FISCAL_POPUPS).map(([columnKey, config]) => ({ columnKey, name: config.title.replace('Detalhes ', ''), isEditable: true, countsProgress: true })));
+  const [popupForm, setPopupForm] = useState<Record<string, string>>({});
+  const activePopupColumn = popupColumns.find(col => col.columnKey === activeModal?.colKey);
+  const activePopupConfig = effectivePopup(activePopupColumn, activeModal?.colKey || '');
+  const canEditPopup = canEditFiscal && activePopupColumn?.isEditable !== false;
+
+  const [notesText, setNotesText] = useState('');
+
+  // Busca dados de fechamento
+  const fetchClosings = async () => {
+    const requestId = ++fetchSequence.current;
+    setLoading(true);
+    setCalendarError('');
+    try {
+      const res = await fetch(`${API}/api/closings?sector=FISCAL&year=${selectedYear}&month=${selectedMonth}`);
+      if (res.ok) {
+        const data = await res.json();
+        if (requestId !== fetchSequence.current) return;
+        setRows(data.rows || []);
+        if(viewInstallments)void loadInstallmentSummaries(data.rows||[],requestId);
+        if (Array.isArray(data.popupColumns)) setPopupColumns(data.popupColumns);
+        setFiscalUsers(data.fiscalUsers || []);
+        if (data.summary) {
+          setSummary(data.summary);
+        }
+      } else {
+        const data = await res.json();
+        if (requestId !== fetchSequence.current) return;
+        setRows([]);setCalendarError(data.error || 'Não foi possível carregar esta competência.');
+        setSummary({total:0,completed:0,inProgress:0,pending:0,overallPercent:0});
+      }
+    } catch (err) {
+      setCalendarError('Não foi possível conectar à API.');
+      console.error('Erro ao buscar fechamentos:', err);
+    } finally {
+      if (requestId === fetchSequence.current) setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    closeAllModals();setProgressOpen(false);
+    setInstallmentCompany(null);setInstallmentSummaries({});setAllInstallmentsOpen(false);setInstallmentFocus(null);
+    fetchClosings();
+    return () => { fetchSequence.current++; };
+  }, [selectedYear, selectedMonth]);
+
+  useEffect(()=>{
+    if(!viewInstallments||!rows.length||installmentCompany)return;
+    const timer=window.setInterval(()=>{void loadInstallmentSummaries(rows);},60_000);
+    return()=>window.clearInterval(timer);
+  },[viewInstallments,rows,selectedYear,selectedMonth,installmentCompany]);
+
+  // Fecha popover de filtro ao clicar fora ou pressionar ESC
+  useEffect(() => {
+    const handleGlobalClick = () => {
+      setOpenHeaderFilter(null);
+    };
+    const handleGlobalKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setOpenHeaderFilter(null);
+      }
+    };
+
+    window.addEventListener('click', handleGlobalClick);
+    window.addEventListener('keydown', handleGlobalKeyDown);
+    return () => {
+      window.removeEventListener('click', handleGlobalClick);
+      window.removeEventListener('keydown', handleGlobalKeyDown);
+    };
+  }, []);
+
+  // Manipulação de Mês
+  const handlePrevMonth = () => {
+    if (selectedMonth === 1) {
+      setSelectedMonth(12);
+      setSelectedYear(selectedYear - 1);
+    } else {
+      setSelectedMonth(selectedMonth - 1);
+    }
+  };
+
+  const handleNextMonth = () => {
+    if (!canGoNext) return;
+    if (selectedMonth === 12) {
+      setSelectedMonth(1);
+      setSelectedYear(selectedYear + 1);
+    } else {
+      setSelectedMonth(selectedMonth + 1);
+    }
+  };
+
+  const monthLabel = useMemo(() => {
+    const d = new Date(Date.UTC(selectedYear, selectedMonth - 1, 1));
+    return d.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric', timeZone: 'UTC' });
+  }, [selectedYear, selectedMonth]);
+
+  // Alterar responsável direto na linha
+  const handleResponsibleChange = async (companyId: string, userId: string) => {
+    if(!canEditFiscal)return;
+    try {
+      const res = await fetch(`${API}/api/companies/${companyId}/responsible`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId, sector: 'FISCAL' }),
+      });
+      if (res.ok) {
+        setRows((prev) =>
+          prev.map((r) => {
+            if (r.company.id === companyId) {
+              const selectedUser = fiscalUsers.find((u) => u.id === userId);
+              const updatedResp = selectedUser
+                ? [{ id: 'temp', companyId, userId, sector: 'FISCAL', user: selectedUser }]
+                : [];
+              return {
+                ...r,
+                company: {
+                  ...r.company,
+                  responsibles: updatedResp,
+                },
+              };
+            }
+            return r;
+          })
+        );
+      }
+    } catch (err) {
+      console.error('Erro ao atualizar responsável:', err);
+    }
+  };
+
+  // Copiar para clipboard com feedback
+  const handleCopy = (text: string, label: string) => {
+    navigator.clipboard.writeText(text);
+    const alertBox = document.createElement('div');
+    alertBox.innerText = `${label} copiado!`;
+    alertBox.style.position = 'fixed';
+    alertBox.style.bottom = '24px';
+    alertBox.style.right = '24px';
+    alertBox.style.background = '#4f46e5';
+    alertBox.style.color = '#fff';
+    alertBox.style.padding = '8px 16px';
+    alertBox.style.borderRadius = '8px';
+    alertBox.style.zIndex = '9999';
+    alertBox.style.boxShadow = '0 4px 12px rgba(0,0,0,0.2)';
+    alertBox.style.fontSize = '13px';
+    document.body.appendChild(alertBox);
+    setTimeout(() => alertBox.remove(), 2000);
+  };
+
+
+  // Abertura de Modais de Obrigações
+  const handleOpenObligationModal = (row: any, colKey: string) => {
+    const column = popupColumns.find(col => col.columnKey === colKey);
+    const config = effectivePopup(column, colKey);
+    const existingData = row.columnsData?.[colKey]?.data || {};
+    setPopupForm(Object.fromEntries(config.fields.map(f => [f.key, String(existingData[f.key] ?? '')])));
+    setActiveModal({ type: 'POPUP', row, colKey });
+  };
+
+  // Salva coluna via API
+  const saveColumnValue = async (closingId: string, colKey: string, payload: any) => {
+    if(!canEditFiscal)return;
+    setSavingAction(true);
+    try {
+      const res = await fetch(`${API}/api/closings/${closingId}/column`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          columnKey: colKey,
+          columnValue: payload,
+          userId: currentUser?.id,
+          userName: currentUser?.name,
+          userEmail: currentUser?.email
+        }),
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        setRows((prev) =>
+          prev.map((r) => {
+            if (r.closingId === closingId) {
+              return {
+                ...r,
+                columnsData: data.closing.columnsData,
+                calculatedStatus: data.calculatedStatus,
+                progressPercent: data.progressPercent,
+              };
+            }
+            return r;
+          })
+        );
+        closeAllModals();
+        await fetchClosings();
+      } else {
+        const error = await res.json();
+        window.alert(error.error || 'Erro ao salvar a obrigação.');
+      }
+    } catch (err) {
+      console.error('Erro ao salvar coluna:', err);
+    } finally {
+      setSavingAction(false);
+    }
+  };
+
+  const closeAllModals = () => {
+    setActiveModal(null);
+    setApiPrompt(null);
+    setDatePrompt(null);
+    setPendencyPrompt(null);
+    setInputDateValue('');
+  };
+
+  // Botões de Ações
+
+  const handleActionNA = () => {
+    if (!activeModal || !activeModal.colKey) return;
+    saveColumnValue(activeModal.row.closingId, activeModal.colKey, {
+      status: 'N/A',
+      label: 'N/A',
+      updatedAt: new Date().toISOString(),
+    });
+  };
+
+  const handleActionSemMovimento = () => {
+    if (!activeModal?.colKey || !canEditPopup) return;
+    const colKey = activeModal.colKey;
+    if (activePopupConfig.askApiOnNoMovement) {
+      setApiPrompt({ show: true, colKey, actionType: 'SEM_MOV' }); return;
+    }
+    saveColumnValue(activeModal.row.closingId, colKey, { status: 'OK - SEM MOVIMENTO', label: 'OK - S/ MOV', updatedAt: new Date().toISOString() });
+  };
+
+  const finishPopup = (colKey: string, formData?: any, sentWithApi?: boolean) => {
+    const todayBr = new Date().toLocaleDateString('pt-BR');
+    if (activePopupConfig.askDate) {
+      setInputDateValue(todayBr); setDatePrompt({ show: true, colKey, formData, sentWithApi }); return;
+    }
+    if (!activeModal) return;
+    saveColumnValue(activeModal.row.closingId, colKey, { status: 'CONCLUIDO', label: todayBr, completionDate: todayBr, data: formData, sentWithApi, updatedAt: new Date().toISOString() });
+  };
+
+  const handleActionOkData = () => {
+    if (!activeModal?.colKey || !canEditPopup) return;
+    const colKey = activeModal.colKey;
+    if (activePopupConfig.askApiOnSave) {
+      setApiPrompt({ show: true, colKey, actionType: 'OK_DATA' }); return;
+    }
+    finishPopup(colKey);
+  };
+
+  const handleActionPendencia = () => {
+    if (!activeModal || !activeModal.colKey) return;
+    const existingReason = activeModal.row.columnsData?.[activeModal.colKey]?.pendingReason || '';
+    setPendencyPrompt({
+      show: true,
+      colKey: activeModal.colKey,
+      reason: existingReason,
+    });
+  };
+
+  const handleConfirmPendency = () => {
+    if (!activeModal || !pendencyPrompt) return;
+    saveColumnValue(activeModal.row.closingId, pendencyPrompt.colKey, {
+      status: 'PENDENCIA',
+      label: 'PENDÊNCIA',
+      pendingReason: pendencyPrompt.reason,
+      updatedAt: new Date().toISOString(),
+    });
+  };
+
+  const handleActionLimpar = () => {
+    if (!activeModal || !activeModal.colKey) return;
+    saveColumnValue(activeModal.row.closingId, activeModal.colKey, null);
+  };
+
+  const handleActionSalvar = () => {
+    if (!activeModal?.colKey || !canEditPopup) return;
+    const colKey = activeModal.colKey;
+    const formData = { ...(activeModal.row.columnsData?.[colKey]?.data || {}), ...popupForm };
+    if (activePopupConfig.askApiOnSave) {
+      setApiPrompt({ show: true, colKey, actionType: 'SALVAR', pendingData: formData }); return;
+    }
+    finishPopup(colKey, formData);
+  };
+
+  const handleConfirmApi = (sentWithApi: boolean) => {
+    if (!activeModal || !apiPrompt) return;
+    const { colKey, actionType, pendingData } = apiPrompt;
+
+    if (actionType === 'SEM_MOV') {
+      saveColumnValue(activeModal.row.closingId, colKey, {
+        status: 'OK - SEM MOVIMENTO',
+        label: 'OK - S/ MOV',
+        sentWithApi,
+        updatedAt: new Date().toISOString(),
+      });
+      return;
+    }
+
+    if (actionType === 'OK_DATA' || actionType === 'SALVAR') {
+      setApiPrompt(null);
+      finishPopup(colKey, pendingData, sentWithApi);
+    }
+  };
+
+  const handleConfirmDate = () => {
+    if (!activeModal || !datePrompt) return;
+    const { colKey, sentWithApi, formData } = datePrompt;
+
+    saveColumnValue(activeModal.row.closingId, colKey, {
+      status: 'CONCLUIDO',
+      label: inputDateValue || 'OK - DATA',
+      completionDate: inputDateValue,
+      sentWithApi: sentWithApi !== undefined ? sentWithApi : undefined,
+      data: formData || undefined,
+      updatedAt: new Date().toISOString(),
+    });
+  };
+
+  const handleSaveNotes = async () => {
+    if(!canEditFiscal)return;
+    if (!activeModal) return;
+    try {
+      const res = await fetch(`${API}/api/companies/${activeModal.row.company.id}/notes`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ notes: notesText, notesScope: 'FISCAL' }),
+      });
+      if (res.ok) {
+        setRows((prev) =>
+          prev.map((r) => {
+            if (r.company.id === activeModal.row.company.id) {
+              return {
+                ...r,
+                company: {
+                  ...r.company,
+                  notes: notesText,
+                },
+              };
+            }
+            return r;
+          })
+        );
+        closeAllModals();
+      }
+    } catch (err) {
+      console.error('Erro ao salvar notas:', err);
+    }
+  };
+
+  // Ordenação e Filtros de Coluna
+  const [sortConfig, setSortConfig] = useState<{ key: string; direction: 'asc' | 'desc' }>({ key: 'code', direction: 'asc' });
+  const [obligationFilters, setObligationFilters] = useState<Record<string, string>>({});
+
+  const handleSort = (key: string) => {
+    setSortConfig((prev) => ({
+      key,
+      direction: prev.key === key && prev.direction === 'asc' ? 'desc' : 'asc',
+    }));
+  };
+
+  const handleObligationFilterChange = (colKey: string, statusVal: string) => {
+    setObligationFilters((prev) => ({
+      ...prev,
+      [colKey]: statusVal,
+    }));
+  };
+
+  // Filtros e Ordenação aplicados na lista
+  const deferredSearchTerm = useDeferredValue(searchTerm);
+  
+  const filteredRows = useMemo(() => {
+    const list = rows.filter((r) => {
+      const c = r.company;
+      const search = deferredSearchTerm.toLowerCase();
+
+      const matchSearch =
+        !deferredSearchTerm ||
+        (c.code && c.code.toLowerCase().includes(search)) ||
+        c.name.toLowerCase().includes(search) ||
+        (c.tradeName && c.tradeName.toLowerCase().includes(search)) ||
+        c.cnpj.includes(search) ||
+        (c.groupName && c.groupName.toLowerCase().includes(search)) ||
+        (c.city && c.city.toLowerCase().includes(search));
+
+      const matchStatus =
+        statusFilter === 'ALL' ||
+        (statusFilter === 'COMPLETED' && r.calculatedStatus === 'COMPLETED') ||
+        (statusFilter === 'IN_PROGRESS' && r.calculatedStatus === 'IN_PROGRESS') ||
+        (statusFilter === 'PENDING' && r.calculatedStatus === 'PENDING');
+
+      const matchRegime = regimeFilter === 'ALL' || c.taxRegime === regimeFilter;
+
+      const respId = c.responsibles?.[0]?.user?.id;
+      const matchResponsible = responsibleFilter === 'ALL' || respId === responsibleFilter;
+
+      // Filtros individuais por obrigação do cabeçalho
+      for (const [obCol, obStatus] of Object.entries(obligationFilters)) {
+        if (obStatus && obStatus !== 'ALL') {
+          const definition = popupColumns.find(col => col.columnKey === obCol);
+          if (!definition) continue;
+          const value = r.columnsData?.[obCol];
+          const itemStatus = definition.inputType === 'TEXT' || definition.inputType === 'CHECKBOX' ? (isColumnComplete(definition, value) ? 'CONCLUIDO' : 'PENDENTE') : value?.status;
+          if (obStatus === 'PENDENTE') {
+            if (itemStatus && itemStatus !== 'PENDENTE') return false;
+          } else if (itemStatus !== obStatus) {
+            return false;
+          }
+        }
+      }
+
+      const situation=installmentSummaries[c.id];
+      const matchInstallment=!viewInstallments||installmentFilter==='ALL'||(installmentFilter==='HAS_PLAN'?situation&&situation.status!=='NA':situation?.status===installmentFilter);
+      return matchSearch && matchStatus && matchRegime && matchResponsible && matchInstallment;
+    });
+
+    // Ordenação
+    list.sort((a, b) => {
+      let valA: any = '';
+      let valB: any = '';
+
+      if (sortConfig.key === 'code') {
+        valA = a.company.code || '';
+        valB = b.company.code || '';
+      } else if (sortConfig.key === 'name') {
+        valA = a.company.name || '';
+        valB = b.company.name || '';
+      } else if (sortConfig.key === 'regime') {
+        valA = a.company.taxRegime || '';
+        valB = b.company.taxRegime || '';
+      } else if (sortConfig.key === 'status') {
+        valA = a.calculatedStatus || '';
+        valB = b.calculatedStatus || '';
+      }
+
+      if (valA < valB) return sortConfig.direction === 'asc' ? -1 : 1;
+      if (valA > valB) return sortConfig.direction === 'asc' ? 1 : -1;
+      return 0;
+    });
+
+    return list;
+  }, [rows, deferredSearchTerm, statusFilter, regimeFilter, responsibleFilter, obligationFilters, sortConfig, popupColumns, installmentFilter, installmentSummaries, viewInstallments]);
+
+  const renderObligationCell = (row: any, colKey: string) => {
+    const val = row.columnsData?.[colKey];
+    const definition = popupColumns.find(col => col.columnKey === colKey);
+    const readOnly = !canEditFiscal || definition?.isEditable === false;
+    if (definition?.inputType === 'TEXT') {
+      const text = typeof val === 'string' || typeof val === 'number' ? String(val) : '';
+      return <input className="fiscal-column-text" aria-label={definition.name} key={`${row.closingId}_${colKey}_${text}`} type="text" defaultValue={text} disabled={readOnly || savingAction} onBlur={e => { if (e.target.value !== text) saveColumnValue(row.closingId, colKey, e.target.value); }} onKeyDown={e => { if(e.key === 'Enter') e.currentTarget.blur(); }} />;
+    }
+    if (definition?.inputType === 'CHECKBOX') {
+      return <input type="checkbox" aria-label={definition.name} checked={val === true} disabled={readOnly || savingAction} onChange={e => saveColumnValue(row.closingId, colKey, e.target.checked)} />;
+    }
+
+    if (!val) {
+      return (
+        <button
+          className="obligation-btn pendente"
+          onClick={() => handleOpenObligationModal(row, colKey)}
+          title="Clique para preencher ou alterar status"
+        >
+          Pendente
+        </button>
+      );
+    }
+
+    const st = val.status;
+    let cls = 'pendente';
+    let text = val.label || 'Pendente';
+
+    if (st === 'N/A') {
+      cls = 'na';
+      text = 'N/A';
+    } else if (st === 'SEM_MOVIMENTO' || st === 'OK - SEM MOVIMENTO') {
+      cls = 'sem-mov';
+      text = val.sentWithApi ? 'S/ MOV (API)' : 'OK - S/ MOV';
+    } else if (st === 'CONCLUIDO' || st === 'OK - DATA') {
+      cls = 'ok-data';
+      text = val.completionDate || val.label || 'OK';
+      if (val.sentWithApi) text += ' (API)';
+    } else if (st === 'PENDENCIA') {
+      cls = 'pendencia';
+      text = 'PENDÊNCIA';
+    }
+
+    return (
+      <button
+        className={`obligation-btn ${cls}`}
+        onClick={() => handleOpenObligationModal(row, colKey)}
+        title={val.pendingReason ? `Motivo: ${val.pendingReason}` : text}
+      >
+        {text}
+      </button>
+    );
+  };
+
+  const handleExport = () => {
+    const columns = [
+      { header: 'Código', key: 'code' },
+      { header: 'Empresa', key: 'name' },
+      { header: 'CNPJ', key: 'cnpj' },
+      { header: 'Tributação', key: 'taxRegime' },
+      { header: 'Status Geral', key: 'status' },
+      ...popupColumns.map(c => ({ header: c.name, key: c.columnKey }))
+    ];
+
+    const data = filteredRows.map(c => {
+      const row: any = {
+        code: c.company.code || '',
+        name: c.company.name || '',
+        cnpj: formatCnpj(c.company.cnpj) || '',
+        taxRegime: formatRegimeLabel(c.company.taxRegime),
+        status: c.calculatedStatus === 'COMPLETED' ? 'Concluído' : c.calculatedStatus === 'IN_PROGRESS' ? 'Em Andamento' : 'Pendente'
+      };
+
+      popupColumns.forEach(col => {
+        const val = c.columnsData?.[col.columnKey];
+        if (col.inputType === 'TEXT') {
+          row[col.columnKey] = val || '';
+        } else if (col.inputType === 'CHECKBOX') {
+          row[col.columnKey] = val ? 'Sim' : 'Não';
+        } else {
+          row[col.columnKey] = val?.label || val?.status || 'Pendente';
+        }
+      });
+
+      return row;
+    });
+
+    const mesStr = String(selectedMonth).padStart(2, '0') + '-' + selectedYear;
+    exportToCsv(`fechamento_fiscal_${mesStr}`, columns, data);
+  };
+
+
+  return (
+    <div className="crm-dashboard">
+      <Sidebar
+        currentView={currentView}
+        onNavigate={onNavigate}
+        currentUser={currentUser}
+        onLogout={onLogout}
+      />
+
+      <main className="crm-main">
+        <div className="closings-container">
+          {/* Top Bar Header */}
+          <div className="closings-header">
+            <div className="closings-header-titles">
+              <h1>
+                <FileCheck size={28} color="#818cf8" />
+                Fechamento Fiscal
+              </h1>
+              <p>Gerenciamento e automação das obrigações fiscais da competência</p>
+            </div>
+
+            <div className="closings-header-actions">
+              <ClosingSectorTabs sector="FISCAL" currentUser={currentUser} onNavigate={onNavigate} />
+              {/* Seletor de Mês / Competência */}
+              <div className="month-selector-box">
+                <button className="month-nav-btn" onClick={handlePrevMonth} title="Mês Anterior">
+                  <ChevronLeft size={20} />
+                </button>
+                <div className="month-display-text">{monthLabel}</div>
+                <button className="month-nav-btn" onClick={handleNextMonth} disabled={!canGoNext} title={canGoNext ? "Próximo Mês" : "A próxima competência abre automaticamente na virada do mês"}>
+                  <ChevronRight size={20} />
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <p style={{color:'#94a3b8',fontSize:'0.78rem'}}>A competência do mês anterior abre automaticamente na virada do mês, no horário de Brasília.</p>
+          {installmentError&&<p role="alert" style={{color:'#fda4af',fontSize:'.8rem'}}>Parcelamentos: {installmentError}</p>}
+          {calendarError && <p role="alert" style={{color:'#fda4af'}}>{calendarError}</p>}
+          {/* Cards de Métricas */}
+          <div className="closings-stats-grid">
+            <div className="closing-stat-card">
+              <div className="closing-stat-icon total">
+                <Building2 size={22} />
+              </div>
+              <div className="closing-stat-info">
+                <span>Total Empresas</span>
+                <strong>{summary.total}</strong>
+              </div>
+            </div>
+
+            <div className="closing-stat-card">
+              <div className="closing-stat-icon completed">
+                <CheckCircle2 size={22} />
+              </div>
+              <div className="closing-stat-info">
+                <span>Concluídos</span>
+                <strong>{summary.completed}</strong>
+              </div>
+            </div>
+
+            <div className="closing-stat-card">
+              <div className="closing-stat-icon in-progress">
+                <Clock size={22} />
+              </div>
+              <div className="closing-stat-info">
+                <span>Em Andamento</span>
+                <strong>{summary.inProgress}</strong>
+              </div>
+            </div>
+
+            <div className="closing-stat-card">
+              <div className="closing-stat-icon pending">
+                <AlertCircle size={22} />
+              </div>
+              <div className="closing-stat-info">
+                <span>Pendentes</span>
+                <strong>{summary.pending}</strong>
+              </div>
+            </div>
+
+            <div className="closing-stat-card progress-clickable" role="button" tabIndex={0} aria-expanded={progressOpen} onClick={()=>setProgressOpen(value=>!value)} onKeyDown={event=>{if(['Enter',' '].includes(event.key)){event.preventDefault();setProgressOpen(value=>!value);}}}>
+              <div className="closing-stat-icon percent">
+                <Sparkles size={22} />
+              </div>
+              <div className="closing-stat-info">
+                <span>Progresso (Campos)</span>
+                <strong>{summary.overallPercent}%</strong>
+              </div>
+            </div>
+
+            <div className="closing-stat-card progress-clickable" role="button" tabIndex={0} aria-expanded={progressOpen} onClick={()=>setProgressOpen(value=>!value)} onKeyDown={event=>{if(['Enter',' '].includes(event.key)){event.preventDefault();setProgressOpen(value=>!value);}}}>
+              <div className="closing-stat-icon percent">
+                <Building2 size={22} />
+              </div>
+              <div className="closing-stat-info">
+                <span>Progresso (Empresas)</span>
+                <strong>{summary.total ? Math.round(summary.completed / summary.total * 100) : 0}%</strong>
+              </div>
+            </div>
+          </div>
+
+          <ClosingProgressDetails rows={rows} columns={popupColumns} sector="FISCAL" period={new Date(Date.UTC(selectedYear,selectedMonth-1,1))} latest={latestPeriod} open={progressOpen} onToggle={()=>setProgressOpen(value=>!value)} loading={loading}/>
+          {/* Barra de Filtros e Busca */}
+          <div className="closings-toolbar">
+            <div className="closings-search-box">
+              <Search size={18} color="#94a3b8" />
+              <input
+                type="text"
+                placeholder="Buscar por código, empresa, CNPJ, grupo ou cidade..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+              />
+            </div>
+
+            <div className="closings-filters">
+              {viewInstallments&&<select className="closings-select" aria-label="Filtrar parcelamentos" value={installmentFilter} onChange={event=>setInstallmentFilter(event.target.value)}>{[{value:'ALL',label:'Parcelamentos: Todos'},{value:'HAS_PLAN',label:'Com parcelamento'},{value:'PENDING',label:'Pendente'},{value:'OVERDUE',label:'Atrasado / atrasos anteriores'},{value:'PAID',label:'Pago no mês'},{value:'NO_INSTALLMENT',label:'Sem parcela no mês'},{value:'NA',label:'N/A — sem parcelamento'}].map(item=><option key={item.value} value={item.value}>{item.label}</option>)}</select>}
+              {viewInstallments&&<button className="btn-secondary-light fiscal-create-installment" onClick={()=>{setInstallmentCreate(false);setInstallmentFocus(null);setAllInstallmentsOpen(true);}}>Consultar parcelamentos</button>}
+              {canCreateInstallment(currentUser)&&<button className="btn-primary-gradient fiscal-create-installment" onClick={()=>{setInstallmentCreate(true);setInstallmentFocus(null);setChooseInstallmentCompany(true);}}><Plus size={17}/>Criar parcelamento</button>}
+              
+              <button className="btn-secondary-light" onClick={handleExport} title="Exportar para Excel (CSV)">
+                <FileSpreadsheet size={16} />
+                Exportar
+              </button>
+
+              <select
+                className="closings-select"
+                value={statusFilter}
+                onChange={(e) => setStatusFilter(e.target.value)}
+              >
+                <option value="ALL">Status: Todos</option>
+                <option value="COMPLETED">Concluído</option>
+                <option value="IN_PROGRESS">Em Andamento</option>
+                <option value="PENDING">Pendente</option>
+              </select>
+
+              <select
+                className="closings-select"
+                value={regimeFilter}
+                onChange={(e) => setRegimeFilter(e.target.value)}
+              >
+                <option value="ALL">Tributação: Todas</option>
+                <option value="SIMPLES_NACIONAL">Simples Nacional</option>
+                <option value="LUCRO_PRESUMIDO">Lucro Presumido</option>
+                <option value="LUCRO_REAL_TRIMESTRAL">Lucro Real Trimestral</option>
+                <option value="LUCRO_REAL_ESTIMATIVA">Lucro Real Estimativa</option>
+                <option value="MEI">MEI</option>
+              </select>
+
+              <select
+                className="closings-select"
+                value={responsibleFilter}
+                onChange={(e) => setResponsibleFilter(e.target.value)}
+              >
+                <option value="ALL">Responsável: Todos</option>
+                {fiscalUsers.map((u) => (
+                  <option key={u.id} value={u.id}>
+                    {u.name || u.email}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          {/* Tabela Limpa e Operacional do Fechamento Fiscal */}
+          <div className="closings-table-card">
+            {loading ? (
+              <div style={{ padding: '24px' }}>
+                <TableSkeleton count={6} />
+              </div>
+            ) : (
+              <div className="closings-table-wrapper">
+                <table className="closings-table">
+                  <thead>
+                    <tr>
+                      {/* 1. Código com Ordenação */}
+                      <th className="sticky-col-code">
+                        <button type="button" className="payroll-sort-btn" onClick={() => handleSort('code')} title="Clique para ordenar por código">
+                          Código
+                          <span>{sortConfig.key === 'code' ? (sortConfig.direction === 'asc' ? '▲' : '▼') : '⇅'}</span>
+                        </button>
+                      </th>
+
+                      {/* 2. Empresa com Ordenação */}
+                      <th className="sticky-col-company">
+                        <button type="button" className="payroll-sort-btn" onClick={() => handleSort('name')} title="Clique para ordenar por nome">
+                          Empresa / Certificado
+                          <span>{sortConfig.key === 'name' ? (sortConfig.direction === 'asc' ? '▲' : '▼') : '⇅'}</span>
+                        </button>
+                      </th>
+
+                      {/* 3. Tributação com Ícone de Filtro */}
+                      <th style={{ minWidth: '130px' }}>
+                        <div className="th-header-cell">
+                          <span onClick={() => handleSort('regime')} style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                            Tributação
+                            {sortConfig.key === 'regime' && (
+                              <span style={{ fontSize: '10px', color: '#818cf8' }}>
+                                {sortConfig.direction === 'asc' ? '▲' : '▼'}
+                              </span>
+                            )}
+                          </span>
+                          <div className="th-filter-wrapper">
+                            <button
+                              className={`th-filter-icon-btn ${regimeFilter !== 'ALL' ? 'has-filter' : ''}`}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setOpenHeaderFilter(openHeaderFilter === 'regime' ? null : 'regime');
+                              }}
+                              title="Filtrar por tributação"
+                            >
+                              <Filter size={12} />
+                            </button>
+                            {openHeaderFilter === 'regime' && (
+                              <div className="th-filter-popover" onClick={(e) => e.stopPropagation()}>
+                                <div style={{ fontSize: '0.72rem', color: '#94a3b8', padding: '4px 8px', fontWeight: 700, borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
+                                  Filtrar Tributação:
+                                </div>
+                                {[
+                                  { value: 'ALL', label: 'Todas as Tributações' },
+                                  { value: 'SIMPLES_NACIONAL', label: 'Simples Nacional' },
+                                  { value: 'LUCRO_PRESUMIDO', label: 'Lucro Presumido' },
+                                  { value: 'LUCRO_REAL_TRIMESTRAL', label: 'Lucro Real Trimestral' },
+                                  { value: 'LUCRO_REAL_ESTIMATIVA', label: 'Lucro Real Estimativa' },
+                                  { value: 'MEI', label: 'MEI' },
+                                ].map((item) => (
+                                  <button
+                                    key={item.value}
+                                    className={`th-filter-popover-item ${regimeFilter === item.value ? 'active' : ''}`}
+                                    onClick={() => {
+                                      setRegimeFilter(item.value);
+                                      setOpenHeaderFilter(null);
+                                    }}
+                                  >
+                                    <span>{item.label}</span>
+                                    {regimeFilter === item.value && <Check size={12} />}
+                                  </button>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </th>
+
+                      {/* 4. Status com Ícone de Filtro */}
+                      <th style={{ minWidth: '120px' }}>
+                        <div className="th-header-cell">
+                          <span onClick={() => handleSort('status')} style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                            Status
+                            {sortConfig.key === 'status' && (
+                              <span style={{ fontSize: '10px', color: '#818cf8' }}>
+                                {sortConfig.direction === 'asc' ? '▲' : '▼'}
+                              </span>
+                            )}
+                          </span>
+                          <div className="th-filter-wrapper">
+                            <button
+                              className={`th-filter-icon-btn ${statusFilter !== 'ALL' ? 'has-filter' : ''}`}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setOpenHeaderFilter(openHeaderFilter === 'status' ? null : 'status');
+                              }}
+                              title="Filtrar por status"
+                            >
+                              <Filter size={12} />
+                            </button>
+                            {openHeaderFilter === 'status' && (
+                              <div className="th-filter-popover" onClick={(e) => e.stopPropagation()}>
+                                <div style={{ fontSize: '0.72rem', color: '#94a3b8', padding: '4px 8px', fontWeight: 700, borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
+                                  Filtrar Status:
+                                </div>
+                                {[
+                                  { value: 'ALL', label: 'Todos os Status' },
+                                  { value: 'COMPLETED', label: 'Concluído' },
+                                  { value: 'IN_PROGRESS', label: 'Em Andamento' },
+                                  { value: 'PENDING', label: 'Pendente' },
+                                ].map((item) => (
+                                  <button
+                                    key={item.value}
+                                    className={`th-filter-popover-item ${statusFilter === item.value ? 'active' : ''}`}
+                                    onClick={() => {
+                                      setStatusFilter(item.value);
+                                      setOpenHeaderFilter(null);
+                                    }}
+                                  >
+                                    <span>{item.label}</span>
+                                    {statusFilter === item.value && <Check size={12} />}
+                                  </button>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </th>
+
+                      {/* 5. Responsável com Ícone de Filtro */}
+                      <th style={{ minWidth: '130px' }}>
+                        <div className="th-header-cell">
+                          <span>Responsável</span>
+                          <div className="th-filter-wrapper">
+                            <button
+                              className={`th-filter-icon-btn ${responsibleFilter !== 'ALL' ? 'has-filter' : ''}`}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setOpenHeaderFilter(openHeaderFilter === 'responsible' ? null : 'responsible');
+                              }}
+                              title="Filtrar por responsável"
+                            >
+                              <Filter size={12} />
+                            </button>
+                            {openHeaderFilter === 'responsible' && (
+                              <div className="th-filter-popover" onClick={(e) => e.stopPropagation()}>
+                                <div style={{ fontSize: '0.72rem', color: '#94a3b8', padding: '4px 8px', fontWeight: 700, borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
+                                  Filtrar Responsável:
+                                </div>
+                                <button
+                                  className={`th-filter-popover-item ${responsibleFilter === 'ALL' ? 'active' : ''}`}
+                                  onClick={() => {
+                                    setResponsibleFilter('ALL');
+                                    setOpenHeaderFilter(null);
+                                  }}
+                                >
+                                  <span>Todos</span>
+                                  {responsibleFilter === 'ALL' && <Check size={12} />}
+                                </button>
+                                {fiscalUsers.map((u) => (
+                                  <button
+                                    key={u.id}
+                                    className={`th-filter-popover-item ${responsibleFilter === u.id ? 'active' : ''}`}
+                                    onClick={() => {
+                                      setResponsibleFilter(u.id);
+                                      setOpenHeaderFilter(null);
+                                    }}
+                                  >
+                                    <span>{u.name || u.email}</span>
+                                    {responsibleFilter === u.id && <Check size={12} />}
+                                  </button>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </th>
+
+                      <th>CNPJ</th>
+                      <th>Observações</th>
+                      {viewInstallments&&<th style={{minWidth:'155px'}}><div className="th-header-cell"><span>Parcelamentos</span><div className="th-filter-wrapper"><button className={`th-filter-icon-btn ${installmentFilter!=='ALL'?'has-filter':''}`} title="Filtrar parcelamentos" aria-label="Filtrar coluna Parcelamentos" onClick={event=>{event.stopPropagation();setOpenHeaderFilter(openHeaderFilter==='installment-status'?null:'installment-status');}}><Filter size={12}/></button>{openHeaderFilter==='installment-status'&&<div className="th-filter-popover" onClick={event=>event.stopPropagation()}>{[{value:'ALL',label:'Parcelamentos: Todos'},{value:'HAS_PLAN',label:'Com parcelamento'},{value:'PENDING',label:'Pendente'},{value:'OVERDUE',label:'Atrasado / atrasos anteriores'},{value:'PAID',label:'Pago no mês'},{value:'NO_INSTALLMENT',label:'Sem parcela no mês'},{value:'NA',label:'N/A — sem parcelamento'}].map(item=><button key={item.value} className={`th-filter-popover-item ${installmentFilter===item.value?'active':''}`} onClick={()=>{setInstallmentFilter(item.value);setOpenHeaderFilter(null);}}><span>{item.label}</span>{installmentFilter===item.value&&<Check size={12}/>}</button>)}</div>}</div></div></th>}
+
+                      {/* As 8 Obrigações Fiscais com Ícone de Filtro no Header */}
+                      {popupColumns.map((column) => {
+                        const ob = { key: column.columnKey, label: column.name, color: '#818cf8' };
+                        const currentObFilter = obligationFilters[ob.key] || 'ALL';
+
+                        return (
+                          <th key={ob.key} style={{ color: ob.color, borderBottomColor: ob.color, minWidth: '120px' }}>
+                            <div className="th-header-cell">
+                              <span title={visibilitySummary(column)}>{ob.label}</span>
+                              <div className="th-filter-wrapper">
+                                <button
+                                  className={`th-filter-icon-btn ${currentObFilter !== 'ALL' ? 'has-filter' : ''}`}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setOpenHeaderFilter(openHeaderFilter === ob.key ? null : ob.key);
+                                  }}
+                                  title={`Filtrar ${ob.label}`}
+                                >
+                                  <Filter size={11} />
+                                </button>
+                                {openHeaderFilter === ob.key && (
+                                  <div className="th-filter-popover" onClick={(e) => e.stopPropagation()}>
+                                    <div style={{ fontSize: '0.72rem', color: '#94a3b8', padding: '4px 8px', fontWeight: 700, borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
+                                      Filtrar {ob.label}:
+                                    </div>
+                                    {[
+                                      { value: 'ALL', label: 'Todos os Status' },
+                                      { value: 'CONCLUIDO', label: 'Concluído (OK)' },
+                                      { value: 'OK - SEM MOVIMENTO', label: 'OK - Sem Movimento' },
+                                      { value: 'PENDENCIA', label: 'Pendência' },
+                                      { value: 'N/A', label: 'N/A' },
+                                      { value: 'PENDENTE', label: 'Pendente' },
+                                    ].filter(item => !['TEXT', 'CHECKBOX'].includes(column.inputType) || ['ALL', 'CONCLUIDO', 'PENDENTE'].includes(item.value)).map((item) => (
+                                      <button
+                                        key={item.value}
+                                        className={`th-filter-popover-item ${currentObFilter === item.value ? 'active' : ''}`}
+                                        onClick={() => {
+                                          handleObligationFilterChange(ob.key, item.value);
+                                          setOpenHeaderFilter(null);
+                                        }}
+                                      >
+                                        <span>{item.label}</span>
+                                        {currentObFilter === item.value && <Check size={12} />}
+                                      </button>
+                                    ))}
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          </th>
+                        );
+                      })}
+                      
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filteredRows.length === 0 ? (
+                      <tr>
+                        <td colSpan={7 + popupColumns.length + (viewInstallments?1:0)} style={{ textAlign: 'center', padding: '40px', color: '#94a3b8' }}>
+                          Nenhuma empresa encontrada com os filtros selecionados.
+                        </td>
+                      </tr>
+                    ) : (
+                      filteredRows.map((r) => {
+                        const c = r.company;
+                        const currentRespId = c.responsibles?.[0]?.userId || '';
+                        const certInfo = c.hasClientCertificate
+                          ? getCertificateStatus(c.certificateExpiration)
+                          : null;
+
+                        return (
+                          <tr key={c.id}>
+                            {/* 1. Código */}
+                            <td className="sticky-col-code">
+                              <span style={{ fontWeight: 600, color: '#94a3b8' }}>{c.code || '-'}</span>
+                            </td>
+
+                            {/* 2. Empresa Interativa com ícone, link explícito e alerta de certificado */}
+                            <td className="sticky-col-company">
+                              <div className="company-cell-wrapper">
+                                <button
+                                  className="company-interactive-link"
+                                  onClick={() => setActiveModal({ type: 'COMPANY_INFO', row: r })}
+                                  title="Clique para ver dados cadastrais, senhas descriptografadas e certificados"
+                                >
+                                  <div className="company-link-left">
+                                    <Building2 size={16} color="#818cf8" style={{ flexShrink: 0 }} />
+                                    <span>{c.name}</span>
+                                  </div>
+                                  <div className="company-link-icon-chip">
+                                    <span>Ver Dados</span>
+                                    <ExternalLink size={10} />
+                                  </div>
+                                </button>
+                                {c.tradeName && <div className="company-cell-trade">{c.tradeName}</div>}
+
+                                {/* Alerta Visual de Vencimento de Certificado Digital */}
+                                {certInfo && (
+                                  <div
+                                    className={`cert-warning-tag ${certInfo.status === 'EXPIRED' ? 'expired' : ''}`}
+                                    onClick={() => setActiveModal({ type: 'COMPANY_INFO', row: r })}
+                                    style={{ cursor: 'pointer' }}
+                                    title={`Vencimento: ${c.certificateExpiration || '-'} (${certInfo.label})`}
+                                  >
+                                    <AlertTriangle size={12} />
+                                    <span>{certInfo.label}</span>
+                                  </div>
+                                )}
+                              </div>
+                            </td>
+
+                            {/* 3. Tributação (Fora do Popup) */}
+                            <td>
+                              <span className={`tax-regime-pill ${getRegimeClass(c.taxRegime)}`}>
+                                {formatRegimeLabel(c.taxRegime)}
+                              </span>
+                            </td>
+
+                            {/* 4. Status Automatizado */}
+                            <td>
+                              <span
+                                className={`status-badge ${
+                                  r.calculatedStatus === 'COMPLETED'
+                                    ? 'completed'
+                                    : r.calculatedStatus === 'IN_PROGRESS'
+                                    ? 'in-progress'
+                                    : 'pending'
+                                }`}
+                              >
+                                {r.calculatedStatus === 'COMPLETED'
+                                  ? 'Concluído'
+                                  : r.calculatedStatus === 'IN_PROGRESS'
+                                  ? 'Em Andamento'
+                                  : 'Pendente'}
+                              </span>
+                            </td>
+
+                            {/* 5. Responsável (Select editável) */}
+                            <td>
+                              <select
+                                className="table-user-select"
+                                disabled={!canEditFiscal}
+                                value={currentRespId}
+                                onChange={(e) => handleResponsibleChange(c.id, e.target.value)}
+                              >
+                                <option value="">Não atribuído</option>
+                                {fiscalUsers.map((u) => (
+                                  <option key={u.id} value={u.id}>
+                                    {u.name || u.email}
+                                  </option>
+                                ))}
+                              </select>
+                            </td>
+
+                            {/* 6. CNPJ com Copiar */}
+                            <td>
+                              <button
+                                className="copy-badge-btn"
+                                onClick={() => handleCopy(c.cnpj, 'CNPJ')}
+                                title="Copiar CNPJ"
+                              >
+                                {formatCnpj(c.cnpj)}
+                                <Copy size={12} />
+                              </button>
+                            </td>
+
+                            {/* 7. Observações do Fiscal */}
+                            <td>
+                              <button
+                                className="copy-badge-btn"
+                                style={{ background: c.notes ? 'rgba(99, 102, 241, 0.15)' : undefined }}
+                                onClick={() => {
+                                  setNotesText(c.notes || '');
+                                  setActiveModal({ type: 'NOTES', row: r });
+                                }}
+                                title={c.notes || 'Adicionar observação'}
+                              >
+                                {c.notes ? `${c.notes.slice(0, 16)}...` : '+ Obs'}
+                              </button>
+                            </td>
+
+                            {viewInstallments&&<td><div className="fiscal-installment-cell">{(()=>{const summary=installmentSummaries[c.id];const disabled=summary?.status==='NA'||!summary;return <button className={`obligation-btn ${summary?.status==='OVERDUE'?'pendencia':summary?.status==='PAID'?'ok-data':summary?.status==='NA'?'na':'pendente'}`} disabled={disabled} title={summary?.status==='NA'?'Empresa sem parcelamentos cadastrados':'Consultar todos os parcelamentos desta empresa'} onClick={()=>{setInstallmentCreate(false);setInstallmentFocus(null);setInstallmentCompany(c);}}>{summary?.label||(installmentError?'Indisponível':'Carregando...')}</button>;})()}</div></td>}
+
+                            {/* 8 Colunas de Obrigações Fiscais */}
+                            {popupColumns.map(col => <td key={col.columnKey}>{renderObligationCell(r, col.columnKey)}</td>)}
+                            
+                          </tr>
+                        );
+                      })
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* ==========================================================================
+            MODAIS INTERATIVOS (REINF, IMPOSTOS, ISS, MIT, CARNÊ LEÃO, SPED, INFO)
+            ========================================================================== */}
+
+        {allInstallmentsOpen&&<AllInstallmentsModal active={!installmentCompany} year={selectedYear} month={selectedMonth} currentUser={currentUser} onClose={()=>setAllInstallmentsOpen(false)} onSelect={(company,id,action)=>{setInstallmentCreate(false);setInstallmentFocus({id,action});setInstallmentCompany(company);}}/>}
+        {chooseInstallmentCompany&&<InstallmentCompanyPicker mode={installmentCreate?'create':'view'} currentUser={currentUser} onClose={()=>setChooseInstallmentCompany(false)} onSelect={company=>{setChooseInstallmentCompany(false);setInstallmentCompany(company);}}/>}
+        {installmentCompany&&<InstallmentsModal company={installmentCompany} year={selectedYear} month={selectedMonth} currentUser={currentUser} createInitially={installmentCreate} initialPlanId={installmentFocus?.id} initialAction={installmentFocus?.action} onClose={()=>{setInstallmentCompany(null);setInstallmentFocus(null);}} onChanged={()=>{void loadInstallmentSummaries(rows);}}/>}
+        {activeModal?.type === 'POPUP'  && (
+          <div className="closing-modal-backdrop" onClick={closeAllModals}>
+            <div className="closing-modal-content" onClick={e => e.stopPropagation()} style={{ maxWidth: activePopupConfig.fields.length ? '650px' : '440px' }}>
+              <div className="closing-modal-header">
+                <div className="closing-modal-title purple"><FileSpreadsheet size={22} />{activePopupConfig.title}</div>
+                <button className="closing-modal-close-btn" onClick={closeAllModals}>&times;</button>
+              </div>
+              <div className="closing-modal-body">
+                {activePopupConfig.description && <p>{activePopupConfig.description}</p>}
+                {!canEditPopup && <p>Esta coluna está configurada como somente leitura.</p>}
+                <div className="modal-fields-grid">
+                  {activePopupConfig.fields.map(field => <div className={`modal-input-group ${field.fullWidth || field.type === 'TEXTAREA' ? 'full-width' : ''}`} key={field.key}>
+                    <label>{field.label}{field.required ? ' *' : ''}</label>
+                    {field.type === 'TEXTAREA' ? <textarea rows={3} disabled={!canEditPopup || savingAction} value={popupForm[field.key] || ''} placeholder={field.placeholder} onChange={e => setPopupForm(prev => ({ ...prev, [field.key]: e.target.value }))} />
+                      : field.type === 'SELECT' ? <select disabled={!canEditPopup || savingAction} value={popupForm[field.key] || ''} onChange={e => setPopupForm(prev => ({ ...prev, [field.key]: e.target.value }))}><option value="">Selecione...</option>{popupForm[field.key] && !field.options.includes(popupForm[field.key]) && <option value={popupForm[field.key]}>{popupForm[field.key]} (valor anterior)</option>}{field.options.map(option => <option key={option} value={option}>{option}</option>)}</select>
+                      : <input disabled={!canEditPopup || savingAction} type={field.type === 'NUMBER' ? 'number' : field.type === 'DATE' ? 'date' : 'text'} step={field.type === 'NUMBER' ? 'any' : undefined} value={popupForm[field.key] || ''} placeholder={field.placeholder} onChange={e => setPopupForm(prev => ({ ...prev, [field.key]: e.target.value }))} />}
+                  </div>)}
+                </div>
+                <div className={activePopupConfig.fields.length ? 'modal-actions-grid' : 'modal-actions-stack'}>
+                  {activePopupConfig.actions.filter(a => a.enabled).map(action => <button key={action.id} className={action.id === 'NA' ? 'btn-action-purple-gradient' : 'btn-action-blue-gradient'} disabled={!canEditPopup || savingAction} onClick={() => {
+                    if (action.id === 'SALVAR' || action.id === 'OK_DATA') {
+                      const missing = activePopupConfig.fields.find(field => field.required && !(popupForm[field.key] || '').trim());
+                      if (missing) { window.alert(`Preencha o campo: ${missing.label}`); return; }
+                    }
+                    const handlers: Record<PopupAction, () => void> = { NA: handleActionNA, PENDENCIA: handleActionPendencia, SEM_MOV: handleActionSemMovimento, SALVAR: handleActionSalvar, OK_DATA: activePopupConfig.fields.length ? handleActionSalvar : handleActionOkData, LIMPAR: handleActionLimpar };
+                    handlers[action.id]();
+                  }}>{action.label}</button>)}
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ==========================================================================
+            SUB-MODAIS DE PERGUNTA (API, DATA, MOTIVO PENDÊNCIA)
+            ========================================================================== */}
+
+        {/* Sub-modal: Pergunta API */}
+        {apiPrompt?.show && (
+          <div className="closing-modal-backdrop" style={{ zIndex: 1100 }}>
+            <div className="closing-modal-content" style={{ maxWidth: '420px' }}>
+              <div className="closing-modal-header">
+                <div className="closing-modal-title">
+                  <Send size={20} />
+                  Envio via API
+                </div>
+              </div>
+              <div className="closing-modal-body">
+                <p style={{ color: '#334155', fontSize: '0.95rem', margin: '8px 0' }}>
+                  A obrigação foi transmitida diretamente via <strong>API</strong>?
+                </p>
+                <div className="sub-modal-actions" style={{ marginTop: '12px' }}>
+                  <button className="btn-secondary-light" onClick={() => handleConfirmApi(false)}>
+                    Não
+                  </button>
+                  <button className="btn-primary-gradient" onClick={() => handleConfirmApi(true)}>
+                    Sim, Enviado com API
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Sub-modal: Data de Conclusão */}
+        {datePrompt?.show && (
+          <div className="closing-modal-backdrop" style={{ zIndex: 1100 }}>
+            <div className="closing-modal-content" style={{ maxWidth: '420px' }}>
+              <div className="closing-modal-header">
+                <div className="closing-modal-title">
+                  <Calendar size={20} />
+                  Data de Conclusão
+                </div>
+              </div>
+              <div className="closing-modal-body">
+                <label style={{ fontSize: '0.88rem', color: '#475569', fontWeight: 500 }}>
+                  Informe a data em que foi concluído (DD/MM/AAAA):
+                </label>
+                <input
+                  type="text"
+                  placeholder="DD/MM/AAAA"
+                  value={inputDateValue}
+                  onChange={(e) => setInputDateValue(e.target.value)}
+                  style={{
+                    padding: '10px 12px',
+                    borderRadius: '8px',
+                    border: '1px solid #cbd5e1',
+                    fontSize: '0.95rem',
+                    outline: 'none',
+                  }}
+                  autoFocus
+                />
+                <div className="sub-modal-actions" style={{ marginTop: '12px' }}>
+                  <button className="btn-secondary-light" onClick={() => setDatePrompt(null)}>
+                    Cancelar
+                  </button>
+                  <button className="btn-primary-gradient" onClick={handleConfirmDate} disabled={savingAction}>
+                    {savingAction ? <ButtonSpinner /> : 'Salvar Conclusão'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Sub-modal: Motivo da Pendência */}
+        {pendencyPrompt?.show && (
+          <div className="closing-modal-backdrop" style={{ zIndex: 1100 }}>
+            <div className="closing-modal-content" style={{ maxWidth: '460px' }}>
+              <div className="closing-modal-header">
+                <div className="closing-modal-title" style={{ color: '#ef4444' }}>
+                  <AlertCircle size={20} />
+                  Motivo da Pendência
+                </div>
+              </div>
+              <div className="closing-modal-body">
+                <label style={{ fontSize: '0.88rem', color: '#475569', fontWeight: 500 }}>
+                  Descreva detalhadamente a pendência:
+                </label>
+                <textarea
+                  rows={4}
+                  placeholder="Ex: Aguardando extrato fiscal do cliente..."
+                  value={pendencyPrompt.reason}
+                  onChange={(e) => setPendencyPrompt({ ...pendencyPrompt, reason: e.target.value })}
+                  style={{
+                    padding: '10px 12px',
+                    borderRadius: '8px',
+                    border: '1px solid #cbd5e1',
+                    fontSize: '0.9rem',
+                    outline: 'none',
+                    resize: 'vertical',
+                  }}
+                  autoFocus
+                />
+                <div className="sub-modal-actions" style={{ marginTop: '12px' }}>
+                  <button className="btn-secondary-light" onClick={() => setPendencyPrompt(null)}>
+                    Cancelar
+                  </button>
+                  <button className="btn-primary-gradient" onClick={handleConfirmPendency} disabled={savingAction}>
+                    {savingAction ? <ButtonSpinner /> : 'Registrar Pendência'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Sub-modal: Observações do Fiscal */}
+        {activeModal?.type === 'NOTES' && (
+          <div className="closing-modal-backdrop" onClick={closeAllModals}>
+            <div className="closing-modal-content" style={{ maxWidth: '500px' }} onClick={(e) => e.stopPropagation()}>
+              <div className="closing-modal-header">
+                <div className="closing-modal-title">
+                  <Info size={20} />
+                  Observações do Fiscal
+                </div>
+                <button className="closing-modal-close-btn" onClick={closeAllModals}>
+                  &times;
+                </button>
+              </div>
+              <div className="closing-modal-body">
+                <p style={{ fontSize: '0.85rem', color: '#64748b' }}>
+                  Empresa: <strong>{activeModal.row.company.name}</strong>
+                </p>
+                <textarea
+                  rows={5}
+                  placeholder="Digite as observações específicas deste cliente para o setor Fiscal..."
+                  value={notesText}
+                  onChange={(e) => setNotesText(e.target.value)}
+                  style={{
+                    padding: '10px 12px',
+                    borderRadius: '8px',
+                    border: '1px solid #cbd5e1',
+                    fontSize: '0.9rem',
+                    outline: 'none',
+                  }}
+                />
+                <div className="sub-modal-actions" style={{ marginTop: '12px' }}>
+                  <button className="btn-secondary-light" onClick={closeAllModals}>
+                    Cancelar
+                  </button>
+                  <button className="btn-primary-gradient" disabled={!canEditFiscal} onClick={handleSaveNotes}>
+                    Salvar Observação
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ==========================================================================
+            POPUP COMPLETO COM TODAS AS INFORMAÇÕES DA EMPRESA E CERTIFICADO
+            ========================================================================== */}
+        {activeModal?.type === 'COMPANY_INFO' && <CompanyDetailsModal company={activeModal.row.company} onClose={closeAllModals} />}
+      </main>
+    </div>
+  );
+}

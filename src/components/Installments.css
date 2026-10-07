@@ -1,0 +1,70 @@
+.installments-modal { width: min(1320px,96vw); max-width: 1320px !important; }
+.installments-modal .closing-modal-body { max-height: 80vh; overflow-y: auto; }
+.installment-toolbar { display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:16px; margin-bottom:18px; }
+.installment-toolbar h3 { color:#1e293b; margin:0 0 4px; }
+.installment-toolbar p,.installment-muted { color:#64748b; font-size:.8rem; line-height:1.6; }
+.installment-toolbar .btn-primary-gradient,.installment-settings-panel>.btn-primary-gradient { display:inline-flex; align-items:center; gap:8px; }
+.installment-stats { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:12px; margin-bottom:16px; }
+.installment-stats>div { display:flex; align-items:center; flex-wrap:wrap; gap:8px; padding:14px; border:1px solid #e2e8f0; background:#f8fafc; border-radius:12px; color:#7c3aed; }
+.installment-stats strong { font-size:1.2rem; color:#1e293b; }
+.installment-stats span { width:100%; color:#64748b; font-size:.76rem; }
+.installment-table-scroll { overflow:auto; margin:16px 0; border:1px solid #e2e8f0; border-radius:12px; max-height:55vh; }
+.installment-table { width:100%; border-collapse:separate; border-spacing:0; color:#334155; font-size:.8rem; }
+.installment-table th { padding:12px; background:#f1f5f9; color:#475569; font-size:.72rem; white-space:nowrap; text-align:left; position:sticky; top:0; z-index:1; }
+.installment-table td { padding:12px; border-top:1px solid #e2e8f0; vertical-align:top; white-space:nowrap; }
+.installment-table tbody tr:hover { background:#fafaff; }
+.installment-table small { display:block; margin-top:5px; color:#64748b; font-size:.7rem; }
+.installment-badge { display:inline-flex; padding:5px 8px; border-radius:7px; font-size:.72rem; font-weight:600; background:#f1f5f9; color:#64748b; }
+.installment-badge.paid,.installment-badge.quitado { background:#dcfce7; color:#166534; }
+.installment-badge.overdue,.installment-badge.atrasado { background:#ffe4e6; color:#9f1239; }
+.installment-badge.ativo { background:#e0e7ff; color:#4338ca; }
+.installment-row-actions { display:flex; gap:7px; margin-top:7px; }
+.installment-row-actions button,.installment-register { display:inline-flex; align-items:center; gap:4px; border:1px solid #ddd6fe; padding:5px 7px; border-radius:6px; background:#f5f3ff; color:#6d28d9; font:inherit; font-size:.7rem; cursor:pointer; }
+.installment-register { display:block; margin-top:7px; }
+.installment-empty { text-align:center; padding:32px; color:#64748b; }
+.installment-empty h3 { color:#334155; margin:10px 0; }
+.installment-empty button { margin-top:16px; }
+.installment-error,.installment-warning,.installment-success { margin:12px 0; padding:12px 14px; border-radius:9px; font-size:.8rem; line-height:1.6; }
+.installment-error { background:#fff1f2; color:#9f1239; border:1px solid #fecdd3; }
+.installment-error button { margin-left:12px; border:0; background:transparent; color:inherit; text-decoration:underline; cursor:pointer; }
+.installment-warning { background:#fffbeb; color:#92400e; border:1px solid #fde68a; }
+.installment-success { background:#ecfdf5; color:#166534; border:1px solid #a7f3d0; }
+.installment-sub-backdrop { z-index:1100; }
+.installment-form-modal { max-width:720px !important; }
+.installment-payment-modal { max-width:560px !important; }
+.installment-form-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:16px; margin:16px 0; }
+.installment-form-grid label { display:flex; flex-direction:column; gap:7px; color:#334155; font-size:.82rem; font-weight:600; }
+.installment-form-grid .full-width { grid-column:1/-1; }
+.installment-form-grid input,.installment-form-grid select,.installment-form-grid textarea { width:100%; box-sizing:border-box; padding:10px 12px; border:1px solid #cbd5e1; border-radius:8px; background:#fff; color:#1e293b; font:inherit; font-weight:400; color-scheme:light; }
+.installment-form-grid option { color:#1e293b; background:#fff; }
+.installment-form-grid small { font-weight:400; font-size:.72rem; color:#64748b; line-height:1.5; }
+.installment-form-grid input:focus,.installment-form-grid select:focus,.installment-form-grid textarea:focus { outline:2px solid #c4b5fd; outline-offset:1px; border-color:#8b5cf6; }
+.installment-rule-details { margin:16px 0; padding:12px; border:1px solid #e2e8f0; border-radius:10px; font-size:.78rem; color:#475569; }
+.installment-rule-details summary { color:#6d28d9; cursor:pointer; font-weight:600; }
+.installment-rule-details p { margin:8px 0; }
+.installment-settings-panel { background:#fff; color:#334155; border-radius:16px; padding:24px; max-width:960px; }
+.installment-settings-panel h3 { color:#1e293b; margin-bottom:8px; }
+.installment-settings-panel p { font-size:.84rem; line-height:1.7; }
+.installment-settings-panel hr { border:0; border-top:1px solid #e2e8f0; margin:24px 0; }
+.installment-example { background:#f5f3ff; border:1px solid #ddd6fe; border-radius:10px; padding:16px; margin-bottom:16px; }
+.installment-example h4 { display:flex; align-items:center; gap:8px; color:#6d28d9; margin-bottom:8px; }
+.installment-type-list { display:flex; flex-wrap:wrap; gap:8px; margin-top:12px; }
+.installment-type-list span { padding:6px 10px; background:#f1f5f9; border-radius:8px; color:#475569; font-size:.8rem; }
+.fiscal-installment-cell { display:flex; align-items:center; gap:6px; }
+.fiscal-installment-add { padding:6px; border:1px solid rgba(129,140,248,.35); border-radius:7px; background:rgba(99,102,241,.1); color:#a5b4fc; cursor:pointer; font-size:16px; line-height:1; }
+.fiscal-installment-cell button:disabled { cursor:default; opacity:.6; }
+@media(max-width:720px) { .installment-stats { grid-template-columns:repeat(2,minmax(0,1fr)); } .installment-form-grid { grid-template-columns:1fr; } .installments-modal .closing-modal-body { padding:16px; } .installment-settings-panel { padding:18px; } }
+.installment-company-picker { max-width:850px; }
+.installment-company-search { display:flex; align-items:center; gap:10px; margin:18px 0; padding:0 14px; border:1px solid #cbd5e1; border-radius:10px; color:#64748b; background:white; }
+.installment-company-search input { width:100%; padding:14px 0; border:0; background:transparent; color:#1e293b; font:inherit; outline:none; }
+.installment-company-search:focus-within { border-color:#8b5cf6; box-shadow:0 0 0 3px #ede9fe; }
+.installment-company-results { display:flex; flex-direction:column; gap:8px; max-height:48vh; overflow:auto; }
+.installment-company-option { display:flex; align-items:center; gap:14px; width:100%; padding:14px; border:1px solid #e2e8f0; border-radius:10px; background:#fff; color:#334155; text-align:left; cursor:pointer; font:inherit; }
+.installment-company-option:hover,.installment-company-option:focus-visible { background:#f5f3ff; border-color:#a78bfa; }
+.installment-company-info { flex:1; min-width:0; display:flex; flex-direction:column; gap:5px; }
+.installment-company-info strong { color:#1e293b; font-size:.88rem; overflow-wrap:anywhere; }
+.installment-company-info span { color:#64748b; font-size:.75rem; }
+.installment-company-pagination { display:flex; align-items:center; justify-content:space-between; gap:12px; margin-top:16px; color:#64748b; font-size:.75rem; }
+.installment-company-pagination button,.fiscal-create-installment { display:inline-flex; align-items:center; gap:6px; }
+@media(max-width:600px){.installment-company-option{flex-wrap:wrap}.installment-company-option>.installment-badge{margin-right:auto}.installment-company-info{flex-basis:100%}.installment-company-pagination{flex-wrap:wrap}}
+.all-installments-table td:first-child{min-width:250px;max-width:350px;white-space:normal}.all-installments-table td:first-child strong{overflow-wrap:anywhere}.all-installments-overdue{color:#be123c!important;font-weight:600}

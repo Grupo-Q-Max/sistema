@@ -1,0 +1,15 @@
+[Unit]
+Description=Fechamento Pro API (Grupo Q-Max)
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/var/www/html/grqm/sistema
+EnvironmentFile=/var/www/html/grqm/sistema/.env
+ExecStart=/usr/bin/npx tsx server/index.ts
+Restart=always
+RestartSec=5
+User=www-data
+
+[Install]
+WantedBy=multi-user.target

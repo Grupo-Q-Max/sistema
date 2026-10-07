@@ -1,0 +1,17 @@
+import 'dotenv/config';import fs from 'node:fs/promises';import path from 'node:path';
+import {PrismaClient,Prisma} from '@prisma/client';import {PrismaMariaDb} from '@prisma/adapter-mariadb';import mariadb from 'mariadb';
+const index=process.argv.indexOf('--folder'),directory=index>=0?process.argv[index+1]:'';if(!directory)throw Error('Informe --folder com a pasta do relatório de aplicação.');
+const entries=(await fs.readFile(path.join(directory,'journal.jsonl'),'utf8')).split(/\r?\n/).filter(Boolean).map(text=>JSON.parse(text));const backup=JSON.parse(await fs.readFile(path.join(directory,'backup-antes.json'),'utf8'));if(backup.version!==1)throw Error('Backup não reconhecido.');
+const url=new URL(process.env.DATABASE_URL||'');const pool=mariadb.createPool({host:url.hostname,port:Number(url.port)||3306,user:decodeURIComponent(url.username),password:decodeURIComponent(url.password),database:url.pathname.slice(1),connectionLimit:2});const prisma=new PrismaClient({adapter:new PrismaMariaDb(pool as any)}) as any;
+try{
+ await prisma.$transaction(async(tx:any)=>{
+  for(const entry of entries){for(const change of entry.changes){const current=await tx.closing.findUnique({where:{id:change.id}});if(current&&new Date(current.updatedAt).getTime()!==new Date(change.afterUpdatedAt).getTime())throw Error('Um fechamento foi editado após a importação. Restauração interrompida para preservar essa edição.');}
+   if(entry.metadataChanged){const current=await tx.company.findUnique({where:{id:entry.companyId}});if(current&&new Date(current.updatedAt).getTime()!==new Date(entry.companyUpdatedAt).getTime())throw Error('Um cadastro foi editado após a importação. Restauração interrompida.');}
+   if(entry.createdCompany){const company=await tx.company.findUnique({where:{id:entry.companyId},include:{closings:true,responsibles:true,userAccess:true,installmentPlans:true}});if(company){const ids=new Set(entry.changes.map((item:any)=>item.id));if(company.responsibles.length||company.userAccess.length||company.installmentPlans.length||company.closings.some((item:any)=>!ids.has(item.id)))throw Error('Uma empresa importada recebeu novos vínculos. Restauração interrompida.');if(new Date(company.updatedAt).getTime()!==new Date(entry.companyUpdatedAt).getTime())throw Error('Uma empresa importada foi editada. Restauração interrompida.');}}
+  }
+  for(const entry of [...entries].reverse()){for(const change of [...entry.changes].reverse()){const current=await tx.closing.findUnique({where:{id:change.id}});if(!current)continue;if(change.created)await tx.closing.delete({where:{id:change.id}});else{const previous=change.before;await tx.closing.update({where:{id:change.id},data:{columnsData:previous.columnsData??Prisma.DbNull,dashboardMetrics:previous.dashboardMetrics??Prisma.DbNull,status:previous.status,updatedAt:new Date(previous.updatedAt)}});}}
+   if(entry.metadataChanged)await tx.company.update({where:{id:entry.companyId},data:{legacyData:entry.priorMetadata.legacyData??Prisma.DbNull,updatedAt:new Date(entry.priorMetadata.updatedAt)}});
+   if(entry.createdCompany)await tx.company.deleteMany({where:{id:entry.companyId}});
+  }
+ },{timeout:600000,maxWait:10000});console.log('Importação desfeita. Os cadastros e valores anteriores foram preservados. A estrutura para datas ausentes permanece disponível.');
+}catch(error){console.error(error instanceof Error?error.message:'Falha ao restaurar importação.');process.exitCode=1;}finally{await prisma.$disconnect();await pool.end();}

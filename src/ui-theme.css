@@ -1,0 +1,858 @@
+/* Tema compartilhado, carregado depois dos estilos dos componentes. */
+:root {
+  color-scheme:dark;
+  --bg-color:#0b1018;
+  --card-bg:#141c29;
+  --border-color:#2b384c;
+  --input-bg:#0f1724;
+  --input-border:#40516b;
+  --text-main:#edf2fa;
+  --text-muted:#a6b5cb;
+  --ui-surface:#141c29;
+  --ui-raised:#1c283a;
+  --ui-control:#0f1724;
+  --ui-border:#34445d;
+  --ui-focus:#c4b5fd;
+  --ui-radius:14px;
+  --ui-sidebar:260px
+}
+html {
+  scroll-padding-top:76px
+}
+body {
+  line-height:1.5
+}
+#root {
+  min-height:100dvh
+}
+#root button,#root input,#root select,#root textarea {
+  font-family:inherit
+}
+#root button,#root a {
+  -webkit-tap-highlight-color:transparent
+}
+#root :is(button,a,input,select,textarea,summary):focus-visible {
+  outline:2px solid var(--ui-focus);
+  outline-offset:3px
+}
+#root :is(input,select,textarea):disabled {
+  opacity:.68;
+  cursor:not-allowed
+}
+#root textarea {
+  resize:vertical
+}
+#root input[type=checkbox],#root input[type=radio] {
+  accent-color:var(--accent);
+  flex-shrink:0
+}
+#root input::placeholder,#root textarea::placeholder {
+  color:#93a4be;
+  opacity:1
+}
+#root select,#root select option {
+  color-scheme:dark!important;
+  background-color:var(--ui-control)!important;
+  color:var(--text-main)!important
+}
+#root select {
+  border-color:var(--ui-border)!important;
+  min-height:42px;
+  max-width:100%
+}
+#root :is(.crm-main,.dashboard-content,.settings-content,.closings-container,.companies-page-container) {
+  min-width:0
+}
+#root .crm-main {
+  max-width:calc(100% - var(--ui-sidebar));
+  width:calc(100% - var(--ui-sidebar))
+}
+#root :is(.dashboard-content,.closings-container) {
+  padding:24px clamp(16px,2.3vw,36px)
+}
+#root .crm-header {
+  padding:24px clamp(16px,2.3vw,36px) 8px;
+  gap:16px;
+  flex-wrap:wrap
+}
+#root :is(.closings-header,.closings-header-actions,.regimes-section-header,.regime-panel-header,.regime-panel-actions,.panel-toolbar,.companies-toolbar-card,.companies-filters-group,.closing-progress-search,.installment-toolbar,.installment-company-pagination) {
+  gap:12px;
+  flex-wrap:wrap
+}
+#root :is(.closings-search-box,.companies-search-box,.regime-panel-search,.installment-company-search) {
+  min-width:0;
+  max-width:100%
+}
+#root :is(.closings-search-box,.companies-search-box) {
+  flex:1 1 260px
+}
+#root :is(.closings-filters,.companies-filters-group) {
+  display:flex;
+  flex-wrap:wrap;
+  min-width:0;
+  gap:10px
+}
+#root :is(.closings-select,.companies-filter-select) {
+  max-width:100%;
+  border-radius:9px
+}
+#root .closings-header-titles h1 {
+  font-size:clamp(1.25rem,1.4vw,1.65rem)
+}
+#root :is(.closing-progress-panel,.installment-settings-panel,.closing-modal-content,.modal-card) {
+  background:var(--ui-surface)!important;
+  color:var(--text-main)!important;
+  border:1px solid var(--ui-border)!important;
+  border-radius:var(--ui-radius);
+  box-shadow:0 12px 32px #0003
+}
+#root :is(.closing-progress-heading h3,.closing-progress-expanded h4,.installment-toolbar h3,.installment-settings-panel h3,.installment-empty h3,.installment-company-info strong,.closing-modal-title,.closing-modal-title.purple) {
+  color:var(--text-main)!important
+}
+#root :is(.closing-progress-heading p,.closing-progress-card p,.closing-progress-card small,.closing-progress-empty,.installment-muted,.installment-toolbar p,.installment-table small,.installment-form-grid small,.installment-company-info span,.installment-company-pagination,.installment-empty,.cushman-help,.cushman-company-identity span,.cushman-client-status,.popup-config-editor p,.popup-config-editor small) {
+  color:var(--text-muted)!important
+}
+#root :is(.closing-progress-meter,.closing-progress-bar) {
+  background:#2a3850
+}
+#root .closing-progress-card {
+  background:var(--ui-control);
+  color:var(--text-main);
+  border-color:var(--ui-border);
+  border-radius:11px;
+  min-width:0
+}
+#root .closing-progress-card:hover,#root .closing-progress-card.selected {
+  background:#27233d;
+  border-color:#a78bfa
+}
+#root .closing-progress-card>div:first-child strong {
+  overflow-wrap:anywhere
+}
+#root .closing-progress-grid {
+  border-top-color:var(--ui-border);
+  grid-template-columns:repeat(auto-fit,minmax(min(100%,200px),1fr))
+}
+#root .closing-progress-expanded {
+  border-top-color:var(--ui-border)
+}
+#root :is(.closing-progress-records,.installment-table-scroll,.installment-rule-details) {
+  border-color:var(--ui-border);
+  color:var(--text-main)
+}
+#root :is(.closing-progress-records th,.installment-table th) {
+  background:var(--ui-raised);
+  color:#ccd7e8
+}
+#root :is(.closing-progress-records td,.installment-table td) {
+  border-color:var(--ui-border);
+  color:var(--text-main)
+}
+#root .installment-table {
+  color:var(--text-main)
+}
+#root .installment-table tbody tr:hover {
+  background:var(--ui-raised)
+}
+#root :is(.closing-progress-status,.installment-badge) {
+  background:#433419;
+  color:#fde68a
+}
+#root :is(.closing-progress-status.done,.installment-badge.paid,.installment-badge.quitado) {
+  background:#153b2f;
+  color:#a7f3d0
+}
+#root :is(.closing-progress-status.excluded,.installment-type-list span) {
+  background:#27354a;
+  color:#d1dbea
+}
+#root :is(.installment-badge.overdue,.installment-badge.atrasado) {
+  background:#471f2c;
+  color:#fda4af
+}
+#root .installment-badge.ativo {
+  background:#2d2a51;
+  color:#c4b5fd
+}
+#root .all-installments-overdue {
+  color:#fda4af!important
+}
+/* Formulários e painéis internos dos diálogos. */
+#root :is(.closing-modal-content,.modal-card) :is(input:not([type=checkbox]):not([type=radio]):not([type=range]),textarea,select),#root :is(.closing-progress-search,.installment-settings-panel,.popup-editor-preview) :is(input:not([type=checkbox]):not([type=radio]),textarea,select) {
+  background:var(--ui-control)!important;
+  color:var(--text-main)!important;
+  border-color:var(--ui-border)!important;
+  color-scheme:dark!important;
+  max-width:100%;
+  min-width:0
+}
+#root :is(.closing-modal-content,.modal-card) :is(label,h3,h4,.info-value,.info-item-row,.info-item-label,.modal-input-group label,.installment-form-grid label,.cushman-form-grid label,.cushman-extra-field) {
+  color:var(--text-main)!important
+}
+#root :is(.closing-modal-header,.closing-modal-body,.modal-header,.modal-body,.modal-footer) {
+  background:var(--ui-surface)!important;
+  color:var(--text-main);
+  border-color:var(--ui-border)!important
+}
+#root :is(.closing-modal-close-btn,.closing-modal-close-button,.closing-modal-close-btn:hover,.closing-modal-close-btn:focus-visible,.close-btn) {
+  color:var(--text-muted)!important;
+  min-width:36px;
+  min-height:36px;
+  flex-shrink:0
+}
+#root .closing-modal-title {
+  font-size:clamp(1rem,1.4vw,1.25rem);
+  min-width:0;
+  overflow-wrap:anywhere
+}
+#root .closing-modal-title svg {
+  flex-shrink:0
+}
+#root :is(.btn-secondary-light,.installment-register,.installment-row-actions button,.cushman-field-control button) {
+  background:var(--ui-raised)!important;
+  border:1px solid var(--ui-border)!important;
+  color:#ddd6fe!important;
+  border-radius:8px
+}
+#root :is(.info-card-block,.cushman-form-section,.cushman-company-identity,.cushman-legacy-details,.popup-editor-preview,.installment-stats>div,.installment-example,.installment-company-option) {
+  background:var(--ui-control)!important;
+  border-color:var(--ui-border)!important;
+  color:var(--text-main)!important
+}
+#root :is(.cushman-form-section legend,.cushman-form-section h3,.popup-editor-preview h4,.installment-example h4,.installment-rule-details summary) {
+  color:#c4b5fd!important
+}
+#root .installment-stats strong {
+  color:var(--text-main)
+}
+#root .installment-stats span {
+  color:var(--text-muted)
+}
+#root .installment-settings-panel hr {
+  border-color:var(--ui-border)
+}
+#root .installment-company-search {
+  background:var(--ui-control);
+  border-color:var(--ui-border);
+  color:var(--text-muted)
+}
+#root .installment-company-option:hover {
+  background:var(--ui-raised)!important;
+  border-color:#a78bfa!important
+}
+#root .info-item-row {
+  border-color:var(--ui-border)
+}
+#root :is(.info-label,.info-item-label) {
+  color:var(--text-muted)!important
+}
+#root :is(.cushman-error,.installment-error) {
+  background:#381923;
+  border-color:#8a3650;
+  color:#fecdd3
+}
+#root .installment-warning {
+  background:#352a17;
+  border-color:#846537;
+  color:#fde68a
+}
+#root :is(.cushman-success,.installment-success) {
+  background:#143128;
+  color:#a7f3d0
+}
+#root .cert-expiration-banner {
+  border-color:var(--ui-border);
+  background:#182e29;
+  color:#a7f3d0
+}
+#root .cert-expiration-banner.warning {
+  background:#352a17;
+  border-color:#846537;
+  color:#fde68a
+}
+#root .cert-expiration-banner.expired {
+  background:#381923;
+  border-color:#8a3650;
+  color:#fecdd3
+}
+#root .accounting-months-card {
+  background:var(--ui-control);
+  color:var(--text-main);
+  border-color:var(--ui-border)
+}
+#root .accounting-months-card.done {
+  background:#122d26;
+  border-top-color:#34d399
+}
+#root .accounting-months-card.excluded {
+  background:#202b3b
+}
+#root .accounting-months-card h4 {
+  color:#c4b5fd
+}
+#root .accounting-months-card small {
+  color:var(--text-muted)
+}
+#root .accounting-months-button {
+  background:#292640;
+  color:#ddd6fe;
+  border-color:#766ba4
+}
+#root .accounting-months-button small {
+  color:var(--text-muted)
+}
+#root .accounting-months-card .payroll-input-cell select {
+  background:var(--ui-control)!important;
+  color:var(--text-main)!important;
+  border-color:var(--ui-border)!important
+}
+/* Altura dos diálogos e rolagem das tabelas contidas na tela. */
+#root :is(.closing-modal-backdrop,.modal-overlay) {
+  padding:16px;
+  overflow:hidden;
+  overscroll-behavior:contain
+}
+#root :is(.closing-modal-content,.modal-card) {
+  max-height:calc(100dvh - 32px);
+  max-width:calc(100vw - 32px)!important;
+  min-width:0
+}
+#root .closing-modal-content {
+  width:min(820px,100%)
+}
+#root .closing-modal-content:not(.wide):not(.large-info):not(.installments-modal):not(.installment-form-modal):not(.installment-payment-modal):not(.cushman-dialog):not([aria-labelledby="accounting-months-title"]) {
+  max-width:min(520px,calc(100vw - 32px))!important
+}
+#root .installments-modal {
+  width:min(1320px,100%)
+}
+#root .installment-form-modal {
+  width:min(720px,100%)
+}
+#root .installment-payment-modal {
+  width:min(560px,100%)
+}
+#root .cushman-dialog {
+  width:min(920px,100%)!important
+}
+#root .cushman-obligation-dialog {
+  width:min(760px,100%)!important
+}
+#root .modal-card {
+  width:min(920px,100%)
+}
+#root .modal-card.modal-large {
+  width:min(900px,100%)
+}
+#root :is(.closing-modal-header,.modal-header,.modal-tabs,.modal-footer) {
+  flex-shrink:0
+}
+#root :is(.closing-modal-body,.modal-body) {
+  min-height:0;
+  max-height:none!important;
+  overflow-y:auto;
+  overscroll-behavior:contain
+}
+#root :is(.closing-modal-header,.modal-header,.closing-modal-body,.modal-body,.modal-footer) {
+  padding:20px 24px
+}
+#root :is(.closings-table-wrapper,.closings-table-scroll,.companies-table-container,.regime-table-wrapper,.installment-table-scroll,.closing-progress-records) {
+  max-width:100%;
+  overflow:auto;
+  overscroll-behavior-x:contain;
+  scrollbar-width:thin;
+  scrollbar-color:#66758d #111a28;
+  -webkit-overflow-scrolling:touch
+}
+#root :is(.closings-table-card,.companies-table-container) {
+  min-width:0
+}
+#root .closings-table {
+  table-layout:auto
+}
+#root .payroll-scroll-top {
+  max-width:100%;
+  scrollbar-color:#66758d #111a28
+}
+#root .regime-table-wrapper {
+  max-width:100%
+}
+#root :is(.grid-2,.grid-3,.grid-4,.form-grid,.modal-fields-grid,.popup-editor-grid,.installment-form-grid,.cushman-form-grid,.company-info-grid) {
+  min-width:0
+}
+#root :is(.form-group,.modal-input-group,.installment-form-grid label,.popup-editor-grid label,.cushman-form-grid label) {
+  min-width:0
+}
+#root :is(.accordion-grid,.progress-grid) {
+  grid-template-columns:repeat(auto-fit,minmax(min(100%,320px),1fr))
+}
+#root .closing-progress-heading {
+  min-width:0
+}
+#root .closing-progress-heading>div:first-child {
+  min-width:0
+}
+#root .closing-progress-heading p {
+  overflow-wrap:anywhere
+}
+#root .closing-progress-meter {
+  width:clamp(100px,18vw,190px)
+}
+#root .closing-progress-search input {
+  width:100%;
+  min-width:0
+}
+#root .closing-progress-search select {
+  min-width:0
+}
+#root .sector-tabs,#root .modal-tabs {
+  overflow-x:auto;
+  max-width:100%;
+  flex-wrap:nowrap
+}
+#root .sector-tab,#root .modal-tab-btn {
+  flex-shrink:0
+}
+#root .closing-sector-tabs {
+  flex-wrap:wrap;
+  max-width:100%
+}
+#root .closing-sector-tabs button {
+  min-height:40px
+}
+#root .month-selector-box {
+  max-width:100%;
+  min-width:0
+}
+#root .month-display-text {
+  white-space:normal;
+  overflow-wrap:anywhere;
+  text-align:center
+}
+.mobile-app-header,.mobile-sidebar-close,.mobile-sidebar-backdrop {
+  display:none
+}
+@media(max-width:1200px) {
+  #root .closings-stats-grid {
+    grid-template-columns:repeat(3,minmax(0,1fr))
+  }
+  #root .closings-header-actions {
+    width:100%;
+    justify-content:space-between
+  }
+  #root .regime-panel-search {
+    width:100%
+  }
+}
+@media(max-width:1023px) {
+  #root .crm-dashboard {
+    display:block
+  }
+  #root .crm-dashboard>.crm-main {
+    width:100%;
+    max-width:100%;
+    margin-left:0;
+    padding-top:60px
+  }
+  #root .crm-dashboard>.crm-sidebar {
+    width:min(300px,85vw);
+    min-width:0;
+    max-width:85vw;
+    transform:translateX(-105%);
+    visibility:hidden;
+    transition:transform .2s ease,visibility .2s;
+    z-index:950;
+    box-shadow:16px 0 40px #0005
+  }
+  #root .crm-sidebar.is-mobile-open {
+    transform:translateX(0);
+    visibility:visible
+  }
+  #root .mobile-app-header {
+    display:flex;
+    align-items:center;
+    gap:12px;
+    position:fixed;
+    inset:0 0 auto;
+    height:60px;
+    padding:10px 16px;
+    background:var(--ui-surface);
+    border-bottom:1px solid var(--ui-border);
+    z-index:90;
+    color:var(--text-main)
+  }
+  #root .mobile-app-header strong {
+    color:#f9a8d4
+  }
+  #root .mobile-app-header button,#root .mobile-sidebar-close {
+    display:inline-flex;
+    align-items:center;
+    justify-content:center;
+    min-width:40px;
+    min-height:40px;
+    border:1px solid var(--ui-border);
+    border-radius:9px;
+    background:var(--ui-control);
+    color:var(--text-main);
+    cursor:pointer
+  }
+  #root .mobile-sidebar-close {
+    position:absolute;
+    top:15px;
+    right:12px
+  }
+  #root .crm-sidebar__brand {
+    padding-right:58px
+  }
+  #root .mobile-sidebar-backdrop {
+    display:block;
+    position:fixed;
+    inset:0;
+    background:#0009;
+    border:0;
+    z-index:940;
+    backdrop-filter:blur(3px)
+  }
+  #root .crm-sidebar .sidebar-footer {
+    padding:14px 12px max(14px,env(safe-area-inset-bottom))
+  }
+  #root .dashboard-content {
+    gap:22px
+  }
+  #root .toast-notification {
+    top:72px;
+    right:12px;
+    left:12px;
+    max-width:calc(100% - 24px)
+  }
+}
+@media(max-width:767px) {
+  #root :is(.dashboard-content,.closings-container) {
+    padding:16px 12px;
+    gap:16px
+  }
+  #root .crm-header {
+    padding:16px 12px 4px
+  }
+  #root .closings-header-actions {
+    flex-direction:column;
+    align-items:stretch
+  }
+  #root .closing-sector-tabs {
+    display:grid;
+    grid-template-columns:repeat(2,minmax(0,1fr));
+    width:100%;
+    gap:5px
+  }
+  #root .closing-sector-tabs button {
+    white-space:normal;
+    font-size:.8rem;
+    padding:8px
+  }
+  #root .month-selector-box {
+    justify-content:space-between;
+    width:100%
+  }
+  #root :is(.closings-stats-grid,.companies-stats-grid,.installment-stats) {
+    grid-template-columns:repeat(2,minmax(0,1fr));
+    gap:10px
+  }
+  #root .closing-stat-card,#root .companies-stat-card {
+    padding:13px;
+    gap:9px;
+    min-width:0
+  }
+  #root .closing-stat-info,#root .companies-stat-info {
+    min-width:0
+  }
+  #root .closing-stat-info span,#root .companies-stat-info span {
+    font-size:.74rem;
+    overflow-wrap:anywhere
+  }
+  #root .closing-stat-info strong,#root .companies-stat-info strong {
+    font-size:1.3rem
+  }
+  #root .closing-stat-icon,#root .companies-stat-icon {
+    width:34px;
+    height:34px;
+    flex-shrink:0
+  }
+  #root .closing-stat-card:last-child:nth-child(odd) {
+    grid-column:1/-1
+  }
+  #root :is(.closings-toolbar,.companies-toolbar-card,.panel-toolbar) {
+    flex-direction:column;
+    align-items:stretch;
+    padding:12px
+  }
+  #root :is(.closings-search-box,.companies-search-box) {
+    flex-basis:auto;
+    min-width:0;
+    width:100%
+  }
+  #root :is(.closings-filters,.companies-filters-group) {
+    display:grid;
+    grid-template-columns:repeat(2,minmax(0,1fr));
+    width:100%
+  }
+  #root :is(.closings-select,.companies-filter-select) {
+    width:100%;
+    min-width:0;
+    max-width:100%;
+    font-size:.8rem
+  }
+  #root .cushman-closings .closings-select:first-child {
+    grid-column:1/-1
+  }
+  #root :is(.form-grid,.grid-2,.grid-3,.grid-4,.modal-fields-grid,.popup-editor-grid,.installment-form-grid,.cushman-form-grid,.company-info-grid,.companies-access-toggle,.visibility-mode-grid,.column-type-options) {
+    grid-template-columns:1fr!important
+  }
+  #root :is(.full-width,.cushman-full-width,.modal-fields-grid .full-width) {
+    grid-column:1/-1
+  }
+  #root .visibility-month-grid {
+    grid-template-columns:repeat(2,minmax(0,1fr))
+  }
+  #root .accounting-months-grid {
+    grid-template-columns:repeat(2,minmax(0,1fr))
+  }
+  #root :is(.closing-progress-heading,.closing-progress-search) {
+    flex-wrap:wrap
+  }
+  #root .closing-progress-heading>div:first-child {
+    flex-basis:calc(100% - 40px)
+  }
+  #root .closing-progress-meter {
+    width:100%;
+    order:3
+  }
+  #root .closing-progress-panel {
+    padding:14px;
+    margin:8px 0
+  }
+  #root .closing-progress-grid {
+    grid-template-columns:repeat(2,minmax(0,1fr));
+    gap:10px
+  }
+  #root .closing-progress-card {
+    padding:10px
+  }
+  #root .closing-progress-card>div:first-child {
+    flex-wrap:wrap;
+    gap:6px
+  }
+  #root .closing-progress-search input {
+    flex-basis:calc(100% - 28px)
+  }
+  #root .closing-progress-search select {
+    width:100%
+  }
+  #root :is(.closing-modal-backdrop,.modal-overlay) {
+    padding:8px
+  }
+  #root :is(.closing-modal-content,.modal-card) {
+    max-height:calc(100dvh - 16px);
+    max-width:calc(100vw - 16px)!important;
+    border-radius:12px
+  }
+  #root :is(.closing-modal-header,.modal-header,.closing-modal-body,.modal-body,.modal-footer) {
+    padding:14px
+  }
+  #root .modal-tabs {
+    padding:8px 12px 0
+  }
+  #root :is(.modal-footer,.sub-modal-actions,.cushman-dialog-actions,.cushman-popup-actions) {
+    flex-wrap:wrap;
+    gap:10px
+  }
+  #root :is(.modal-footer,.sub-modal-actions,.cushman-dialog-actions)>button {
+    flex:1 1 130px;
+    min-height:44px
+  }
+  #root .modal-actions-grid {
+    grid-template-columns:repeat(2,minmax(0,1fr))
+  }
+  #root .cushman-dialog {
+    width:100%!important
+  }
+  #root .cushman-dialog .closing-modal-body {
+    padding:14px
+  }
+  #root .cushman-form-section {
+    padding:12px
+  }
+  #root :is(input:not([type=checkbox]):not([type=radio]),select,textarea) {
+    font-size:16px
+  }
+  #root :is(.month-nav-btn,.icon-btn,.cushman-company-button,.payroll-refresh-btn) {
+    min-width:40px;
+    min-height:40px
+  }
+  #root .closings-table .sticky-col-company {
+    position:static!important;
+    box-shadow:none!important
+  }
+  #root .closings-table .sticky-col-code {
+    min-width:88px!important;
+    width:88px!important;
+    max-width:88px!important
+  }
+  #root .cushman-table .cushman-sticky-company,#root .cushman-table .cushman-sticky-code {
+    position:static!important;
+    box-shadow:none!important
+  }
+  #root .columns-table-header {
+    display:none
+  }
+  #root .columns-table-row {
+    display:flex;
+    flex-wrap:wrap;
+    gap:12px;
+    padding:16px
+  }
+  #root .columns-table-row>:is(.col-user,.col-role,.col-sectors,.col-companies,.col-status,.col-name,.col-type,.col-progress,.col-replicate,.col-edit) {
+    flex:1 1 100%;
+    min-width:0;
+    white-space:normal
+  }
+  #root .columns-table-row .col-actions {
+    margin-left:auto
+  }
+  #root .regimes-grid {
+    grid-template-columns:repeat(2,minmax(0,1fr))
+  }
+  #root :is(.regime-panel-actions,.regime-panel-header,.dashboard-summary,.cushman-obligation-navigation) {
+    flex-wrap:wrap
+  }
+  #root .regime-panel-search {
+    width:100%
+  }
+  #root .regime-panel-search input {
+    min-width:0;
+    width:100%
+  }
+  #root .installment-settings-panel {
+    padding:16px
+  }
+  #root .installment-company-pagination {
+    flex-wrap:wrap
+  }
+  #root .popup-editor-action {
+    grid-template-columns:1fr
+  }
+  #root .installment-company-option {
+    flex-wrap:wrap
+  }
+  #root .installment-company-info {
+    flex-basis:100%
+  }
+}
+@media(max-width:380px) {
+  #root :is(.closing-progress-grid,.accounting-months-grid) {
+    grid-template-columns:1fr
+  }
+  #root :is(.closings-filters,.companies-filters-group) {
+    grid-template-columns:1fr
+  }
+  #root .closing-stat-card,#root .companies-stat-card {
+    padding:10px;
+    gap:6px
+  }
+  #root .closing-stat-icon,#root .companies-stat-icon {
+    width:28px;
+    height:28px
+  }
+  #root .closing-stat-icon svg,#root .companies-stat-icon svg {
+    width:18px;
+    height:18px
+  }
+}
+@media(prefers-reduced-motion:reduce) {
+  #root *,#root *::before,#root *::after {
+    animation-duration:.01ms!important;
+    transition-duration:.01ms!important;
+    scroll-behavior:auto!important
+  }
+}
+/* Detalhes compartilhados e confirmações internas. */
+#root .sub-modal-box {
+  background:var(--ui-control);
+  border-color:var(--ui-border);
+  color:var(--text-main)
+}
+#root .info-item-row .label {
+  color:var(--text-muted)
+}
+#root .info-item-row .value {
+  color:var(--text-main);
+  min-width:0;
+  overflow-wrap:anywhere;
+  flex-wrap:wrap;
+  justify-content:flex-end
+}
+#root .info-card-block h4 {
+  color:#c4b5fd!important;
+  border-bottom-color:var(--ui-border)
+}
+#root .info-card-block.highlight-cert {
+  background:#352a17!important;
+  border-color:#846537!important
+}
+#root .info-card-block.highlight-cert.expired {
+  background:#381923!important;
+  border-color:#8a3650!important
+}
+#root .closing-progress-records small {
+  color:var(--text-muted)
+}
+#root .installment-company-search input {
+  color:var(--text-main);
+  background:transparent
+}
+#root .installment-example p {
+  color:var(--text-main)
+}
+#root .closing-modal-close-btn:hover {
+  background:var(--ui-raised)
+}
+@media(max-width:767px) {
+  #root .info-item-row {
+    flex-wrap:wrap;
+    align-items:flex-start
+  }
+  #root .info-item-row .value {
+    max-width:100%;
+    text-align:left;
+    justify-content:flex-start
+  }
+  #root .modal-header-left {
+    min-width:0
+  }
+  #root .modal-header-icon {
+    flex-shrink:0
+  }
+  #root .modal-header h2 {
+    overflow-wrap:anywhere
+  }
+}
+#root .info-card-block .label+div {
+  background:var(--ui-raised)!important;
+  color:var(--text-main)!important;
+  overflow-wrap:anywhere
+}
+#root :is(.closing-stat-info,.companies-stat-info) span {
+  white-space:normal;
+  overflow:visible;
+  text-overflow:clip;
+  line-height:1.4
+}
+#root .closing-stat-info {
+  min-width:0
+}
+
+#root .closing-modal-content[aria-labelledby="accounting-months-title"] { width:min(1000px,100%); }
+#root .closing-modal-body > p[style] { color:var(--text-muted)!important; }
+#root .info-item-row .value { color:var(--text-main)!important; }
+#root .password-reveal-badge { background:var(--ui-raised);color:var(--text-main);max-width:100%;overflow-wrap:anywhere;flex-wrap:wrap; }
+#root .password-reveal-badge button { color:var(--text-muted);min-width:28px;min-height:28px; }
+#root .password-reveal-badge button:hover { color:var(--text-main); }
