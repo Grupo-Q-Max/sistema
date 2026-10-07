@@ -24,6 +24,13 @@ relatorios_importacao/
 .claude/
 .windsurf/
 
+# SSH Keys
+*.pem
+*.key
+deploy_key*
+id_ed25519*
+id_rsa*
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
