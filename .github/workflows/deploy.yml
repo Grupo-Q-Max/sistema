@@ -70,15 +70,19 @@ jobs:
             mkdir -p "$TARGET_DIR"
             cd "$TARGET_DIR"
 
+            AUTH_REPO="https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/Grupo-Q-Max/sistema.git"
+
             # Se o diretório já for um repositório git, atualiza; senão, clona
             if [ -d ".git" ]; then
               echo "==> Repositório existente. Sincronizando com origin/main..."
+              git remote set-url origin "$AUTH_REPO"
               git fetch origin main
               git reset --hard origin/main
             else
               echo "==> Clonando repositório inicial..."
-              git clone https://github.com/Grupo-Q-Max/sistema.git .
+              git clone "$AUTH_REPO" .
             fi
+            git remote set-url origin https://github.com/Grupo-Q-Max/sistema.git
 
             # Instala dependências no servidor
             echo "==> Instalando dependências..."
