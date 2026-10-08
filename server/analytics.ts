@@ -51,7 +51,8 @@ export function registerAnalytics(app: any, prisma: any) {
       const rangeStart = periods[0];
       const rangeEnd = monthStartUTC(lastY, lastM + 1);
 
-      const userId = req.query.userId;
+      const rawUserId = req.query.userId;
+      const userId = Array.isArray(rawUserId) ? rawUserId[0] : rawUserId;
       let userFilter: any = {};
       if (userId) {
         const user = await prisma.user.findUnique({ where: { id: userId }, include: { companyAccess: true } });

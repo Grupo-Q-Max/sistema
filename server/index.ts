@@ -713,7 +713,8 @@ app.get('/api/dashboard', async (req, res) => {
     // mesmo quando o legado nao informou a data de inicio da obrigacao.
     // O mes da saida participa somente quando a empresa tem obrigacoes nele.
     // O fechamento CONTABIL anual nao comprova participacao em todos os meses.
-    const userId = req.query.userId as string | undefined;
+    const rawUserId = req.query.userId;
+    const userId = Array.isArray(rawUserId) ? rawUserId[0] : rawUserId;
     let userFilter: any = {};
     if (userId) {
       const user = await prisma.user.findUnique({
