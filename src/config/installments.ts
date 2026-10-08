@@ -22,7 +22,8 @@ export function scheduleItem(plan:any,number:number,rules:InstallmentRules,now=n
   const cents=moneyCents(String(plan.totalAmount))!;const base=Math.floor(cents/plan.installmentCount);const amount=base+(number===plan.installmentCount?cents-base*plan.installmentCount:0);
   const overdue=actual.lateMode==='DUE_DATE'?dayInBrasilia(now)>due.toISOString().slice(0,10):dayInBrasilia(now)>=lateFrom.toISOString().slice(0,10);
   const paid=payment?.status==='PAID'||plan.status==='QUITADO';
-  const status=paid?'PAID':payment?.status==='OVERDUE'||overdue?'OVERDUE':'PENDING';
+  const sent=payment?.status==='SENT';
+  const status=paid?'PAID':sent?'SENT':payment?.status==='OVERDUE'||overdue?'OVERDUE':'PENDING';
   return {number,period:period.toISOString(),amount:decimalMoney(amount),dueDate:due.toISOString().slice(0,10),status,paidOn:payment?.paidOn?new Date(payment.paidOn).toISOString().slice(0,10):null,paidAmount:payment?.paidAmount===null||payment?.paidAmount===undefined?null:String(payment.paidAmount),note:payment?.note||'',updatedBy:payment?.updatedBy||null,editable:period.getTime()<=latestOpenPeriod(now).getTime(),settledInPlan:plan.status==='QUITADO'&&!payment?.paidOn};
 }
 export function planOverview(plan:any,payments:any[],rules:InstallmentRules,now=new Date()){
@@ -33,7 +34,10 @@ export function planOverview(plan:any,payments:any[],rules:InstallmentRules,now=
   return {schedule,paid,overdue,pending:schedule.length-paid-overdue,effectiveStatus};
 }
 export function companySituation(plans:any[],period:Date):{status:string;label:string;count:number} {
-  const current=plans.flatMap(plan=>plan.schedule.filter((item:any)=>new Date(item.period).getTime()===period.getTime()));
+  const current=plans.flatMap(plan=>plan.schedule.filter((item:any)=>{
+    const d=new Date(item.dueDate);
+    return d.getUTCFullYear()===period.getUTCFullYear()&&d.getUTCMonth()===period.getUTCMonth();
+  }));
   if(!plans.length)return {status:'NA',label:'N/A',count:0};
   const previousLate=plans.flatMap(plan=>plan.schedule).filter((item:any)=>new Date(item.period)<period&&item.status==='OVERDUE').length;
   if(previousLate)return {status:'OVERDUE',label:'Atrasos anteriores',count:current.length};
@@ -41,5 +45,8 @@ export function companySituation(plans:any[],period:Date):{status:string;label:s
   if(late)return {status:'OVERDUE',label:`Atrasado${late>1?` (${late})`:''}`,count:current.length};
   if(!current.length)return {status:'NO_INSTALLMENT',label:'Sem parcela no mês',count:0};
   const pending=current.filter((item:any)=>item.status==='PENDING').length;
-  return pending?{status:'PENDING',label:`Pendente${pending>1?` (${pending})`:''}`,count:current.length}:{status:'PAID',label:'Pago',count:current.length};
+  const sent=current.filter((item:any)=>item.status==='SENT').length;
+  if(pending)return {status:'PENDING',label:`Pendente${pending>1?` (${pending})`:''}`,count:current.length};
+  if(sent)return {status:'SENT',label:`Enviado${sent>1?` (${sent})`:''}`,count:current.length};
+  return {status:'PAID',label:'Pago',count:current.length};
 }
