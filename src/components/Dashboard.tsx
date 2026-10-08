@@ -19,6 +19,7 @@ import {
 } from 'lucide-react';
 import './Dashboard.css';
 import './Progress.css';
+import './Closings.css';
 import { Sidebar } from './Sidebar';
 import { DashboardSkeleton, LoadingSpinner } from './LoadingSkeleton';
 import type { CurrentUser } from '../types/auth';
@@ -381,57 +382,58 @@ export function Dashboard({ currentView, onNavigate, currentUser, onLogout }: Da
                 })}
               </div>
 
-              {/* Tabela de Empresas do Regime Selecionado */}
+              {/* Modal de Empresas do Regime Selecionado */}
               {selectedRegime && (
-                <div className="regime-companies-panel" id="regime-table-section">
-                  <div className="regime-panel-header">
-                    <div className="regime-panel-title">
-                      <div className="regime-badge-icon">
-                        <Building2 size={20} />
+                <div className="closing-modal-backdrop" onClick={() => setSelectedRegime(null)}>
+                  <div className="closing-modal-content dashboard-regime-modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '900px', width: '90%' }}>
+                    <div className="closing-modal-header">
+                      <div className="closing-modal-title purple">
+                        <Building2 size={22} />
+                        {selectedRegimeMeta?.name || selectedRegime}
                       </div>
-                      <div>
-                        <h2>{selectedRegimeMeta?.name || selectedRegime}</h2>
-                        <span className="regime-panel-count">
-                          {filteredCompanies.length} {filteredCompanies.length === 1 ? 'empresa encontrada' : 'empresas encontradas'}
-                        </span>
-                      </div>
-                    </div>
-
-                    <div className="regime-panel-actions">
-                      <div className="regime-search-box">
-                        <Search size={16} />
-                        <input 
-                          type="text" 
-                          placeholder="Buscar por nome ou CNPJ..."
-                          value={searchFilter}
-                          onChange={(e) => setSearchFilter(e.target.value)}
-                          autoFocus
-                        />
-                        {searchFilter && (
-                          <button className="clear-search-btn" onClick={() => setSearchFilter('')}>
-                            <X size={14} />
-                          </button>
-                        )}
-                      </div>
-
                       <button 
-                        className="close-panel-btn" 
+                        className="closing-modal-close-btn" 
                         onClick={() => setSelectedRegime(null)}
                         title="Fechar visualização de empresas"
                       >
-                        <X size={18} />
-                        <span>Fechar</span>
+                        <X size={20} />
                       </button>
                     </div>
-                  </div>
 
-                  <div className="regime-table-wrapper">
-                    {filteredCompanies.length === 0 ? (
-                      <div className="regime-empty-state">
-                        <AlertCircle size={36} />
-                        <p>Nenhuma empresa encontrada para o filtro informado.</p>
+                    <div className="closing-modal-body" style={{ padding: '0 0 1.5rem 0' }}>
+                      <div className="regime-panel-header" style={{ padding: '1rem 1.5rem', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+                        <div className="regime-panel-title">
+                          <span className="regime-panel-count" style={{ fontSize: '0.9rem', color: '#94a3b8' }}>
+                            {filteredCompanies.length} {filteredCompanies.length === 1 ? 'empresa encontrada' : 'empresas encontradas'}
+                          </span>
+                        </div>
+
+                        <div className="regime-panel-actions">
+                          <div className="regime-search-box">
+                            <Search size={16} />
+                            <input 
+                              type="text" 
+                              placeholder="Buscar por nome ou CNPJ..."
+                              value={searchFilter}
+                              onChange={(e) => setSearchFilter(e.target.value)}
+                              autoFocus
+                            />
+                            {searchFilter && (
+                              <button className="clear-search-btn" onClick={() => setSearchFilter('')}>
+                                <X size={14} />
+                              </button>
+                            )}
+                          </div>
+                        </div>
                       </div>
-                    ) : (
+
+                      <div className="regime-table-wrapper" style={{ padding: '0 1.5rem' }}>
+                        {filteredCompanies.length === 0 ? (
+                          <div className="regime-empty-state">
+                            <AlertCircle size={36} />
+                            <p>Nenhuma empresa encontrada para o filtro informado.</p>
+                          </div>
+                        ) : (
                       <table className="regime-companies-table">
                         <thead>
                           <tr>
@@ -495,7 +497,9 @@ export function Dashboard({ currentView, onNavigate, currentUser, onLogout }: Da
                     )}
                   </div>
                 </div>
-              )}
+              </div>
+            </div>
+          )}
 
               {/* Dashboard Total Summary */}
               <div className="dashboard-summary">
