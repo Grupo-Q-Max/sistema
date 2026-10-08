@@ -3,6 +3,7 @@ import {registerCompanyQuality} from './companyQuality';
 import {registerCushman} from './cushman';
 import {registerAnalytics} from './analytics';
 import {registerDeploy} from './deploy';
+import {registerAutomation} from './automation';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {externalCompaniesExcluded} from '../src/config/installmentCompanies';
@@ -81,6 +82,7 @@ registerInstallments(app,prisma);
 registerCompanyQuality(app,prisma,decryptPassword);
 registerAnalytics(app,prisma);
 registerDeploy(app);
+registerAutomation(app,prisma);
 
 const ALL_SECTORS = ['CONTABIL', 'FISCAL', 'PARCELAMENTO', 'DP', 'CUSHMAN'];
 const ALL_SCREENS = [
@@ -711,7 +713,27 @@ app.get('/api/dashboard', async (req, res) => {
     // mesmo quando o legado nao informou a data de inicio da obrigacao.
     // O mes da saida participa somente quando a empresa tem obrigacoes nele.
     // O fechamento CONTABIL anual nao comprova participacao em todos os meses.
-    const activeWhere = {
+    const userId = req.query.userId as string | undefined;
+    let userFilter: any = {};
+    if (userId) {
+      const user = await prisma.user.findUnique({
+        where: { id: userId },
+        include: { companyAccess: true }
+      });
+      if (user && user.role !== 'ADMIN' && user.role !== 'SOCIO') {
+        if (['FISCAL', 'DP', 'CONTABIL'].includes(user.role)) {
+          userFilter = { responsibles: { some: { userId } } };
+        } else if (user.companyScope === 'CUSTOM') {
+          userFilter = { id: { in: user.companyAccess.map((a: any) => a.companyId) } };
+        } else if (user.companyScope === 'ALL') {
+          userFilter = {};
+        } else {
+          userFilter = { responsibles: { some: { userId } } };
+        }
+      }
+    }
+
+    const activeWhere: any = {
       AND: [externalCompaniesExcluded, companyExitWhere(monthStart)],
       OR: [
         {
@@ -728,6 +750,10 @@ app.get('/api/dashboard', async (req, res) => {
         },
       ],
     };
+
+    if (Object.keys(userFilter).length > 0) {
+      activeWhere.AND.push(userFilter);
+    }
 
     const [totalCompanies, regimesGroup, companies, closings, allColumns] = await Promise.all([
       prisma.company.count({ where: activeWhere }),

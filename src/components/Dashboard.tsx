@@ -173,7 +173,7 @@ export function Dashboard({ currentView, onNavigate, currentUser, onLogout }: Da
 
   const fetchStats = (year: number, month: number) => {
     setLoading(true);
-    fetch(`${API}/api/dashboard?year=${year}&month=${month + 1}`)
+    fetch(`${API}/api/dashboard?year=${year}&month=${month + 1}&userId=${currentUser?.id || ''}`)
       .then(res => res.json())
       .then(data => {
         if (data.error) {

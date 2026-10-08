@@ -51,9 +51,31 @@ export function registerAnalytics(app: any, prisma: any) {
       const rangeStart = periods[0];
       const rangeEnd = monthStartUTC(lastY, lastM + 1);
 
+      const userId = req.query.userId;
+      let userFilter: any = {};
+      if (userId) {
+        const user = await prisma.user.findUnique({ where: { id: userId }, include: { companyAccess: true } });
+        if (user && user.role !== 'ADMIN' && user.role !== 'SOCIO') {
+          if (['FISCAL', 'DP', 'CONTABIL'].includes(user.role)) {
+            userFilter = { responsibles: { some: { userId } } };
+          } else if (user.companyScope === 'CUSTOM') {
+            userFilter = { id: { in: user.companyAccess.map((a: any) => a.companyId) } };
+          } else if (user.companyScope === 'ALL') {
+            userFilter = {};
+          } else {
+            userFilter = { responsibles: { some: { userId } } };
+          }
+        }
+      }
+
+      const whereClause: any = { AND: [externalCompaniesExcluded] };
+      if (Object.keys(userFilter).length > 0) {
+        whereClause.AND.push(userFilter);
+      }
+
       const [companies, closings, plans, activeUsersCount, formerUsersCount] = await Promise.all([
         prisma.company.findMany({
-          where: externalCompaniesExcluded,
+          where: whereClause,
           select: {
             id: true, code: true, name: true, taxRegime: true, city: true, groupName: true, companyType: true,
             deliveryMethod: true, activeSectors: true, obligationStartDate: true, exitDate: true, exitMonthHasObligations: true,

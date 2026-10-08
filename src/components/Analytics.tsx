@@ -151,7 +151,7 @@ export function Analytics({ currentView, onNavigate, currentUser, onLogout }: An
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch(`${API}/api/analytics?months=${m}`);
+      const res = await fetch(`${API}/api/analytics?months=${m}&userId=${currentUser?.id || ''}`);
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || 'Falha ao carregar');
       setData(json);
@@ -160,7 +160,7 @@ export function Analytics({ currentView, onNavigate, currentUser, onLogout }: An
       setCompareA(prev.period);
       setCompareB(last.period);
       const [mm, yy] = String(json.referencePeriod).split('/');
-      fetch(`${API}/api/dashboard?year=${yy}&month=${Number(mm)}`)
+      fetch(`${API}/api/dashboard?year=${yy}&month=${Number(mm)}&userId=${currentUser?.id || ''}`)
         .then(r => r.json()).then(d => setProgress(Array.isArray(d.progress) ? d.progress : [])).catch(() => setProgress([]));
     } catch (e: any) {
       setError(e.message || 'Servidor offline ou inacessível');

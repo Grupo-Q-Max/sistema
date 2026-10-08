@@ -90,7 +90,7 @@ export function Sidebar({ currentView, onNavigate, currentUser, onLogout }: Side
     void refresh();const timer=window.setInterval(()=>void refresh(),60000);
     return()=>{controller.abort();window.clearInterval(timer);};
   },[isPrivileged,currentUser?.sessionToken,currentView]);
-  const showDashboard = canAccessScreen('dashboard');
+  const showDashboard = true; // Exibe para todos, pois os dados são filtrados no backend
   const showClosings = canAccessScreen('closings');
   const closingItems = [
     {view:'closings',label:'Fiscal',sector:'FISCAL' as const,Icon:FileCheck},
