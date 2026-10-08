@@ -27,6 +27,15 @@ function App() {
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
+  const getDefaultView = (user: CurrentUser) => {
+    if (user.role === 'ADMIN' || user.role === 'SOCIO') return 'dashboard';
+    if (hasSectorAccess(user, 'FISCAL')) return 'closings';
+    if (hasSectorAccess(user, 'DP')) return 'closings-dp';
+    if (hasSectorAccess(user, 'CONTABIL')) return 'closings-accounting';
+    if (hasSectorAccess(user, 'CUSHMAN')) return 'closings-cushman';
+    return 'companies';
+  };
+
   const handleNavigate = (view: string) => setCurrentView(view === 'closings' && !hasSectorAccess(currentUser, 'FISCAL') && hasSectorAccess(currentUser, 'DP') ? 'closings-dp' : view==='closings'&&!hasSectorAccess(currentUser,'FISCAL')&&hasSectorAccess(currentUser,'CONTABIL')?'closings-accounting':view==='closings'&&!hasSectorAccess(currentUser,'FISCAL')&&hasSectorAccess(currentUser,'CUSHMAN')?'closings-cushman':view);
 
   // Restaura sessão se existir
@@ -36,7 +45,7 @@ function App() {
       try {
         const user = JSON.parse(saved);
         setCurrentUser(user);
-        setCurrentView('dashboard');
+        setCurrentView(getDefaultView(user));
       } catch {
         localStorage.removeItem('fechamento_user');
       }
@@ -66,7 +75,7 @@ function App() {
 
       setCurrentUser(data);
       localStorage.setItem('fechamento_user', JSON.stringify(data));
-      setCurrentView('dashboard');
+      setCurrentView(getDefaultView(data));
     } catch (err) {
       console.error(err);
       setErrorMsg('Servidor offline ou inacessível');
