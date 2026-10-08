@@ -50,8 +50,10 @@ export function AccountingClosings({currentView,onNavigate,currentUser,onLogout}
   useEffect(()=>{if(!copied)return;const timer=window.setTimeout(()=>setCopied(''),2500);return()=>window.clearTimeout(timer);},[copied]);
   useEffect(()=>{const table=tableScroll.current?.querySelector('table');if(!table)return;const update=()=>setScrollWidth(table.scrollWidth);update();const observer=new ResizeObserver(update);observer.observe(table);return()=>observer.disconnect();},[loading,columns]);
   const scopedRows=useMemo(()=>rows.filter(row=>{
-    if(!currentUser||['ADMIN','SOCIO'].includes(currentUser.role)||currentUser.companyScope==='ALL')return true;
+    if(!currentUser||['ADMIN','SOCIO'].includes(currentUser.role))return true;
+    if(['FISCAL','DP','CONTABIL'].includes(currentUser.role)) return row.company.responsibles?.some((entry:any)=>entry.userId===currentUser.id&&(entry.sector==='CONTABIL'||!entry.sector));
     if(currentUser.companyScope==='CUSTOM')return currentUser.companyAccess?.some(entry=>entry.companyId===row.company.id);
+    if(currentUser.companyScope==='ALL')return true;
     return row.company.responsibles?.some((entry:any)=>entry.userId===currentUser.id&&(entry.sector==='CONTABIL'||!entry.sector));
   }),[rows,currentUser]);
   const deferredSearch = useDeferredValue(search);

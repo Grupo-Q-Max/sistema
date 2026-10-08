@@ -111,8 +111,10 @@ export function PayrollClosings({currentView,onNavigate,currentUser,onLogout}:Pr
     const observer=new ResizeObserver(measure);observer.observe(table);return()=>observer.disconnect();
   },[loading,columns]);
   const scopedRows=useMemo(()=>rows.filter(row=>{
-    if(!currentUser||currentUser.role==='ADMIN'||currentUser.role==='SOCIO'||currentUser.companyScope==='ALL')return true;
+    if(!currentUser||currentUser.role==='ADMIN'||currentUser.role==='SOCIO')return true;
+    if(['FISCAL','DP','CONTABIL'].includes(currentUser.role)) return row.company.responsibles?.some((r:any)=>r.userId===currentUser.id&&(r.sector==='DP'||r.sector===null));
     if(currentUser.companyScope==='CUSTOM')return currentUser.companyAccess?.some(a=>a.companyId===row.company.id);
+    if(currentUser.companyScope==='ALL')return true;
     return row.company.responsibles?.some((r:any)=>r.userId===currentUser.id&&(r.sector==='DP'||r.sector===null));
   }),[rows,currentUser]);
   const getResponsible=(company:any)=>company.responsibles?.find((r:any)=>r.sector==='DP')||company.responsibles?.find((r:any)=>!r.sector);

@@ -1,5 +1,5 @@
-import {AllInstallmentsModal} from './AllInstallmentsModal';
-import {ClosingProgressDetails} from './ClosingProgressDetails';
+import { AllInstallmentsModal } from './AllInstallmentsModal';
+import { ClosingProgressDetails } from './ClosingProgressDetails';
 import { InstallmentCompanyPicker } from './InstallmentCompanyPicker';
 import { InstallmentsModal } from './InstallmentsModal';
 import { installmentAccess, canCreateInstallment, installmentHeaders } from '../config/installments';
@@ -60,31 +60,31 @@ function getRegimeClass(regime?: string | null) {
 // Utilitário para calcular status e dias restantes de vencimento do certificado digital
 
 export function Closings({ currentView, onNavigate, currentUser, onLogout }: ClosingsProps) {
-  const [progressOpen,setProgressOpen]=useState(false);
+  const [progressOpen, setProgressOpen] = useState(false);
   // Popover de filtro do cabeçalho aberto
   const [openHeaderFilter, setOpenHeaderFilter] = useState<string | null>(null);
 
   // Competência (mês/ano)
   const latestPeriod = useCompetenceCalendar();
   const [selectedYear, setSelectedYear] = useState(() => latestOpenPeriod().getUTCFullYear());
-  const [selectedMonth, setSelectedMonth] = useState(() => latestOpenPeriod().getUTCMonth()+1);
-  const canGoNext = Date.UTC(selectedYear,selectedMonth-1,1) < latestPeriod.getTime();
-  const [calendarError,setCalendarError]=useState('');
-  const [installmentCompany,setInstallmentCompany]=useState<any|null>(null);
-  const [installmentCreate,setInstallmentCreate]=useState(false);
-  const [allInstallmentsOpen,setAllInstallmentsOpen]=useState(false);
-  const [installmentFocus,setInstallmentFocus]=useState<{id:string;action:'VIEW'|'EDIT'}|null>(null);
-  const [chooseInstallmentCompany,setChooseInstallmentCompany]=useState(false);
-  const [installmentFilter,setInstallmentFilter]=useState('ALL');
-  const [installmentSummaries,setInstallmentSummaries]=useState<Record<string,any>>({});
-  const [installmentError,setInstallmentError]=useState('');
-  const viewInstallments=installmentAccess(currentUser);
-  const canEditFiscal=hasSectorAccess(currentUser,'FISCAL',true);
-  async function loadInstallmentSummaries(companies:any[],requestId=fetchSequence.current){
-    if(!viewInstallments)return;
+  const [selectedMonth, setSelectedMonth] = useState(() => latestOpenPeriod().getUTCMonth() + 1);
+  const canGoNext = Date.UTC(selectedYear, selectedMonth - 1, 1) < latestPeriod.getTime();
+  const [calendarError, setCalendarError] = useState('');
+  const [installmentCompany, setInstallmentCompany] = useState<any | null>(null);
+  const [installmentCreate, setInstallmentCreate] = useState(false);
+  const [allInstallmentsOpen, setAllInstallmentsOpen] = useState(false);
+  const [installmentFocus, setInstallmentFocus] = useState<{ id: string; action: 'VIEW' | 'EDIT' } | null>(null);
+  const [chooseInstallmentCompany, setChooseInstallmentCompany] = useState(false);
+  const [installmentFilter, setInstallmentFilter] = useState('ALL');
+  const [installmentSummaries, setInstallmentSummaries] = useState<Record<string, any>>({});
+  const [installmentError, setInstallmentError] = useState('');
+  const viewInstallments = installmentAccess(currentUser);
+  const canEditFiscal = hasSectorAccess(currentUser, 'FISCAL', true);
+  async function loadInstallmentSummaries(companies: any[], requestId = fetchSequence.current) {
+    if (!viewInstallments) return;
     setInstallmentError('');
-    try{const response=await fetch(`${API}/api/installments/summary?year=${selectedYear}&month=${selectedMonth}`,{method:'POST',headers:installmentHeaders(currentUser),body:JSON.stringify({companyIds:companies.map(row=>row.company.id)})});const data=await response.json();if(!response.ok)throw new Error(data.error||'Não foi possível consultar parcelamentos.');if(requestId===fetchSequence.current)setInstallmentSummaries(data.summaries||{});}
-    catch(cause){if(requestId===fetchSequence.current)setInstallmentError(cause instanceof Error?cause.message:'Erro nos parcelamentos.');}
+    try { const response = await fetch(`${API}/api/installments/summary?year=${selectedYear}&month=${selectedMonth}`, { method: 'POST', headers: installmentHeaders(currentUser), body: JSON.stringify({ companyIds: companies.map(row => row.company.id) }) }); const data = await response.json(); if (!response.ok) throw new Error(data.error || 'Não foi possível consultar parcelamentos.'); if (requestId === fetchSequence.current) setInstallmentSummaries(data.summaries || {}); }
+    catch (cause) { if (requestId === fetchSequence.current) setInstallmentError(cause instanceof Error ? cause.message : 'Erro nos parcelamentos.'); }
   }
 
 
@@ -92,13 +92,6 @@ export function Closings({ currentView, onNavigate, currentUser, onLogout }: Clo
   const [loading, setLoading] = useState(true);
   const [rows, setRows] = useState<any[]>([]);
   const [fiscalUsers, setFiscalUsers] = useState<any[]>([]);
-  const [summary, setSummary] = useState({
-    total: 0,
-    completed: 0,
-    inProgress: 0,
-    pending: 0,
-    overallPercent: 0,
-  });
 
   // Filtros
   const [searchTerm, setSearchTerm] = useState('');
@@ -158,17 +151,13 @@ export function Closings({ currentView, onNavigate, currentUser, onLogout }: Clo
         const data = await res.json();
         if (requestId !== fetchSequence.current) return;
         setRows(data.rows || []);
-        if(viewInstallments)void loadInstallmentSummaries(data.rows||[],requestId);
+        if (viewInstallments) void loadInstallmentSummaries(data.rows || [], requestId);
         if (Array.isArray(data.popupColumns)) setPopupColumns(data.popupColumns);
         setFiscalUsers(data.fiscalUsers || []);
-        if (data.summary) {
-          setSummary(data.summary);
-        }
       } else {
         const data = await res.json();
         if (requestId !== fetchSequence.current) return;
-        setRows([]);setCalendarError(data.error || 'Não foi possível carregar esta competência.');
-        setSummary({total:0,completed:0,inProgress:0,pending:0,overallPercent:0});
+        setRows([]); setCalendarError(data.error || 'Não foi possível carregar esta competência.');
       }
     } catch (err) {
       setCalendarError('Não foi possível conectar à API.');
@@ -179,17 +168,17 @@ export function Closings({ currentView, onNavigate, currentUser, onLogout }: Clo
   };
 
   useEffect(() => {
-    closeAllModals();setProgressOpen(false);
-    setInstallmentCompany(null);setInstallmentSummaries({});setAllInstallmentsOpen(false);setInstallmentFocus(null);
+    closeAllModals(); setProgressOpen(false);
+    setInstallmentCompany(null); setInstallmentSummaries({}); setAllInstallmentsOpen(false); setInstallmentFocus(null);
     fetchClosings();
     return () => { fetchSequence.current++; };
   }, [selectedYear, selectedMonth]);
 
-  useEffect(()=>{
-    if(!viewInstallments||!rows.length||installmentCompany)return;
-    const timer=window.setInterval(()=>{void loadInstallmentSummaries(rows);},60_000);
-    return()=>window.clearInterval(timer);
-  },[viewInstallments,rows,selectedYear,selectedMonth,installmentCompany]);
+  useEffect(() => {
+    if (!viewInstallments || !rows.length || installmentCompany) return;
+    const timer = window.setInterval(() => { void loadInstallmentSummaries(rows); }, 60_000);
+    return () => window.clearInterval(timer);
+  }, [viewInstallments, rows, selectedYear, selectedMonth, installmentCompany]);
 
   // Fecha popover de filtro ao clicar fora ou pressionar ESC
   useEffect(() => {
@@ -237,7 +226,7 @@ export function Closings({ currentView, onNavigate, currentUser, onLogout }: Clo
 
   // Alterar responsável direto na linha
   const handleResponsibleChange = async (companyId: string, userId: string) => {
-    if(!canEditFiscal)return;
+    if (!canEditFiscal) return;
     try {
       const res = await fetch(`${API}/api/companies/${companyId}/responsible`, {
         method: 'PUT',
@@ -300,7 +289,7 @@ export function Closings({ currentView, onNavigate, currentUser, onLogout }: Clo
 
   // Salva coluna via API
   const saveColumnValue = async (closingId: string, colKey: string, payload: any) => {
-    if(!canEditFiscal)return;
+    if (!canEditFiscal) return;
     setSavingAction(true);
     try {
       const res = await fetch(`${API}/api/closings/${closingId}/column`, {
@@ -459,7 +448,7 @@ export function Closings({ currentView, onNavigate, currentUser, onLogout }: Clo
   };
 
   const handleSaveNotes = async () => {
-    if(!canEditFiscal)return;
+    if (!canEditFiscal) return;
     if (!activeModal) return;
     try {
       const res = await fetch(`${API}/api/companies/${activeModal.row.company.id}/notes`, {
@@ -509,9 +498,38 @@ export function Closings({ currentView, onNavigate, currentUser, onLogout }: Clo
 
   // Filtros e Ordenação aplicados na lista
   const deferredSearchTerm = useDeferredValue(searchTerm);
-  
+
+  const scopedRows = useMemo(() => rows.filter(row => {
+    if (!currentUser || ['ADMIN', 'SOCIO'].includes(currentUser.role)) return true;
+    if (['FISCAL', 'DP', 'CONTABIL'].includes(currentUser.role)) return row.company.responsibles?.some((r: any) => r.userId === currentUser.id && (r.sector === 'FISCAL' || r.sector === null));
+    if (currentUser.companyScope === 'CUSTOM') return currentUser.companyAccess?.some(a => a.companyId === row.company.id);
+    if (currentUser.companyScope === 'ALL') return true;
+    return row.company.responsibles?.some((r: any) => r.userId === currentUser.id && (r.sector === 'FISCAL' || r.sector === null));
+  }), [rows, currentUser]);
+
+  const summary = useMemo(() => {
+    const total = scopedRows.length;
+    let completed = 0;
+    let inProgress = 0;
+    let pending = 0;
+    let percentSum = 0;
+    for (const r of scopedRows) {
+      if (r.calculatedStatus === 'COMPLETED') completed++;
+      else if (r.calculatedStatus === 'IN_PROGRESS') inProgress++;
+      else pending++;
+      percentSum += r.progressPercent || 0;
+    }
+    return {
+      total,
+      completed,
+      inProgress,
+      pending,
+      overallPercent: total > 0 ? Math.round(percentSum / total) : 0
+    };
+  }, [scopedRows]);
+
   const filteredRows = useMemo(() => {
-    const list = rows.filter((r) => {
+    const list = scopedRows.filter((r) => {
       const c = r.company;
       const search = deferredSearchTerm.toLowerCase();
 
@@ -550,8 +568,8 @@ export function Closings({ currentView, onNavigate, currentUser, onLogout }: Clo
         }
       }
 
-      const situation=installmentSummaries[c.id];
-      const matchInstallment=!viewInstallments||installmentFilter==='ALL'||(installmentFilter==='HAS_PLAN'?situation&&situation.status!=='NA':situation?.status===installmentFilter);
+      const situation = installmentSummaries[c.id];
+      const matchInstallment = !viewInstallments || installmentFilter === 'ALL' || (installmentFilter === 'HAS_PLAN' ? situation && situation.status !== 'NA' : situation?.status === installmentFilter);
       return matchSearch && matchStatus && matchRegime && matchResponsible && matchInstallment;
     });
 
@@ -588,7 +606,7 @@ export function Closings({ currentView, onNavigate, currentUser, onLogout }: Clo
     const readOnly = !canEditFiscal || definition?.isEditable === false;
     if (definition?.inputType === 'TEXT') {
       const text = typeof val === 'string' || typeof val === 'number' ? String(val) : '';
-      return <input className="fiscal-column-text" aria-label={definition.name} key={`${row.closingId}_${colKey}_${text}`} type="text" defaultValue={text} disabled={readOnly || savingAction} onBlur={e => { if (e.target.value !== text) saveColumnValue(row.closingId, colKey, e.target.value); }} onKeyDown={e => { if(e.key === 'Enter') e.currentTarget.blur(); }} />;
+      return <input className="fiscal-column-text" aria-label={definition.name} key={`${row.closingId}_${colKey}_${text}`} type="text" defaultValue={text} disabled={readOnly || savingAction} onBlur={e => { if (e.target.value !== text) saveColumnValue(row.closingId, colKey, e.target.value); }} onKeyDown={e => { if (e.key === 'Enter') e.currentTarget.blur(); }} />;
     }
     if (definition?.inputType === 'CHECKBOX') {
       return <input type="checkbox" aria-label={definition.name} checked={val === true} disabled={readOnly || savingAction} onChange={e => saveColumnValue(row.closingId, colKey, e.target.checked)} />;
@@ -710,9 +728,9 @@ export function Closings({ currentView, onNavigate, currentUser, onLogout }: Clo
             </div>
           </div>
 
-          <p style={{color:'#94a3b8',fontSize:'0.78rem'}}>A competência do mês anterior abre automaticamente na virada do mês, no horário de Brasília.</p>
-          {installmentError&&<p role="alert" style={{color:'#fda4af',fontSize:'.8rem'}}>Parcelamentos: {installmentError}</p>}
-          {calendarError && <p role="alert" style={{color:'#fda4af'}}>{calendarError}</p>}
+          <p style={{ color: '#94a3b8', fontSize: '0.78rem' }}>A competência do mês anterior abre automaticamente na virada do mês, no horário de Brasília.</p>
+          {installmentError && <p role="alert" style={{ color: '#fda4af', fontSize: '.8rem' }}>Parcelamentos: {installmentError}</p>}
+          {calendarError && <p role="alert" style={{ color: '#fda4af' }}>{calendarError}</p>}
           {/* Cards de Métricas */}
           <div className="closings-stats-grid">
             <div className="closing-stat-card">
@@ -755,7 +773,7 @@ export function Closings({ currentView, onNavigate, currentUser, onLogout }: Clo
               </div>
             </div>
 
-            <div className="closing-stat-card progress-clickable" role="button" tabIndex={0} aria-expanded={progressOpen} onClick={()=>setProgressOpen(value=>!value)} onKeyDown={event=>{if(['Enter',' '].includes(event.key)){event.preventDefault();setProgressOpen(value=>!value);}}}>
+            <div className="closing-stat-card progress-clickable" role="button" tabIndex={0} aria-expanded={progressOpen} onClick={() => setProgressOpen(value => !value)} onKeyDown={event => { if (['Enter', ' '].includes(event.key)) { event.preventDefault(); setProgressOpen(value => !value); } }}>
               <div className="closing-stat-icon percent">
                 <Sparkles size={22} />
               </div>
@@ -765,7 +783,7 @@ export function Closings({ currentView, onNavigate, currentUser, onLogout }: Clo
               </div>
             </div>
 
-            <div className="closing-stat-card progress-clickable" role="button" tabIndex={0} aria-expanded={progressOpen} onClick={()=>setProgressOpen(value=>!value)} onKeyDown={event=>{if(['Enter',' '].includes(event.key)){event.preventDefault();setProgressOpen(value=>!value);}}}>
+            <div className="closing-stat-card progress-clickable" role="button" tabIndex={0} aria-expanded={progressOpen} onClick={() => setProgressOpen(value => !value)} onKeyDown={event => { if (['Enter', ' '].includes(event.key)) { event.preventDefault(); setProgressOpen(value => !value); } }}>
               <div className="closing-stat-icon percent">
                 <Building2 size={22} />
               </div>
@@ -776,7 +794,7 @@ export function Closings({ currentView, onNavigate, currentUser, onLogout }: Clo
             </div>
           </div>
 
-          <ClosingProgressDetails rows={rows} columns={popupColumns} sector="FISCAL" period={new Date(Date.UTC(selectedYear,selectedMonth-1,1))} latest={latestPeriod} open={progressOpen} onToggle={()=>setProgressOpen(value=>!value)} loading={loading}/>
+          <ClosingProgressDetails rows={rows} columns={popupColumns} sector="FISCAL" period={new Date(Date.UTC(selectedYear, selectedMonth - 1, 1))} latest={latestPeriod} open={progressOpen} onToggle={() => setProgressOpen(value => !value)} loading={loading} />
           {/* Barra de Filtros e Busca */}
           <div className="closings-toolbar">
             <div className="closings-search-box">
@@ -790,10 +808,10 @@ export function Closings({ currentView, onNavigate, currentUser, onLogout }: Clo
             </div>
 
             <div className="closings-filters">
-              {viewInstallments&&<select className="closings-select" aria-label="Filtrar parcelamentos" value={installmentFilter} onChange={event=>setInstallmentFilter(event.target.value)}>{[{value:'ALL',label:'Parcelamentos: Todos'},{value:'HAS_PLAN',label:'Com parcelamento'},{value:'PENDING',label:'Pendente'},{value:'OVERDUE',label:'Atrasado / atrasos anteriores'},{value:'PAID',label:'Pago no mês'},{value:'NO_INSTALLMENT',label:'Sem parcela no mês'},{value:'NA',label:'N/A — sem parcelamento'}].map(item=><option key={item.value} value={item.value}>{item.label}</option>)}</select>}
-              {viewInstallments&&<button className="btn-secondary-light fiscal-create-installment" onClick={()=>{setInstallmentCreate(false);setInstallmentFocus(null);setAllInstallmentsOpen(true);}}>Consultar parcelamentos</button>}
-              {canCreateInstallment(currentUser)&&<button className="btn-primary-gradient fiscal-create-installment" onClick={()=>{setInstallmentCreate(true);setInstallmentFocus(null);setChooseInstallmentCompany(true);}}><Plus size={17}/>Criar parcelamento</button>}
-              
+              {viewInstallments && <select className="closings-select" aria-label="Filtrar parcelamentos" value={installmentFilter} onChange={event => setInstallmentFilter(event.target.value)}>{[{ value: 'ALL', label: 'Parcelamentos: Todos' }, { value: 'HAS_PLAN', label: 'Com parcelamento' }, { value: 'PENDING', label: 'Pendente' }, { value: 'OVERDUE', label: 'Atrasado / atrasos anteriores' }, { value: 'PAID', label: 'Pago no mês' }, { value: 'NO_INSTALLMENT', label: 'Sem parcela no mês' }, { value: 'NA', label: 'N/A — sem parcelamento' }].map(item => <option key={item.value} value={item.value}>{item.label}</option>)}</select>}
+              {viewInstallments && <button className="btn-secondary-light fiscal-create-installment" onClick={() => { setInstallmentCreate(false); setInstallmentFocus(null); setAllInstallmentsOpen(true); }}>Consultar parcelamentos</button>}
+              {canCreateInstallment(currentUser) && <button className="btn-primary-gradient fiscal-create-installment" onClick={() => { setInstallmentCreate(true); setInstallmentFocus(null); setChooseInstallmentCompany(true); }}><Plus size={17} />Criar parcelamento</button>}
+
               <button className="btn-secondary-light" onClick={handleExport} title="Exportar para Excel (CSV)">
                 <FileSpreadsheet size={16} />
                 Exportar
@@ -1020,7 +1038,7 @@ export function Closings({ currentView, onNavigate, currentUser, onLogout }: Clo
 
                       <th>CNPJ</th>
                       <th>Observações</th>
-                      {viewInstallments&&<th style={{minWidth:'155px'}}><div className="th-header-cell"><span>Parcelamentos</span><div className="th-filter-wrapper"><button className={`th-filter-icon-btn ${installmentFilter!=='ALL'?'has-filter':''}`} title="Filtrar parcelamentos" aria-label="Filtrar coluna Parcelamentos" onClick={event=>{event.stopPropagation();setOpenHeaderFilter(openHeaderFilter==='installment-status'?null:'installment-status');}}><Filter size={12}/></button>{openHeaderFilter==='installment-status'&&<div className="th-filter-popover" onClick={event=>event.stopPropagation()}>{[{value:'ALL',label:'Parcelamentos: Todos'},{value:'HAS_PLAN',label:'Com parcelamento'},{value:'PENDING',label:'Pendente'},{value:'OVERDUE',label:'Atrasado / atrasos anteriores'},{value:'PAID',label:'Pago no mês'},{value:'NO_INSTALLMENT',label:'Sem parcela no mês'},{value:'NA',label:'N/A — sem parcelamento'}].map(item=><button key={item.value} className={`th-filter-popover-item ${installmentFilter===item.value?'active':''}`} onClick={()=>{setInstallmentFilter(item.value);setOpenHeaderFilter(null);}}><span>{item.label}</span>{installmentFilter===item.value&&<Check size={12}/>}</button>)}</div>}</div></div></th>}
+                      {viewInstallments && <th style={{ minWidth: '155px' }}><div className="th-header-cell"><span>Parcelamentos</span><div className="th-filter-wrapper"><button className={`th-filter-icon-btn ${installmentFilter !== 'ALL' ? 'has-filter' : ''}`} title="Filtrar parcelamentos" aria-label="Filtrar coluna Parcelamentos" onClick={event => { event.stopPropagation(); setOpenHeaderFilter(openHeaderFilter === 'installment-status' ? null : 'installment-status'); }}><Filter size={12} /></button>{openHeaderFilter === 'installment-status' && <div className="th-filter-popover" onClick={event => event.stopPropagation()}>{[{ value: 'ALL', label: 'Parcelamentos: Todos' }, { value: 'HAS_PLAN', label: 'Com parcelamento' }, { value: 'PENDING', label: 'Pendente' }, { value: 'OVERDUE', label: 'Atrasado / atrasos anteriores' }, { value: 'PAID', label: 'Pago no mês' }, { value: 'NO_INSTALLMENT', label: 'Sem parcela no mês' }, { value: 'NA', label: 'N/A — sem parcelamento' }].map(item => <button key={item.value} className={`th-filter-popover-item ${installmentFilter === item.value ? 'active' : ''}`} onClick={() => { setInstallmentFilter(item.value); setOpenHeaderFilter(null); }}><span>{item.label}</span>{installmentFilter === item.value && <Check size={12} />}</button>)}</div>}</div></div></th>}
 
                       {/* As 8 Obrigações Fiscais com Ícone de Filtro no Header */}
                       {popupColumns.map((column) => {
@@ -1074,13 +1092,13 @@ export function Closings({ currentView, onNavigate, currentUser, onLogout }: Clo
                           </th>
                         );
                       })}
-                      
+
                     </tr>
                   </thead>
                   <tbody>
                     {filteredRows.length === 0 ? (
                       <tr>
-                        <td colSpan={7 + popupColumns.length + (viewInstallments?1:0)} style={{ textAlign: 'center', padding: '40px', color: '#94a3b8' }}>
+                        <td colSpan={7 + popupColumns.length + (viewInstallments ? 1 : 0)} style={{ textAlign: 'center', padding: '40px', color: '#94a3b8' }}>
                           Nenhuma empresa encontrada com os filtros selecionados.
                         </td>
                       </tr>
@@ -1143,19 +1161,18 @@ export function Closings({ currentView, onNavigate, currentUser, onLogout }: Clo
                             {/* 4. Status Automatizado */}
                             <td>
                               <span
-                                className={`status-badge ${
-                                  r.calculatedStatus === 'COMPLETED'
+                                className={`status-badge ${r.calculatedStatus === 'COMPLETED'
                                     ? 'completed'
                                     : r.calculatedStatus === 'IN_PROGRESS'
-                                    ? 'in-progress'
-                                    : 'pending'
-                                }`}
+                                      ? 'in-progress'
+                                      : 'pending'
+                                  }`}
                               >
                                 {r.calculatedStatus === 'COMPLETED'
                                   ? 'Concluído'
                                   : r.calculatedStatus === 'IN_PROGRESS'
-                                  ? 'Em Andamento'
-                                  : 'Pendente'}
+                                    ? 'Em Andamento'
+                                    : 'Pendente'}
                               </span>
                             </td>
 
@@ -1203,11 +1220,11 @@ export function Closings({ currentView, onNavigate, currentUser, onLogout }: Clo
                               </button>
                             </td>
 
-                            {viewInstallments&&<td><div className="fiscal-installment-cell">{(()=>{const summary=installmentSummaries[c.id];const disabled=summary?.status==='NA'||!summary;return <button className={`obligation-btn ${summary?.status==='OVERDUE'?'pendencia':summary?.status==='PAID'?'ok-data':summary?.status==='NA'?'na':'pendente'}`} disabled={disabled} title={summary?.status==='NA'?'Empresa sem parcelamentos cadastrados':'Consultar todos os parcelamentos desta empresa'} onClick={()=>{setInstallmentCreate(false);setInstallmentFocus(null);setInstallmentCompany(c);}}>{summary?.label||(installmentError?'Indisponível':'Carregando...')}</button>;})()}</div></td>}
+                            {viewInstallments && <td><div className="fiscal-installment-cell">{(() => { const summary = installmentSummaries[c.id]; const disabled = summary?.status === 'NA' || !summary; return <button className={`obligation-btn ${summary?.status === 'OVERDUE' ? 'pendencia' : summary?.status === 'PAID' ? 'ok-data' : summary?.status === 'NA' ? 'na' : 'pendente'}`} disabled={disabled} title={summary?.status === 'NA' ? 'Empresa sem parcelamentos cadastrados' : 'Consultar todos os parcelamentos desta empresa'} onClick={() => { setInstallmentCreate(false); setInstallmentFocus(null); setInstallmentCompany(c); }}>{summary?.label || (installmentError ? 'Indisponível' : 'Carregando...')}</button>; })()}</div></td>}
 
                             {/* 8 Colunas de Obrigações Fiscais */}
                             {popupColumns.map(col => <td key={col.columnKey}>{renderObligationCell(r, col.columnKey)}</td>)}
-                            
+
                           </tr>
                         );
                       })
@@ -1223,10 +1240,10 @@ export function Closings({ currentView, onNavigate, currentUser, onLogout }: Clo
             MODAIS INTERATIVOS (REINF, IMPOSTOS, ISS, MIT, CARNÊ LEÃO, SPED, INFO)
             ========================================================================== */}
 
-        {allInstallmentsOpen&&<AllInstallmentsModal active={!installmentCompany} year={selectedYear} month={selectedMonth} currentUser={currentUser} onClose={()=>setAllInstallmentsOpen(false)} onSelect={(company,id,action)=>{setInstallmentCreate(false);setInstallmentFocus({id,action});setInstallmentCompany(company);}}/>}
-        {chooseInstallmentCompany&&<InstallmentCompanyPicker mode={installmentCreate?'create':'view'} currentUser={currentUser} onClose={()=>setChooseInstallmentCompany(false)} onSelect={company=>{setChooseInstallmentCompany(false);setInstallmentCompany(company);}}/>}
-        {installmentCompany&&<InstallmentsModal company={installmentCompany} year={selectedYear} month={selectedMonth} currentUser={currentUser} createInitially={installmentCreate} initialPlanId={installmentFocus?.id} initialAction={installmentFocus?.action} onClose={()=>{setInstallmentCompany(null);setInstallmentFocus(null);}} onChanged={()=>{void loadInstallmentSummaries(rows);}}/>}
-        {activeModal?.type === 'POPUP'  && (
+        {allInstallmentsOpen && <AllInstallmentsModal active={!installmentCompany} year={selectedYear} month={selectedMonth} currentUser={currentUser} onClose={() => setAllInstallmentsOpen(false)} onSelect={(company, id, action) => { setInstallmentCreate(false); setInstallmentFocus({ id, action }); setInstallmentCompany(company); }} />}
+        {chooseInstallmentCompany && <InstallmentCompanyPicker mode={installmentCreate ? 'create' : 'view'} currentUser={currentUser} onClose={() => setChooseInstallmentCompany(false)} onSelect={company => { setChooseInstallmentCompany(false); setInstallmentCompany(company); }} />}
+        {installmentCompany && <InstallmentsModal company={installmentCompany} year={selectedYear} month={selectedMonth} currentUser={currentUser} createInitially={installmentCreate} initialPlanId={installmentFocus?.id} initialAction={installmentFocus?.action} onClose={() => { setInstallmentCompany(null); setInstallmentFocus(null); }} onChanged={() => { void loadInstallmentSummaries(rows); }} />}
+        {activeModal?.type === 'POPUP' && (
           <div className="closing-modal-backdrop" onClick={closeAllModals}>
             <div className="closing-modal-content" onClick={e => e.stopPropagation()} style={{ maxWidth: activePopupConfig.fields.length ? '650px' : '440px' }}>
               <div className="closing-modal-header">
@@ -1241,7 +1258,7 @@ export function Closings({ currentView, onNavigate, currentUser, onLogout }: Clo
                     <label>{field.label}{field.required ? ' *' : ''}</label>
                     {field.type === 'TEXTAREA' ? <textarea rows={3} disabled={!canEditPopup || savingAction} value={popupForm[field.key] || ''} placeholder={field.placeholder} onChange={e => setPopupForm(prev => ({ ...prev, [field.key]: e.target.value }))} />
                       : field.type === 'SELECT' ? <select disabled={!canEditPopup || savingAction} value={popupForm[field.key] || ''} onChange={e => setPopupForm(prev => ({ ...prev, [field.key]: e.target.value }))}><option value="">Selecione...</option>{popupForm[field.key] && !field.options.includes(popupForm[field.key]) && <option value={popupForm[field.key]}>{popupForm[field.key]} (valor anterior)</option>}{field.options.map(option => <option key={option} value={option}>{option}</option>)}</select>
-                      : <input disabled={!canEditPopup || savingAction} type={field.type === 'NUMBER' ? 'number' : field.type === 'DATE' ? 'date' : 'text'} step={field.type === 'NUMBER' ? 'any' : undefined} value={popupForm[field.key] || ''} placeholder={field.placeholder} onChange={e => setPopupForm(prev => ({ ...prev, [field.key]: e.target.value }))} />}
+                        : <input disabled={!canEditPopup || savingAction} type={field.type === 'NUMBER' ? 'number' : field.type === 'DATE' ? 'date' : 'text'} step={field.type === 'NUMBER' ? 'any' : undefined} value={popupForm[field.key] || ''} placeholder={field.placeholder} onChange={e => setPopupForm(prev => ({ ...prev, [field.key]: e.target.value }))} />}
                   </div>)}
                 </div>
                 <div className={activePopupConfig.fields.length ? 'modal-actions-grid' : 'modal-actions-stack'}>
