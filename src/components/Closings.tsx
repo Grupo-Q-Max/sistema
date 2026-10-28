@@ -25,6 +25,7 @@ import {
   Calendar,
   CalendarPlus,
   Check,
+  CheckSquare,
   Sparkles,
   Info,
   Send,
@@ -34,13 +35,14 @@ import { API } from '../api';
 import { TableSkeleton, ButtonSpinner } from './LoadingSkeleton';
 import './Closings.css';
 import './PayrollClosings.css';
-import { CompanyDetailsModal, getCertificateStatus, formatCnpj, formatRegimeLabel } from './CompanyDetailsModal';
+import { CompanyDetailsModal, getCertificateStatus, formatCnpj, formatRegimeLabel, formatDateBr } from './CompanyDetailsModal';
 import { ManualCompetenceModal } from './ManualCompetenceModal';
 import { ClosingSectorTabs, hasSectorAccess } from './ClosingSectorTabs';
 import './FiscalPopup.css';
 import { visibilitySummary, isColumnComplete } from '../config/columnVisibility';
 import { FISCAL_POPUPS, effectivePopup, type PopupAction } from '../config/fiscalPopups';
 import { exportToCsv } from '../utils/exportCsv';
+import { compareCodes } from '../utils/codeSort';
 
 interface ClosingsProps {
   currentView: string;
@@ -134,6 +136,36 @@ export function Closings({ currentView, onNavigate, currentUser, onLogout }: Clo
 
   const [inputDateValue, setInputDateValue] = useState('');
   const [savingAction, setSavingAction] = useState(false);
+  const [multiSelectModal, setMultiSelectModal] = useState<{
+    row: any;
+    colKey: string;
+    definition: any;
+    selected: string[];
+  } | null>(null);
+
+  const handleOpenMultiSelectModal = (row: any, colKey: string, definition: any) => {
+    const rawVal = row.columnsData?.[colKey];
+    const initialSelected: string[] = Array.isArray(rawVal)
+      ? [...rawVal]
+      : typeof rawVal === 'string' && rawVal
+      ? rawVal.split(',').map((s: string) => s.trim())
+      : [];
+    setMultiSelectModal({
+      row,
+      colKey,
+      definition,
+      selected: initialSelected,
+    });
+  };
+
+  const toggleMultiSelectOption = (option: string) => {
+    if (!multiSelectModal) return;
+    const current = multiSelectModal.selected;
+    const updated = current.includes(option)
+      ? current.filter((o) => o !== option)
+      : [...current, option];
+    setMultiSelectModal({ ...multiSelectModal, selected: updated });
+  };
 
   const [popupColumns, setPopupColumns] = useState<any[]>(Object.entries(FISCAL_POPUPS).map(([columnKey, config]) => ({ columnKey, name: config.title.replace('Detalhes ', ''), isEditable: true, countsProgress: true })));
   const [popupForm, setPopupForm] = useState<Record<string, string>>({});
@@ -578,13 +610,14 @@ export function Closings({ currentView, onNavigate, currentUser, onLogout }: Clo
 
     // Ordenação
     list.sort((a, b) => {
+      if (sortConfig.key === 'code') {
+        return compareCodes(a.company.code, b.company.code, sortConfig.direction === 'asc');
+      }
+
       let valA: any = '';
       let valB: any = '';
 
-      if (sortConfig.key === 'code') {
-        valA = a.company.code || '';
-        valB = b.company.code || '';
-      } else if (sortConfig.key === 'name') {
+      if (sortConfig.key === 'name') {
         valA = a.company.name || '';
         valB = b.company.name || '';
       } else if (sortConfig.key === 'regime') {
@@ -614,6 +647,34 @@ export function Closings({ currentView, onNavigate, currentUser, onLogout }: Clo
     if (definition?.inputType === 'CHECKBOX') {
       return <input type="checkbox" aria-label={definition.name} checked={val === true} disabled={readOnly || savingAction} onChange={e => saveColumnValue(row.closingId, colKey, e.target.checked)} />;
     }
+    if (definition?.inputType === 'MULTISELECT') {
+      const selected: string[] = Array.isArray(val)
+        ? val
+        : typeof val === 'string' && val
+        ? val.split(',').map((s: string) => s.trim())
+        : [];
+      const count = selected.length;
+      return (
+        <button
+          type="button"
+          className={`obligation-btn ${count > 0 ? 'ok-data' : 'pendente'}`}
+          style={{
+            maxWidth: '180px',
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            whiteSpace: 'nowrap',
+            fontSize: '11px',
+            fontWeight: 600,
+            padding: '4px 8px',
+          }}
+          disabled={readOnly || savingAction}
+          onClick={() => handleOpenMultiSelectModal(row, colKey, definition)}
+          title={count > 0 ? selected.join(', ') : 'Clique para selecionar os tipos de NF'}
+        >
+          {count === 0 ? '+ Tipos NF' : (count <= 2 ? selected.join(', ') : `${selected.slice(0, 2).join(', ')} (+${count - 2})`)}
+        </button>
+      );
+    }
 
     if (!val) {
       return (
@@ -639,7 +700,7 @@ export function Closings({ currentView, onNavigate, currentUser, onLogout }: Clo
       text = val.sentWithApi ? 'S/ MOV (API)' : 'OK - S/ MOV';
     } else if (st === 'CONCLUIDO' || st === 'OK - DATA') {
       cls = 'ok-data';
-      text = val.completionDate || val.label || 'OK';
+      text = (val.completionDate ? formatDateBr(val.completionDate) : null) || val.label || 'OK';
       if (val.sentWithApi) text += ' (API)';
     } else if (st === 'PENDENCIA') {
       cls = 'pendencia';
@@ -682,6 +743,8 @@ export function Closings({ currentView, onNavigate, currentUser, onLogout }: Clo
           row[col.columnKey] = val || '';
         } else if (col.inputType === 'CHECKBOX') {
           row[col.columnKey] = val ? 'Sim' : 'Não';
+        } else if (col.inputType === 'MULTISELECT') {
+          row[col.columnKey] = Array.isArray(val) ? val.join(', ') : (val || '');
         } else {
           row[col.columnKey] = val?.label || val?.status || 'Pendente';
         }
@@ -1462,6 +1525,117 @@ export function Closings({ currentView, onNavigate, currentUser, onLogout }: Clo
             setSelectedMonth(newMonth);
           }}
         />
+
+        {multiSelectModal && (
+          <div className="closing-modal-backdrop" onClick={() => setMultiSelectModal(null)}>
+            <div className="closing-modal-content" style={{ maxWidth: '540px' }} onClick={(e) => e.stopPropagation()}>
+              <div className="closing-modal-header">
+                <div className="closing-modal-title">
+                  <CheckSquare size={20} />
+                  {multiSelectModal.definition?.name || 'Tipos de Nota Fiscal'}
+                </div>
+                <button className="closing-modal-close-btn" onClick={() => setMultiSelectModal(null)}>
+                  &times;
+                </button>
+              </div>
+              <div className="closing-modal-body">
+                <p style={{ fontSize: '0.85rem', color: '#64748b', marginBottom: '14px' }}>
+                  Empresa: <strong>{multiSelectModal.row.company.name}</strong>
+                  <br />
+                  <span style={{ fontSize: '0.8rem', color: '#94a3b8' }}>
+                    Selecione quais tipos de nota fiscal este cliente possui. As opções selecionadas replicam automaticamente para os próximos meses.
+                  </span>
+                </p>
+
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(210px, 1fr))', gap: '8px', marginBottom: '16px' }}>
+                  {(multiSelectModal.definition?.fieldConfig?.options || [
+                    'NFS Emitidas',
+                    'NFS Recebidas',
+                    'Entrada',
+                    'Saída',
+                    'CTE Saída',
+                    'CTE Entrada',
+                    'NFC-e'
+                  ]).map((opt: string) => {
+                    const isSelected = multiSelectModal.selected.includes(opt);
+                    return (
+                      <label
+                        key={opt}
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '10px',
+                          padding: '10px 12px',
+                          borderRadius: '8px',
+                          border: isSelected ? '1.5px solid #d90f81' : '1px solid #cbd5e1',
+                          background: isSelected ? 'rgba(217, 15, 129, 0.06)' : '#ffffff',
+                          cursor: 'pointer',
+                          userSelect: 'none',
+                          transition: 'all 0.15s ease',
+                        }}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={isSelected}
+                          onChange={() => toggleMultiSelectOption(opt)}
+                          style={{ width: '16px', height: '16px', accentColor: '#d90f81', cursor: 'pointer' }}
+                        />
+                        <span style={{ fontSize: '0.88rem', fontWeight: isSelected ? 600 : 500, color: isSelected ? '#d90f81' : '#334155' }}>
+                          {opt}
+                        </span>
+                      </label>
+                    );
+                  })}
+                </div>
+
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px solid #e2e8f0', paddingTop: '12px' }}>
+                  <div style={{ display: 'flex', gap: '8px' }}>
+                    <button
+                      type="button"
+                      style={{ fontSize: '0.8rem', color: '#64748b', background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline' }}
+                      onClick={() => {
+                        const all = multiSelectModal.definition?.fieldConfig?.options || [
+                          'NFS Emitidas', 'NFS Recebidas', 'Entrada', 'Saída', 'CTE Saída', 'CTE Entrada', 'NFC-e'
+                        ];
+                        setMultiSelectModal({ ...multiSelectModal, selected: all });
+                      }}
+                    >
+                      Marcar Todos
+                    </button>
+                    <span style={{ color: '#cbd5e1' }}>•</span>
+                    <button
+                      type="button"
+                      style={{ fontSize: '0.8rem', color: '#64748b', background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline' }}
+                      onClick={() => setMultiSelectModal({ ...multiSelectModal, selected: [] })}
+                    >
+                      Limpar
+                    </button>
+                  </div>
+
+                  <div className="sub-modal-actions" style={{ marginTop: 0 }}>
+                    <button className="btn-secondary-light" onClick={() => setMultiSelectModal(null)}>
+                      Cancelar
+                    </button>
+                    <button
+                      className="btn-primary-gradient"
+                      disabled={!canEditFiscal || savingAction}
+                      onClick={async () => {
+                        await saveColumnValue(
+                          multiSelectModal.row.closingId,
+                          multiSelectModal.colKey,
+                          multiSelectModal.selected
+                        );
+                        setMultiSelectModal(null);
+                      }}
+                    >
+                      {savingAction ? 'Salvando...' : 'Salvar Tipos de NF'}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
       </main>
     </div>
   );

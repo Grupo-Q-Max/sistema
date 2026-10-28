@@ -31,6 +31,9 @@ deploy_key*
 id_ed25519*
 id_rsa*
 
+# Database dumps
+*.sql
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

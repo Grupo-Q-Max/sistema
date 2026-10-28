@@ -1,6 +1,24 @@
 import { useEffect, useState } from 'react';
 import { Building2, AlertTriangle, Copy, Eye, EyeOff, ExternalLink } from 'lucide-react';
 import './Closings.css';
+
+export function formatDateBr(dateVal?: string | Date | null): string {
+  if (!dateVal) return '-';
+  const str = String(dateVal).trim();
+  if (!str) return '-';
+  if (/^\d{2}\/\d{2}\/\d{4}$/.test(str)) return str;
+  const ymd = str.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (ymd) {
+    return `${ymd[3]}/${ymd[2]}/${ymd[1]}`;
+  }
+  const d = new Date(str);
+  if (isNaN(d.getTime())) return str;
+  const day = String(d.getUTCDate()).padStart(2, '0');
+  const month = String(d.getUTCMonth() + 1).padStart(2, '0');
+  const year = d.getUTCFullYear();
+  return `${day}/${month}/${year}`;
+}
+
 export function getCertificateStatus(expirationStr?: string | null) {
   if (!expirationStr) return null;
   
@@ -222,7 +240,7 @@ export function CompanyDetailsModal({company:c,onClose,notesLabel='Observações
                                 fontWeight: 700,
                               }}
                             >
-                              {c.certificateExpiration || '-'}
+                              {formatDateBr(c.certificateExpiration)}
                             </span>
                           </div>
                           <div className="info-item-row">
@@ -281,29 +299,29 @@ export function CompanyDetailsModal({company:c,onClose,notesLabel='Observações
                       <div className="info-item-row">
                         <span className="label">Rec. Federal (eCAC):</span>
                         <span className="value">
-                          {c.targetProxyIssueDate ? `${new Date(c.targetProxyIssueDate).toLocaleDateString('pt-BR')} até ` : ''}
-                          {c.targetProxyDate ? new Date(c.targetProxyDate).toLocaleDateString('pt-BR') : 'Não'}
+                          {c.targetProxyIssueDate ? `${formatDateBr(c.targetProxyIssueDate)} até ` : ''}
+                          {c.targetProxyDate ? formatDateBr(c.targetProxyDate) : 'Não'}
                         </span>
                       </div>
                       <div className="info-item-row">
                         <span className="label">FGTS Digital:</span>
                         <span className="value">
-                          {c.fgtsProxyIssueDate ? `${new Date(c.fgtsProxyIssueDate).toLocaleDateString('pt-BR')} até ` : ''}
-                          {c.fgtsProxyDate ? new Date(c.fgtsProxyDate).toLocaleDateString('pt-BR') : 'Não'}
+                          {c.fgtsProxyIssueDate ? `${formatDateBr(c.fgtsProxyIssueDate)} até ` : ''}
+                          {c.fgtsProxyDate ? formatDateBr(c.fgtsProxyDate) : 'Não'}
                         </span>
                       </div>
                       <div className="info-item-row">
                         <span className="label">Caixa Postal DEC:</span>
                         <span className="value">
-                          {c.decProxyIssueDate ? `${new Date(c.decProxyIssueDate).toLocaleDateString('pt-BR')} até ` : ''}
-                          {c.decProxyDate ? new Date(c.decProxyDate).toLocaleDateString('pt-BR') : 'Não'}
+                          {c.decProxyIssueDate ? `${formatDateBr(c.decProxyIssueDate)} até ` : ''}
+                          {c.decProxyDate ? formatDateBr(c.decProxyDate) : 'Não'}
                         </span>
                       </div>
                       <div className="info-item-row">
                         <span className="label">Portal Empregador:</span>
                         <span className="value">
-                          {c.empregadorProxyIssueDate ? `${new Date(c.empregadorProxyIssueDate).toLocaleDateString('pt-BR')} até ` : ''}
-                          {c.empregadorProxyDate ? new Date(c.empregadorProxyDate).toLocaleDateString('pt-BR') : 'Não'}
+                          {c.empregadorProxyIssueDate ? `${formatDateBr(c.empregadorProxyIssueDate)} até ` : ''}
+                          {c.empregadorProxyDate ? formatDateBr(c.empregadorProxyDate) : 'Não'}
                         </span>
                       </div>
                     </div>
@@ -314,17 +332,13 @@ export function CompanyDetailsModal({company:c,onClose,notesLabel='Observações
                       <div className="info-item-row">
                         <span className="label">Data do Contrato:</span>
                         <span className="value">
-                          {c.contractDate
-                            ? new Date(c.contractDate).toLocaleDateString('pt-BR')
-                            : '-'}
+                          {formatDateBr(c.contractDate)}
                         </span>
                       </div>
                       <div className="info-item-row">
                         <span className="label">Início Obrigação:</span>
                         <span className="value">
-                          {c.obligationStartDate
-                            ? new Date(c.obligationStartDate).toLocaleDateString('pt-BR')
-                            : '-'}
+                          {formatDateBr(c.obligationStartDate)}
                         </span>
                       </div>
                       <div className="info-item-row">
@@ -337,7 +351,7 @@ export function CompanyDetailsModal({company:c,onClose,notesLabel='Observações
                           }}
                         >
                           {c.exitDate
-                            ? new Date(c.exitDate).toLocaleDateString('pt-BR')
+                            ? formatDateBr(c.exitDate)
                             : 'Cliente Ativa'}
                         </span>
                       </div>
@@ -481,6 +495,65 @@ export function CompanyDetailsModal({company:c,onClose,notesLabel='Observações
                                   handleCopy(c.sdPasswordDecrypted, 'SD Senha')
                                 }
                                 title="Copiar SD Senha"
+                              >
+                                <Copy size={11} />
+                              </button>
+                            </div>
+                          ) : (
+                            '-'
+                          )}
+                        </span>
+                      </div>
+                      <div className="info-item-row">
+                        <span className="label">Tipo Acesso NF:</span>
+                        <span className="value">{c.nfAccessType || '-'}</span>
+                      </div>
+                      <div className="info-item-row">
+                        <span className="label">Login NF:</span>
+                        <span className="value">
+                          {c.nfLogin ? (
+                            <div className="password-reveal-badge">
+                              <span>{c.nfLogin}</span>
+                              <button
+                                type="button"
+                                onClick={() => handleCopy(c.nfLogin, 'Login NF Contribuinte')}
+                                title="Copiar Login NF Contribuinte"
+                              >
+                                <Copy size={11} />
+                              </button>
+                            </div>
+                          ) : (
+                            '-'
+                          )}
+                        </span>
+                      </div>
+                      <div className="info-item-row">
+                        <span className="label">Senha NF:</span>
+                        <span className="value">
+                          {c.nfPasswordDecrypted ? (
+                            <div className="password-reveal-badge">
+                              <span>
+                                {revealedPasswords[`nf_modal_${c.id}`]
+                                  ? c.nfPasswordDecrypted
+                                  : '••••••'}
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => togglePasswordReveal(`nf_modal_${c.id}`)}
+                                title={revealedPasswords[`nf_modal_${c.id}`] ? 'Ocultar' : 'Revelar'}
+                              >
+                                {revealedPasswords[`nf_modal_${c.id}`] ? (
+                                  <EyeOff size={13} />
+                                ) : (
+                                  <Eye size={13} />
+                                )}
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  handleCopy(c.nfPasswordDecrypted, 'Senha NF Contribuinte')
+                                }
+                                title="Copiar Senha NF Contribuinte"
                               >
                                 <Copy size={11} />
                               </button>

@@ -32,6 +32,7 @@ import { TableSkeleton, ButtonSpinner } from './LoadingSkeleton';
 import type { CurrentUser } from '../types/auth';
 import './Dashboard.css';
 import './Companies.css';
+import { compareCodes } from '../utils/codeSort';
 
 interface Company {
   id: string;
@@ -74,6 +75,10 @@ interface Company {
   sdLogin?: string | null;
   sdPassword?: string | null;
   sdPasswordDecrypted?: string | null;
+  nfAccessType?: string | null;
+  nfLogin?: string | null;
+  nfPassword?: string | null;
+  nfPasswordDecrypted?: string | null;
   dissidioMonthYear?: string | null;
   notes?: string | null;
   notesScope?: string | null;
@@ -125,6 +130,7 @@ const DELIVERY_METHOD_OPTIONS = [
   'Nibo/WhatsApp',
   'Nibo/E-mail',
   'Nibo/Onvio',
+  'Onvio',
 ];
 
 // Setores disponíveis
@@ -141,8 +147,12 @@ function formatCnpjMask(value: string): string {
 
 function formatDateToBr(isoDate: string | null | undefined): string {
   if (!isoDate) return '';
-  const d = new Date(isoDate);
-  if (isNaN(d.getTime())) return '';
+  const clean = String(isoDate).trim();
+  if (/^\d{2}\/\d{2}\/\d{4}$/.test(clean)) return clean;
+  const ymd = clean.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (ymd) return `${ymd[3]}/${ymd[2]}/${ymd[1]}`;
+  const d = new Date(clean);
+  if (isNaN(d.getTime())) return clean;
   const day = String(d.getUTCDate()).padStart(2, '0');
   const month = String(d.getUTCMonth() + 1).padStart(2, '0');
   const year = d.getUTCFullYear();
@@ -227,6 +237,9 @@ export function Companies({ currentView, onNavigate, currentUser, onLogout }: Co
   const [gissOnlinePassword, setGissOnlinePassword] = useState('');
   const [sdLogin, setSdLogin] = useState('');
   const [sdPassword, setSdPassword] = useState('');
+  const [nfAccessType, setNfAccessType] = useState('');
+  const [nfLogin, setNfLogin] = useState('');
+  const [nfPassword, setNfPassword] = useState('');
   const [dissidioMonthYear, setDissidioMonthYear] = useState('');
   const [notes, setNotes] = useState('');
   const [notesScope, setNotesScope] = useState('GERAL');
@@ -236,6 +249,7 @@ export function Companies({ currentView, onNavigate, currentUser, onLogout }: Co
   const [showGinfessPwd, setShowGinfessPwd] = useState(false);
   const [showGissPwd, setShowGissPwd] = useState(false);
   const [showSdPwd, setShowSdPwd] = useState(false);
+  const [showNfPwd, setShowNfPwd] = useState(false);
 
   // Table password reveals
   const [revealedTablePasswords, setRevealedTablePasswords] = useState<Record<string, boolean>>({});
@@ -313,6 +327,9 @@ export function Companies({ currentView, onNavigate, currentUser, onLogout }: Co
     setGissOnlinePassword('');
     setSdLogin('');
     setSdPassword('');
+    setNfAccessType('');
+    setNfLogin('');
+    setNfPassword('');
     setDissidioMonthYear('');
     setNotes('');
     setNotesScope('GERAL');
@@ -367,6 +384,9 @@ export function Companies({ currentView, onNavigate, currentUser, onLogout }: Co
     setGissOnlinePassword(company.gissOnlinePasswordDecrypted || '');
     setSdLogin(company.sdLogin || '');
     setSdPassword(company.sdPasswordDecrypted || '');
+    setNfAccessType(company.nfAccessType || '');
+    setNfLogin(company.nfLogin || '');
+    setNfPassword(company.nfPasswordDecrypted || '');
     setDissidioMonthYear(company.dissidioMonthYear || '');
     setNotes(company.notes || '');
     setNotesScope(company.notesScope || 'GERAL');
@@ -478,6 +498,9 @@ export function Companies({ currentView, onNavigate, currentUser, onLogout }: Co
       gissOnlinePassword: gissOnlinePassword.trim() || null,
       sdLogin: sdLogin.trim() || null,
       sdPassword: sdPassword.trim() || null,
+      nfAccessType: nfAccessType.trim() || null,
+      nfLogin: nfLogin.trim() || null,
+      nfPassword: nfPassword.trim() || null,
       dissidioMonthYear: dissidioMonthYear.trim() || null,
       notes: notes.trim() || null,
       notesScope,
@@ -644,7 +667,7 @@ export function Companies({ currentView, onNavigate, currentUser, onLogout }: Co
         (filterCert === 'NAO' && !c.hasClientCertificate);
 
       return matchSearch && matchRegime && matchType && matchCert;
-    });
+    }).sort((a, b) => compareCodes(a.code, b.code, true));
   }, [companies, searchTerm, filterRegime, filterType, filterCert]);
 
   const stats = useMemo(() => {
@@ -904,7 +927,7 @@ export function Companies({ currentView, onNavigate, currentUser, onLogout }: Co
                                   </span>
                                   {comp.certificateExpiration && (
                                     <span style={{ fontSize: '10px', color: 'var(--text-muted)' }}>
-                                      Venc: {comp.certificateExpiration}
+                                      Venc: {formatDateToBr(comp.certificateExpiration)}
                                     </span>
                                   )}
                                 </div>
@@ -1560,6 +1583,57 @@ export function Companies({ currentView, onNavigate, currentUser, onLogout }: Co
                           title={showSdPwd ? 'Ocultar' : 'Revelar'}
                         >
                           {showSdPwd ? <EyeOff size={14} /> : <Eye size={14} />}
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="grid-3" style={{ marginTop: '12px' }}>
+                    <div className="input-field">
+                      <label htmlFor="modal-nf-access">23. Tipo Acesso NF Contribuinte</label>
+                      <select
+                        id="modal-nf-access"
+                        value={nfAccessType}
+                        onChange={(e) => setNfAccessType(e.target.value)}
+                      >
+                        <option value="">Selecione o tipo...</option>
+                        <option value="Senha GOV">Senha GOV</option>
+                        <option value="Senha Própria">Senha Própria</option>
+                        <option value="Certificado A1">Certificado A1</option>
+                        <option value="Outro">Outro</option>
+                      </select>
+                    </div>
+
+                    <div className="input-field">
+                      <label htmlFor="modal-nf-login">24. Login NF Contribuinte</label>
+                      <input
+                        id="modal-nf-login"
+                        type="text"
+                        placeholder="Login / Usuário NF"
+                        value={nfLogin}
+                        onChange={(e) => setNfLogin(e.target.value)}
+                      />
+                    </div>
+
+                    <div className="input-field">
+                      <label htmlFor="modal-nf-senha">
+                        25. Senha NF Contribuinte <span className="hint">(🔒 Criptografada)</span>
+                      </label>
+                      <div className="pwd-input-wrap">
+                        <input
+                          id="modal-nf-senha"
+                          type={showNfPwd ? 'text' : 'password'}
+                          placeholder="Senha NF"
+                          value={nfPassword}
+                          onChange={(e) => setNfPassword(e.target.value)}
+                        />
+                        <button
+                          type="button"
+                          className="btn-eye"
+                          onClick={() => setShowNfPwd(!showNfPwd)}
+                          title={showNfPwd ? 'Ocultar' : 'Revelar'}
+                        >
+                          {showNfPwd ? <EyeOff size={14} /> : <Eye size={14} />}
                         </button>
                       </div>
                     </div>

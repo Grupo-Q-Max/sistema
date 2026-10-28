@@ -1,0 +1,10 @@
+CNPJ;Nome;Regime;Obrigacao;Status
+23.142.555/0001-11;Padaria Central;SIMPLES_NACIONAL;impostos;Gerado
+23.142.555/0001-11;Padaria Central;SIMPLES_NACIONAL;sped_fiscal;Gerado
+23.142.555/0001-11;Padaria Central;SIMPLES_NACIONAL;destda;Entregue
+89.999.888/0001-22;Tech Solutions SA;LUCRO_PRESUMIDO;impostos;Gerado
+89.999.888/0001-22;Tech Solutions SA;LUCRO_PRESUMIDO;reinf;Entregue
+89.999.888/0001-22;Tech Solutions SA;LUCRO_PRESUMIDO;sped_contribuicao;Entregue
+11.222.333/0001-44;Clinica Medica Silva;LUCRO_REAL_TRIMESTRAL;impostos;Gerado
+11.222.333/0001-44;Clinica Medica Silva;LUCRO_REAL_TRIMESTRAL;reinf;Entregue
+11.222.333/0001-44;Clinica Medica Silva;LUCRO_REAL_TRIMESTRAL;sped_fiscal;Entregue

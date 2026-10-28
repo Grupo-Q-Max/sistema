@@ -64,6 +64,7 @@ const INPUT_TYPES: Record<string, { label: string; Icon: any }> = {
   CHECKBOX: { label: 'Checkbox (Sim/Não)', Icon: CheckSquare },
   POPUP: { label: 'Popup Informativo', Icon: MessageSquare },
   SELECT: { label: 'Lista de opções', Icon: Columns3 },
+  MULTISELECT: { label: 'Múltipla Seleção', Icon: CheckSquare },
   NUMBER: { label: 'Número inteiro', Icon: Type },
   TEXTAREA: { label: 'Observação / texto longo', Icon: MessageSquare },
   PASSWORD: { label: 'Senha', Icon: Lock },
@@ -1380,7 +1381,7 @@ export function Settings({ currentView, onNavigate, currentUser, onLogout }: Set
                 <div className="form-group full-width">
                   <label>Tipo de Entrada de Dados</label>
                   <div className="column-type-options">
-                    {Object.entries(INPUT_TYPES).filter(([type]) => ['DP','CONTABIL'].includes(colDepartment) ? ['TEXT','CHECKBOX','SELECT','NUMBER','TEXTAREA','PASSWORD'].includes(type) || (type === 'READONLY' && editingColumn?.inputType === 'READONLY') : ['TEXT','CHECKBOX','POPUP','TEXTAREA'].includes(type)).map(([type, item]) => <button type="button" key={type} aria-pressed={colInputType === type} className={colInputType === type ? 'selected' : ''} disabled={!!editingColumn && ((['FISCAL','CUSHMAN'].includes(colDepartment) && editingColumn.inputType==='POPUP' && !!resolveColumnKey(editingColumn) && type !== 'POPUP') || (colDepartment==='CONTABIL'&&String(resolveColumnKey(editingColumn)||'').startsWith('cont_')&&type!==editingColumn.inputType) || (['dp_reinf_fiscal','dp_qtde_funcionarios','dp_sd_senha'].includes(resolveColumnKey(editingColumn) || '') && type !== editingColumn.inputType))} onClick={() => {
+                    {Object.entries(INPUT_TYPES).filter(([type]) => ['DP','CONTABIL'].includes(colDepartment) ? ['TEXT','CHECKBOX','SELECT','NUMBER','TEXTAREA','PASSWORD'].includes(type) || (type === 'READONLY' && editingColumn?.inputType === 'READONLY') : ['TEXT','CHECKBOX','POPUP','TEXTAREA','MULTISELECT'].includes(type)).map(([type, item]) => <button type="button" key={type} aria-pressed={colInputType === type} className={colInputType === type ? 'selected' : ''} disabled={!!editingColumn && ((['FISCAL','CUSHMAN'].includes(colDepartment) && editingColumn.inputType==='POPUP' && !!resolveColumnKey(editingColumn) && type !== 'POPUP') || (colDepartment==='CONTABIL'&&String(resolveColumnKey(editingColumn)||'').startsWith('cont_')&&type!==editingColumn.inputType) || (['dp_reinf_fiscal','dp_qtde_funcionarios','dp_sd_senha'].includes(resolveColumnKey(editingColumn) || '') && type !== editingColumn.inputType))} onClick={() => {
                       setColInputType(type);
                       if (!editingColumn && type === 'POPUP') setColPopupConfig(defaultPopup(resolveFiscalKey({ department: colDepartment, name: colName }) || '', colName));
                     }}><item.Icon size={20} /><strong>{type === 'POPUP' ? 'Popup com detalhes' : item.label}</strong><small>{type === 'POPUP' ? 'Campos e botões configuráveis' : type === 'CHECKBOX' ? 'Marcar ou desmarcar' : type === 'READONLY' ? 'Consulta dados do Fiscal' : type === 'SELECT' ? 'Escolher uma opção configurada' : 'Preencher um valor ou texto'}</small></button>)}

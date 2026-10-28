@@ -38,14 +38,16 @@ export function isColumnFilled(value: any): boolean {
 }
 export function isColumnComplete(column: { inputType?: string; columnKey?: string | null; department?: string }, value: any): boolean {
   if (column.inputType === 'CHECKBOX') return value === true;
+  if (column.inputType === 'MULTISELECT') return Array.isArray(value) ? value.length > 0 : Boolean(value);
   if (column.inputType === 'READONLY') return false;
   if (column.inputType === 'NUMBER') return typeof value === 'number' && Number.isFinite(value) || typeof value === 'string' && !!value.trim() && Number.isFinite(Number(value));
   if (column.inputType === 'TEXT' && (column.department === 'CUSHMAN' || column.columnKey?.startsWith('cush_')) && typeof value === 'string' && /^(pendente|pend[êe]ncia)(\s|:|$)/i.test(value.trim())) return false;
   if (['TEXT','SELECT','TEXTAREA','PASSWORD'].includes(column.inputType || '')) {
+    const rawVal = typeof value === 'object' && value !== null ? value.status : value;
     const isPending = column.inputType === 'SELECT' && Array.isArray((column as any).fieldConfig?.pendingOptions)
-      ? (column as any).fieldConfig.pendingOptions.some((opt: string) => progressStatus(opt) === progressStatus(value))
-      : ['PENDENCIA','PENDENTE'].includes(progressStatus(value));
-    return (typeof value === 'string' || typeof value === 'number') && isColumnFilled(value) && !isPending;
+      ? (column as any).fieldConfig.pendingOptions.some((opt: string) => progressStatus(opt) === progressStatus(rawVal))
+      : ['PENDENCIA','PENDENTE'].includes(progressStatus(rawVal));
+    return (typeof value === 'string' || typeof value === 'number' || (typeof value === 'object' && value !== null)) && isColumnFilled(value) && !isPending;
   }
   return ['CONCLUIDO','SEM MOVIMENTO','N/A','OK - DATA','OK - SEM MOVIMENTO','OK - FINALIZADO'].includes(progressStatus(typeof value === 'object' ? value?.status : value));
 }

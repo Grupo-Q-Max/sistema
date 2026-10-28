@@ -13,6 +13,7 @@ import {ACCOUNTING_API_VERSION,accountingYear,accountingMonth,NOT_CLIENT} from '
 import {resolveColumnKey} from '../config/payrollColumns';
 import {visibilitySummary} from '../config/columnVisibility';
 import {exportToCsv} from '../utils/exportCsv';
+import {compareCodes} from '../utils/codeSort';
 import type {CurrentUser} from '../types/auth';
 import {API_URL as API} from '../api';
 import './AccountingClosings.css';
@@ -61,7 +62,10 @@ export function AccountingClosings({currentView,onNavigate,currentUser,onLogout}
     const company=row.company;const term=deferredSearch.trim().toLocaleLowerCase('pt-BR');const text=[company.code,company.name,company.tradeName,company.cnpj,company.groupName,company.city].filter(Boolean).join(' ').toLocaleLowerCase('pt-BR');
     const digits=term.replace(/\D/g,'');const match=text.includes(term)||(digits.length>0&&(company.cnpj||'').replace(/\D/g,'').includes(digits));
     return match&&(situation==='ALL'||(situation==='LEFT'?left(company):!left(company)))&&(responsibleFilter==='ALL'||responsible(company)?.userId===responsibleFilter)&&(regime==='ALL'||company.taxRegime===regime);
-  }).sort((a,b)=>String(a.company[sort.key]||'').localeCompare(String(b.company[sort.key]||''),'pt-BR',{numeric:true})*(sort.asc?1:-1));
+  }).sort((a,b)=> {
+    if (sort.key === 'code') return compareCodes(a.company.code, b.company.code, sort.asc);
+    return String(a.company[sort.key]||'').localeCompare(String(b.company[sort.key]||''),'pt-BR',{numeric:true})*(sort.asc?1:-1);
+  });
   const visibleColumns=groupAccountingColumns(columns);const monthsRow=rows.find(row=>row.closingId===monthsClosingId);
   const regimes=Array.from(new Set(scopedRows.map(row=>row.company.taxRegime).filter(Boolean)));
   const summary=summarizeClosingProgress(buildClosingProgress(scopedRows,columns,'CONTABIL',new Date(Date.UTC(year,0,1)),latestPeriod),scopedRows.length);

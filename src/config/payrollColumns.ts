@@ -54,6 +54,9 @@ export function validatePayrollValue(column:any,value:any):string|null {
     if(typeof value!=='boolean') return 'Valor de checkbox inválido.';
   } else if(column.inputType==='SELECT') {
     if(typeof value!=='string'||(value!==''&&!effectiveFieldConfig(column).options.includes(value))) return 'Escolha uma das opções configuradas.';
-  } else if(['TEXT','TEXTAREA','PASSWORD'].includes(column.inputType) && typeof value!=='string') return 'Informe um texto válido.';
+  } else if(['TEXT','TEXTAREA','PASSWORD'].includes(column.inputType)) {
+    if (value === null || value === undefined || value === '') return null;
+    if (typeof value !== 'string' && (typeof value !== 'object' || value === null)) return 'Informe um texto ou status válido.';
+  }
   return null;
 }

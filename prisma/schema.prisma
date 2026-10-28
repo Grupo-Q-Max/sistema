@@ -184,6 +184,9 @@ model Company {
   gissOnlinePassword String? @db.Text // Senha Giss Online (Criptografada)
   sdLogin            String? // SD Login (Seguro Desemprego / Empregador Web)
   sdPassword         String? @db.Text // SD Senha (Criptografada)
+  nfAccessType       String? // Tipo de Acesso NF (ex: Senha GOV, Senha Própria, Certificado A1)
+  nfLogin            String? // Login Nota Fiscal Contribuinte
+  nfPassword         String? @db.Text // Senha Nota Fiscal Contribuinte (Criptografada)
 
   // Dissídio e Observações
   dissidioMonthYear String? // MM/AAAA

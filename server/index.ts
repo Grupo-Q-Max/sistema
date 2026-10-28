@@ -34,6 +34,7 @@ const pool = mariadb.createPool({
   user: decodeURIComponent(url.username),
   password: decodeURIComponent(url.password),
   database: url.pathname.slice(1),
+  dateStrings: true,
   connectionLimit: 5,
 });
 
@@ -103,11 +104,19 @@ app.post('/api/login', async (req, res) => {
     const { password } = req.body;
     const email = normalizeLoginEmail(req.body.email);
     if (!email) {
-      return res.status(400).json({ error: 'E-mail é obrigatório' });
+      return res.status(400).json({ error: 'E-mail ou usuário é obrigatório' });
     }
 
-    const user = await prisma.user.findUnique({
-      where: { email },
+    const user = await prisma.user.findFirst({
+      where: {
+        OR: [
+          { email },
+          { email: `${email}@grupoqmax.com.br` },
+          { email: `${email.replace(/_/g, '.')}@grupoqmax.com.br` },
+          { email: `${email}@fechamento.com.br` },
+          { email: `${email}@qmax.com` }
+        ]
+      },
       include: {
         sectorPermissions: true,
         screenPermissions: true,
@@ -377,7 +386,7 @@ app.get('/api/accounting-closings', async (req,res)=>{
     const rows=result.companies.map((company:any)=>{
       const closing=map.get(company.id);const data=annualValues(company,year,result.columns,closing?.columnsData||{});
       for(const column of result.columns)if(column.inputType==='PASSWORD'){const key=resolveColumnKey(column)||column.id;if(data[key])data[key]=decryptPassword(data[key]);}
-      return {company:{...company,certificatePasswordDecrypted:decryptPassword(company.certificatePassword),ginfessPasswordDecrypted:decryptPassword(company.ginfessPassword),gissOnlinePasswordDecrypted:decryptPassword(company.gissOnlinePassword),sdPasswordDecrypted:decryptPassword(company.sdPassword)},closingId:closing?.id,columnsData:data,...accountingProgress(company,year,result.columns,data)};
+      return {company:{...company,certificatePasswordDecrypted:decryptPassword(company.certificatePassword),ginfessPasswordDecrypted:decryptPassword(company.ginfessPassword),gissOnlinePasswordDecrypted:decryptPassword(company.gissOnlinePassword),sdPasswordDecrypted:decryptPassword(company.sdPassword),nfPasswordDecrypted:decryptPassword(company.nfPassword)},closingId:closing?.id,columnsData:data,...accountingProgress(company,year,result.columns,data)};
     });
     const users=await prisma.user.findMany({where:{active:true},select:{id:true,name:true,email:true},orderBy:{name:'asc'}});
     res.json({accountingApiVersion:ACCOUNTING_API_VERSION,year,latestYear:accountingYear(),rows,columns,users,configured:result.columns.some((column:any)=>column.columnKey?.startsWith('cont_'))});
@@ -526,6 +535,7 @@ app.get('/api/closings', async (req, res) => {
           ginfessPasswordDecrypted: decryptPassword(c.ginfessPassword),
           gissOnlinePasswordDecrypted: decryptPassword(c.gissOnlinePassword),
           sdPasswordDecrypted: decryptPassword(c.sdPassword),
+          nfPasswordDecrypted: decryptPassword(c.nfPassword),
         },
         closingId: closing?.id || null,
         closingStatus: closing?.status || calculatedStatus,
@@ -1124,6 +1134,7 @@ app.get('/api/companies', async (req, res) => {
       ginfessPasswordDecrypted: decryptPassword(c.ginfessPassword),
       gissOnlinePasswordDecrypted: decryptPassword(c.gissOnlinePassword),
       sdPasswordDecrypted: decryptPassword(c.sdPassword),
+      nfPasswordDecrypted: decryptPassword(c.nfPassword),
     }));
 
     res.json(formatted);
@@ -1171,6 +1182,9 @@ app.post('/api/companies', async (req, res) => {
       gissOnlinePassword,
       sdLogin,
       sdPassword,
+      nfAccessType,
+      nfLogin,
+      nfPassword,
       dissidioMonthYear,
       notes,
       notesScope = 'GERAL',
@@ -1246,6 +1260,9 @@ app.post('/api/companies', async (req, res) => {
         gissOnlinePassword: encryptPassword(gissOnlinePassword),
         sdLogin: isPrivileged && sdLogin ? sdLogin.trim() : null,
         sdPassword: isPrivileged && sdPassword ? encryptPassword(sdPassword) : null,
+        nfAccessType: nfAccessType ? nfAccessType.trim() : null,
+        nfLogin: nfLogin ? nfLogin.trim() : null,
+        nfPassword: encryptPassword(nfPassword),
         dissidioMonthYear: dissidioMonthYear ? dissidioMonthYear.trim() : null,
         notes: notes ? notes.trim() : null,
         notesScope: notesScope || 'GERAL',
@@ -1258,6 +1275,7 @@ app.post('/api/companies', async (req, res) => {
       ginfessPasswordDecrypted: ginfessPassword || null,
       gissOnlinePasswordDecrypted: gissOnlinePassword || null,
       sdPasswordDecrypted: isPrivileged && sdPassword ? sdPassword : null,
+      nfPasswordDecrypted: nfPassword || null,
     });
   } catch (error: any) {
     console.error('Erro ao cadastrar empresa:', error);
@@ -1304,6 +1322,9 @@ app.put('/api/companies/:id', async (req, res) => {
       gissOnlinePassword,
       sdLogin,
       sdPassword,
+      nfAccessType,
+      nfLogin,
+      nfPassword,
       dissidioMonthYear,
       notes,
       notesScope,
@@ -1397,6 +1418,10 @@ app.put('/api/companies/:id', async (req, res) => {
       if (sdPassword !== undefined) updateData.sdPassword = sdPassword ? encryptPassword(sdPassword) : null;
     }
 
+    if (nfAccessType !== undefined) updateData.nfAccessType = nfAccessType ? nfAccessType.trim() : null;
+    if (nfLogin !== undefined) updateData.nfLogin = nfLogin ? nfLogin.trim() : null;
+    if (nfPassword !== undefined) updateData.nfPassword = nfPassword ? encryptPassword(nfPassword) : null;
+
     if (dissidioMonthYear !== undefined) updateData.dissidioMonthYear = dissidioMonthYear ? dissidioMonthYear.trim() : null;
     if (notes !== undefined) updateData.notes = notes ? notes.trim() : null;
     if (notesScope !== undefined) updateData.notesScope = notesScope || 'GERAL';
@@ -1451,6 +1476,7 @@ app.put('/api/companies/:id', async (req, res) => {
       ginfessPasswordDecrypted: decryptPassword(updated.ginfessPassword),
       gissOnlinePasswordDecrypted: decryptPassword(updated.gissOnlinePassword),
       sdPasswordDecrypted: decryptPassword(updated.sdPassword),
+      nfPasswordDecrypted: decryptPassword(updated.nfPassword),
     });
   } catch (error: any) {
     console.error('Erro ao atualizar empresa:', error);

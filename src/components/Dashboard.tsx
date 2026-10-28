@@ -133,8 +133,16 @@ const REGIME_LABEL: Record<string, string> = {
 
 const formatDate = (iso: string) => {
   if (!iso) return '-';
-  const d = new Date(iso);
-  return isNaN(d.getTime()) ? '-' : d.toLocaleDateString('pt-BR');
+  const clean = String(iso).trim();
+  if (/^\d{2}\/\d{2}\/\d{4}$/.test(clean)) return clean;
+  const ymd = clean.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (ymd) return `${ymd[3]}/${ymd[2]}/${ymd[1]}`;
+  const d = new Date(clean);
+  if (isNaN(d.getTime())) return '-';
+  const day = String(d.getUTCDate()).padStart(2, '0');
+  const month = String(d.getUTCMonth() + 1).padStart(2, '0');
+  const year = d.getUTCFullYear();
+  return `${day}/${month}/${year}`;
 };
 
 const formatCNPJ = (cnpj: string) => {
