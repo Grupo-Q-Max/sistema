@@ -23,6 +23,7 @@ import {
   Building2,
   FileSpreadsheet,
   Calendar,
+  CalendarPlus,
   Check,
   Sparkles,
   Info,
@@ -34,6 +35,7 @@ import { TableSkeleton, ButtonSpinner } from './LoadingSkeleton';
 import './Closings.css';
 import './PayrollClosings.css';
 import { CompanyDetailsModal, getCertificateStatus, formatCnpj, formatRegimeLabel } from './CompanyDetailsModal';
+import { ManualCompetenceModal } from './ManualCompetenceModal';
 import { ClosingSectorTabs, hasSectorAccess } from './ClosingSectorTabs';
 import './FiscalPopup.css';
 import { visibilitySummary, isColumnComplete } from '../config/columnVisibility';
@@ -69,6 +71,7 @@ export function Closings({ currentView, onNavigate, currentUser, onLogout }: Clo
   const [selectedYear, setSelectedYear] = useState(() => latestOpenPeriod().getUTCFullYear());
   const [selectedMonth, setSelectedMonth] = useState(() => latestOpenPeriod().getUTCMonth() + 1);
   const canGoNext = Date.UTC(selectedYear, selectedMonth - 1, 1) < latestPeriod.getTime();
+  const [isManualModalOpen, setIsManualModalOpen] = useState(false);
   const [calendarError, setCalendarError] = useState('');
   const [installmentCompany, setInstallmentCompany] = useState<any | null>(null);
   const [installmentCreate, setInstallmentCreate] = useState(false);
@@ -725,6 +728,17 @@ export function Closings({ currentView, onNavigate, currentUser, onLogout }: Clo
                   <ChevronRight size={20} />
                 </button>
               </div>
+
+              <button
+                type="button"
+                className="btn-secondary-light manual-comp-btn"
+                onClick={() => setIsManualModalOpen(true)}
+                title="Abrir uma nova competência manualmente"
+                style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', height: '38px', fontWeight: 600, fontSize: '13px' }}
+              >
+                <CalendarPlus size={16} color="var(--accent, #6366f1)" />
+                <span>Nova Competência</span>
+              </button>
             </div>
           </div>
 
@@ -1437,6 +1451,17 @@ export function Closings({ currentView, onNavigate, currentUser, onLogout }: Clo
             POPUP COMPLETO COM TODAS AS INFORMAÇÕES DA EMPRESA E CERTIFICADO
             ========================================================================== */}
         {activeModal?.type === 'COMPANY_INFO' && <CompanyDetailsModal company={activeModal.row.company} onClose={closeAllModals} />}
+
+        <ManualCompetenceModal
+          isOpen={isManualModalOpen}
+          onClose={() => setIsManualModalOpen(false)}
+          initialYear={selectedYear}
+          initialMonth={selectedMonth}
+          onSuccess={(newYear, newMonth) => {
+            setSelectedYear(newYear);
+            setSelectedMonth(newMonth);
+          }}
+        />
       </main>
     </div>
   );

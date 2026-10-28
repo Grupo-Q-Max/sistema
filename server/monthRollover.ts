@@ -34,9 +34,9 @@ function closingStatus(columns: any[], data: Record<string, any>, period: Date):
 export function createRolloverEngine(prisma: any, now: () => Date = () => new Date()) {
   let queue: Promise<any> = Promise.resolve();
   let automaticRun: Promise<any> | null = null;
-  async function synchronize(target: Date) {
+  async function synchronize(target: Date, force = false) {
     const monthStart = normalizePeriod(target);
-    if (!periodIsOpen(monthStart, now())) throw new Error('Competência ainda não liberada.');
+    if (!force && !periodIsOpen(monthStart, now())) throw new Error('Competência ainda não liberada.');
     const nextMonthStart = new Date(Date.UTC(monthStart.getUTCFullYear(), monthStart.getUTCMonth() + 1, 1));
     const prevMonthStart = new Date(Date.UTC(monthStart.getUTCFullYear(), monthStart.getUTCMonth() - 1, 1));
     const companies = await prisma.company.findMany({ where: { AND:[externalCompaniesExcluded,companyExitWhere(monthStart)], obligationStartDate: { lt: nextMonthStart } }, select: {id:true,activeSectors:true} });
@@ -79,8 +79,8 @@ export function createRolloverEngine(prisma: any, now: () => Date = () => new Da
     const result = create.length ? await prisma.closing.createMany({data:create,skipDuplicates:true}) : {count:0};
     return {createdCount:result.count,replicatedColsCount};
   }
-  function sync(target: Date) {
-    const run = queue.catch(()=>{}).then(()=>synchronize(target));
+  function sync(target: Date, force = false) {
+    const run = queue.catch(()=>{}).then(()=>synchronize(target, force));
     queue = run;
     return run;
   }

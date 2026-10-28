@@ -177,11 +177,13 @@ model Company {
   deliveryMethod String? // E-mail, Nibo, Nibo/WhatsApp, Nibo/E-mail, Nibo/Onvio
   activeSectors  String? // "FISCAL,DP,CONTABIL,CUSHMAN" ou "TODOS"
 
-  // Logins e acessos municipais
+  // Logins e acessos municipais e sistemas
   cityHallLogin      String? // Login Prefeitura
   cityHallLink       String? // Link Prefeitura
   ginfessPassword    String? @db.Text // Senha Ginfess (Criptografada)
   gissOnlinePassword String? @db.Text // Senha Giss Online (Criptografada)
+  sdLogin            String? // SD Login (Seguro Desemprego / Empregador Web)
+  sdPassword         String? @db.Text // SD Senha (Criptografada)
 
   // Dissídio e Observações
   dissidioMonthYear String? // MM/AAAA
@@ -195,6 +197,7 @@ model Company {
   closings         Closing[]
   userAccess       UserCompanyAccess[]
   responsibles     CompanyResponsible[]
+  automationTasks  AutomationTask[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -252,6 +255,7 @@ model Closing {
   columnsData Json?
 
   company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  automationTasks AutomationTask[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -340,4 +344,42 @@ model SystemLog {
   details   Json?
   ipAddress String?
   createdAt DateTime @default(now())
+}
+
+// ========================
+// 4. AUTOMAÇÃO E ROBÔS (RPA)
+// ========================
+
+enum TaskStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+}
+
+model AutomationTask {
+  id              String      @id @default(uuid())
+  taskType        String      // Ex: "DOWNLOAD_DAS", "EXTRACT_SPED"
+  status          TaskStatus  @default(PENDING)
+  companyId       String?     // Opcional, se a tarefa for relacionada a uma empresa
+  closingId       String?     // Opcional, vincula diretamente a um fechamento
+  referencePeriod DateTime?   // Competência
+  
+  payload         Json?       // Dados de entrada para o robô (ex: CNPJ, qual imposto)
+  result          Json?       // Resposta do robô (ex: url do pdf salvo, mensagem de erro)
+  
+  errorMessage    String?     @db.Text
+  attempts        Int         @default(0)
+  maxAttempts     Int         @default(3)
+  
+  startedAt       DateTime?
+  completedAt     DateTime?
+  
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+
+  company         Company?    @relation(fields: [companyId], references: [id], onDelete: SetNull)
+  closing         Closing?    @relation(fields: [closingId], references: [id], onDelete: SetNull)
+
+  @@index([status, createdAt])
 }

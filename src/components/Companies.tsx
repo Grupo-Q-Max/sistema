@@ -71,6 +71,9 @@ interface Company {
   ginfessPasswordDecrypted?: string | null;
   gissOnlinePassword?: string | null;
   gissOnlinePasswordDecrypted?: string | null;
+  sdLogin?: string | null;
+  sdPassword?: string | null;
+  sdPasswordDecrypted?: string | null;
   dissidioMonthYear?: string | null;
   notes?: string | null;
   notesScope?: string | null;
@@ -161,6 +164,7 @@ function formatMonthYearMask(value: string): string {
 
 export function Companies({ currentView, onNavigate, currentUser, onLogout }: CompaniesProps) {
   const [companies, setCompanies] = useState<Company[]>([]);
+  const isPrivileged = currentUser?.role === 'ADMIN' || currentUser?.role === 'SOCIO';
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [filterRegime, setFilterRegime] = useState('ALL');
@@ -221,6 +225,8 @@ export function Companies({ currentView, onNavigate, currentUser, onLogout }: Co
   const [cityHallLink, setCityHallLink] = useState('');
   const [ginfessPassword, setGinfessPassword] = useState('');
   const [gissOnlinePassword, setGissOnlinePassword] = useState('');
+  const [sdLogin, setSdLogin] = useState('');
+  const [sdPassword, setSdPassword] = useState('');
   const [dissidioMonthYear, setDissidioMonthYear] = useState('');
   const [notes, setNotes] = useState('');
   const [notesScope, setNotesScope] = useState('GERAL');
@@ -229,6 +235,7 @@ export function Companies({ currentView, onNavigate, currentUser, onLogout }: Co
   const [showCertPwd, setShowCertPwd] = useState(false);
   const [showGinfessPwd, setShowGinfessPwd] = useState(false);
   const [showGissPwd, setShowGissPwd] = useState(false);
+  const [showSdPwd, setShowSdPwd] = useState(false);
 
   // Table password reveals
   const [revealedTablePasswords, setRevealedTablePasswords] = useState<Record<string, boolean>>({});
@@ -304,6 +311,8 @@ export function Companies({ currentView, onNavigate, currentUser, onLogout }: Co
     setCityHallLink('');
     setGinfessPassword('');
     setGissOnlinePassword('');
+    setSdLogin('');
+    setSdPassword('');
     setDissidioMonthYear('');
     setNotes('');
     setNotesScope('GERAL');
@@ -356,6 +365,8 @@ export function Companies({ currentView, onNavigate, currentUser, onLogout }: Co
     setCityHallLink(company.cityHallLink || '');
     setGinfessPassword(company.ginfessPasswordDecrypted || '');
     setGissOnlinePassword(company.gissOnlinePasswordDecrypted || '');
+    setSdLogin(company.sdLogin || '');
+    setSdPassword(company.sdPasswordDecrypted || '');
     setDissidioMonthYear(company.dissidioMonthYear || '');
     setNotes(company.notes || '');
     setNotesScope(company.notesScope || 'GERAL');
@@ -465,6 +476,8 @@ export function Companies({ currentView, onNavigate, currentUser, onLogout }: Co
       cityHallLink: cityHallLink.trim() || null,
       ginfessPassword: ginfessPassword.trim() || null,
       gissOnlinePassword: gissOnlinePassword.trim() || null,
+      sdLogin: sdLogin.trim() || null,
+      sdPassword: sdPassword.trim() || null,
       dissidioMonthYear: dissidioMonthYear.trim() || null,
       notes: notes.trim() || null,
       notesScope,
@@ -1511,6 +1524,46 @@ export function Companies({ currentView, onNavigate, currentUser, onLogout }: Co
                       </div>
                     </div>
                   </div>
+
+                  <div className="grid-2" style={{ marginTop: '12px' }}>
+                    <div className="input-field">
+                      <label htmlFor="modal-sd-login">
+                        21. SD Login (Empregador Web) {!isPrivileged && <span className="hint">(🔒 Somente Sócio/Admin)</span>}
+                      </label>
+                      <input
+                        id="modal-sd-login"
+                        type="text"
+                        placeholder="Login SD"
+                        value={sdLogin}
+                        disabled={!isPrivileged}
+                        onChange={(e) => setSdLogin(e.target.value)}
+                      />
+                    </div>
+
+                    <div className="input-field">
+                      <label htmlFor="modal-sd-senha">
+                        22. SD Senha {!isPrivileged && <span className="hint">(🔒 Somente Sócio/Admin)</span>}
+                      </label>
+                      <div className="pwd-input-wrap">
+                        <input
+                          id="modal-sd-senha"
+                          type={showSdPwd ? 'text' : 'password'}
+                          placeholder="Senha SD"
+                          value={sdPassword}
+                          disabled={!isPrivileged}
+                          onChange={(e) => setSdPassword(e.target.value)}
+                        />
+                        <button
+                          type="button"
+                          className="btn-eye"
+                          onClick={() => setShowSdPwd(!showSdPwd)}
+                          title={showSdPwd ? 'Ocultar' : 'Revelar'}
+                        >
+                          {showSdPwd ? <EyeOff size={14} /> : <Eye size={14} />}
+                        </button>
+                      </div>
+                    </div>
+                  </div>
                 </div>
 
                 {/* SEÇÃO 6: DISSÍDIO & OBSERVAÇÕES */}
@@ -1522,7 +1575,7 @@ export function Companies({ currentView, onNavigate, currentUser, onLogout }: Co
 
                   <div className="grid-3">
                     <div className="input-field">
-                      <label htmlFor="modal-dissidio">21. Dissídio (Mês/Ano)</label>
+                      <label htmlFor="modal-dissidio">23. Dissídio (Mês/Ano)</label>
                       <input
                         id="modal-dissidio"
                         type="text"
@@ -1533,7 +1586,7 @@ export function Companies({ currentView, onNavigate, currentUser, onLogout }: Co
                     </div>
 
                     <div className="input-field" style={{ gridColumn: 'span 2' }}>
-                      <label htmlFor="modal-scope">22. Escopo da Observação</label>
+                      <label htmlFor="modal-scope">24. Escopo da Observação</label>
                       <select
                         id="modal-scope"
                         value={notesScope}

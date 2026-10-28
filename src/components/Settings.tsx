@@ -26,6 +26,9 @@ import {
   TrendingUp,
   KeyRound,
   UserX,
+  GripVertical,
+  ChevronUp,
+  ChevronDown,
 } from 'lucide-react';
 import { Sidebar } from './Sidebar';
 import { ChangePasswordModal } from './ChangePasswordModal';
@@ -132,6 +135,10 @@ export function Settings({ currentView, onNavigate, currentUser, onLogout }: Set
   const [colReplicates, setColReplicates] = useState(false);
   const [colCountsProgress, setColCountsProgress] = useState(false);
   const [colIsEditable, setColIsEditable] = useState(true);
+  const [colOrderIndex, setColOrderIndex] = useState<number | ''>('');
+  const [draggedColId, setDraggedColId] = useState<string | null>(null);
+  const [dragOverColId, setDragOverColId] = useState<string | null>(null);
+  const [isReordering, setIsReordering] = useState(false);
 
   const isPermissions = currentView === 'settings-permissions';
   const isActorSocio = currentUser?.role === 'SOCIO';
@@ -326,6 +333,121 @@ export function Settings({ currentView, onNavigate, currentUser, onLogout }: Set
     setIsOffboardModalOpen(true);
   };
 
+  const sector = SECTORS.find((s) => s.key === activeSector) || SECTORS[0];
+  const sectorColumns = columns
+    .filter((c) => c.department === activeSector)
+    .sort((a, b) => (a.orderIndex || 0) - (b.orderIndex || 0));
+
+  const getDisplayColumns = (secCols: any[]) => {
+    if (activeSector !== 'CONTABIL') return secCols;
+    const months = secCols.filter(c => resolveColumnKey(c)?.startsWith('cont_mes_'));
+    if (months.length === 0) return secCols;
+    const withoutMonths = secCols.filter(c => !resolveColumnKey(c)?.startsWith('cont_mes_'));
+    const firstMonthOrder = months[0].orderIndex || 1;
+    const targetIdx = Math.max(0, Math.min(firstMonthOrder - 1, withoutMonths.length));
+    const result = [...withoutMonths];
+    result.splice(targetIdx, 0, { ...months[0], isMonthsGroup: true, name: 'Meses (Todos os 12)' });
+    return result;
+  };
+
+  const displayColumns = getDisplayColumns(sectorColumns);
+
+  const handleReorderColumns = async (newOrderedList: any[]) => {
+    setIsReordering(true);
+    const columnIds: string[] = [];
+    for (const item of newOrderedList) {
+      if (item.isMonthsGroup || resolveColumnKey(item)?.startsWith('cont_mes_')) {
+        const contMonths = columns
+          .filter(c => c.department === 'CONTABIL' && resolveColumnKey(c)?.startsWith('cont_mes_'))
+          .sort((a, b) => (a.orderIndex || 0) - (b.orderIndex || 0));
+        for (const m of contMonths) {
+          columnIds.push(m.id);
+        }
+      } else {
+        columnIds.push(item.id);
+      }
+    }
+
+    const orderMap = new Map<string, number>();
+    columnIds.forEach((id, idx) => orderMap.set(id, idx + 1));
+    setColumns(prev => prev.map(c => {
+      if (orderMap.has(c.id)) {
+        return { ...c, orderIndex: orderMap.get(c.id)! };
+      }
+      return c;
+    }));
+
+    try {
+      const res = await fetch(`${API}/api/columns/reorder`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ columnIds }),
+      });
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error || 'Erro ao salvar nova ordenação');
+      }
+      showToast('Ordem das colunas atualizada com sucesso!');
+    } catch (err: any) {
+      console.error(err);
+      showToast(err.message || 'Erro ao reordenar colunas', 'error');
+      loadData();
+    } finally {
+      setIsReordering(false);
+    }
+  };
+
+  const handleMoveColumn = async (index: number, direction: -1 | 1) => {
+    const targetIndex = index + direction;
+    if (targetIndex < 0 || targetIndex >= displayColumns.length) return;
+    const reordered = [...displayColumns];
+    const [moved] = reordered.splice(index, 1);
+    reordered.splice(targetIndex, 0, moved);
+    await handleReorderColumns(reordered);
+  };
+
+  const handleDragStart = (e: React.DragEvent, colId: string) => {
+    setDraggedColId(colId);
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', colId);
+  };
+
+  const handleDragOver = (e: React.DragEvent, colId: string) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    if (dragOverColId !== colId) {
+      setDragOverColId(colId);
+    }
+  };
+
+  const handleDrop = async (e: React.DragEvent, targetColId: string) => {
+    e.preventDefault();
+    if (!draggedColId || draggedColId === targetColId) {
+      setDraggedColId(null);
+      setDragOverColId(null);
+      return;
+    }
+
+    const fromIdx = displayColumns.findIndex(c => c.id === draggedColId);
+    const toIdx = displayColumns.findIndex(c => c.id === targetColId);
+
+    setDraggedColId(null);
+    setDragOverColId(null);
+
+    if (fromIdx === -1 || toIdx === -1 || fromIdx === toIdx) return;
+
+    const reordered = [...displayColumns];
+    const [moved] = reordered.splice(fromIdx, 1);
+    reordered.splice(toIdx, 0, moved);
+
+    await handleReorderColumns(reordered);
+  };
+
+  const handleDragEnd = () => {
+    setDraggedColId(null);
+    setDragOverColId(null);
+  };
+
   // Abrir Modal de Coluna
   const handleOpenCreateColumn = (departmentKey: string) => {
     setEditingColumn(null);
@@ -339,6 +461,8 @@ export function Settings({ currentView, onNavigate, currentUser, onLogout }: Set
     setColReplicates(false);
     setColCountsProgress(false);
     setColIsEditable(true);
+    const count = columns.filter(c => c.department === departmentKey).length;
+    setColOrderIndex(count + 1);
     setIsColumnModalOpen(true);
   };
 
@@ -354,6 +478,8 @@ export function Settings({ currentView, onNavigate, currentUser, onLogout }: Set
     setColReplicates(col.replicates);
     setColCountsProgress(col.countsProgress ?? false);
     setColIsEditable(col.isEditable);
+    const pos = displayColumns.findIndex(c => c.id === col.id);
+    setColOrderIndex(pos >= 0 ? pos + 1 : (col.orderIndex || 1));
     setIsColumnModalOpen(true);
   };
 
@@ -373,7 +499,7 @@ export function Settings({ currentView, onNavigate, currentUser, onLogout }: Set
       const error = validatePopup(colPopupConfig);
       if (error) { showToast(error, 'error'); return; }
     }
-    const payload = {
+    const payload: any = {
       isActive: colActive,
       fieldConfig: colFieldConfig,
       visibilityConfig: colVisibility,
@@ -385,6 +511,9 @@ export function Settings({ currentView, onNavigate, currentUser, onLogout }: Set
       countsProgress: colCountsProgress,
       isEditable: colIsEditable,
     };
+    if (colOrderIndex !== '') {
+      payload.orderIndex = Number(colOrderIndex);
+    }
 
     setIsSavingColumn(true);
     try {
@@ -403,6 +532,18 @@ export function Settings({ currentView, onNavigate, currentUser, onLogout }: Set
       if (!res.ok) {
         showToast(data.error || 'Erro ao salvar coluna', 'error');
         return;
+      }
+
+      // Se editando e a posição foi alterada, reposiciona na lista
+      if (editingColumn && colOrderIndex !== '') {
+        const currentPos = displayColumns.findIndex(c => c.id === editingColumn.id) + 1;
+        const targetPos = Math.max(1, Math.min(Number(colOrderIndex), displayColumns.length));
+        if (currentPos > 0 && currentPos !== targetPos) {
+          const reordered = [...displayColumns];
+          const [moved] = reordered.splice(currentPos - 1, 1);
+          reordered.splice(targetPos - 1, 0, moved);
+          await handleReorderColumns(reordered);
+        }
       }
 
       showToast(editingColumn ? 'Coluna atualizada com sucesso!' : 'Nova coluna criada com sucesso!');
@@ -435,9 +576,6 @@ export function Settings({ currentView, onNavigate, currentUser, onLogout }: Set
       showToast('Erro ao excluir coluna', 'error');
     }
   };
-
-  const sector = SECTORS.find((s) => s.key === activeSector) || SECTORS[0];
-  const sectorColumns = columns.filter((c) => c.department === activeSector);
 
   const filteredCompanies = companies.filter((c) =>
     c.name.toLowerCase().includes(companySearch.toLowerCase()) || c.cnpj.includes(companySearch)
@@ -713,7 +851,7 @@ export function Settings({ currentView, onNavigate, currentUser, onLogout }: Set
 
                 <div className="columns-table">
                   <div className="columns-table-header">
-                    <div className="col-drag">#</div>
+                    <div className="col-drag" title="Ordem das colunas">Ordem</div>
                     <div className="col-name">Nome da Coluna</div>
                     <div className="col-type">Tipo de Campo</div>
                     <div className="col-progress">Contabiliza Progresso?</div>
@@ -722,7 +860,7 @@ export function Settings({ currentView, onNavigate, currentUser, onLogout }: Set
                     <div className="col-actions">Ações</div>
                   </div>
 
-                  {sectorColumns.length === 0 ? (
+                  {displayColumns.length === 0 ? (
                     <div className="empty-state">
                       <Columns3 size={32} />
                       <p>Nenhuma coluna configurada para {sector.label} ainda.</p>
@@ -731,20 +869,47 @@ export function Settings({ currentView, onNavigate, currentUser, onLogout }: Set
                       </button>
                     </div>
                   ) : (
-                    (() => {
-                      const list = sectorColumns;
-                      const months = list.filter(c => resolveColumnKey(c)?.startsWith('cont_mes_'));
-                      let displayList = list;
-                      if (months.length > 0) {
-                        displayList = list.filter(c => !resolveColumnKey(c)?.startsWith('cont_mes_'));
-                        displayList.splice(months[0].orderIndex - 1, 0, { ...months[0], name: 'Meses (Todos os 12)' });
-                      }
-                      return displayList.map((col, index) => {
-                        const t = INPUT_TYPES[col.inputType] || { label: col.inputType, Icon: Type };
+                    displayColumns.map((col, index) => {
+                      const t = INPUT_TYPES[col.inputType] || { label: col.inputType, Icon: Type };
+                      const isDraggable = !col.isMonthsGroup && !isReordering;
                       return (
-                        <div key={col.id} className="columns-table-row">
+                        <div
+                          key={col.id}
+                          className={`columns-table-row ${!col.isActive ? 'row-inactive' : ''} ${draggedColId === col.id ? 'is-dragging' : ''} ${dragOverColId === col.id ? 'drag-over' : ''}`}
+                          draggable={isDraggable}
+                          onDragStart={(e) => isDraggable && handleDragStart(e, col.id)}
+                          onDragOver={(e) => isDraggable && handleDragOver(e, col.id)}
+                          onDrop={(e) => isDraggable && handleDrop(e, col.id)}
+                          onDragEnd={handleDragEnd}
+                        >
                           <div className="col-drag">
-                            <span className="order-number">{index + 1}</span>
+                            <div
+                              className="col-drag-grip"
+                              title={col.isMonthsGroup ? 'Grupo de meses' : 'Arraste para alterar a ordem da coluna'}
+                            >
+                              <GripVertical size={16} />
+                            </div>
+                            <span className="order-number" title={`Ordem: ${index + 1}`}>{index + 1}</span>
+                            <div className="order-nav-btns">
+                              <button
+                                type="button"
+                                className="order-btn"
+                                title="Mover para cima"
+                                disabled={index === 0 || isReordering}
+                                onClick={(e) => { e.stopPropagation(); handleMoveColumn(index, -1); }}
+                              >
+                                <ChevronUp size={13} />
+                              </button>
+                              <button
+                                type="button"
+                                className="order-btn"
+                                title="Mover para baixo"
+                                disabled={index === displayColumns.length - 1 || isReordering}
+                                onClick={(e) => { e.stopPropagation(); handleMoveColumn(index, 1); }}
+                              >
+                                <ChevronDown size={13} />
+                              </button>
+                            </div>
                           </div>
                           <div className="col-name">
                             <strong>{col.name}</strong>{col.isActive === false && <small className="popup-column-summary">Inativa · dados preservados</small>}
@@ -805,8 +970,7 @@ export function Settings({ currentView, onNavigate, currentUser, onLogout }: Set
                           </div>
                         </div>
                       );
-                    });
-                  })()
+                    })
                   )}
                 </div>
               </div>
@@ -1193,6 +1357,24 @@ export function Settings({ currentView, onNavigate, currentUser, onLogout }: Set
                       </option>
                     ))}
                   </select>
+                </div>
+
+                <div className="form-group full-width">
+                  <label>Ordem / Posição na Planilha</label>
+                  <input
+                    type="number"
+                    min="1"
+                    max={displayColumns.length + (editingColumn ? 0 : 1)}
+                    value={colOrderIndex}
+                    onChange={(e) => {
+                      const val = e.target.value === '' ? '' : parseInt(e.target.value, 10);
+                      setColOrderIndex(isNaN(val as number) ? '' : (val as number));
+                    }}
+                    placeholder="Ex: 1"
+                  />
+                  <small style={{ color: 'var(--text-muted)', fontSize: '12px' }}>
+                    Posição onde a coluna é exibida (1 = primeira coluna).
+                  </small>
                 </div>
 
                 <div className="form-group full-width">

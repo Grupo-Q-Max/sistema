@@ -14,6 +14,7 @@ import {
   X,
   UserCheck,
   Calendar,
+  CalendarPlus,
   CheckCircle2,
   AlertCircle
 } from 'lucide-react';
@@ -21,6 +22,7 @@ import './Dashboard.css';
 import './Progress.css';
 import './Closings.css';
 import { Sidebar } from './Sidebar';
+import { ManualCompetenceModal } from './ManualCompetenceModal';
 import { DashboardSkeleton, LoadingSpinner } from './LoadingSkeleton';
 import type { CurrentUser } from '../types/auth';
 import { API } from '../api';
@@ -170,6 +172,7 @@ export function Dashboard({ currentView, onNavigate, currentUser, onLogout }: Da
   const [selectedRegime, setSelectedRegime] = useState<string | null>(null);
   const [searchFilter, setSearchFilter] = useState('');
   const [isMonthPickerOpen, setIsMonthPickerOpen] = useState(false);
+  const [isManualModalOpen, setIsManualModalOpen] = useState(false);
   const [progressMode, setProgressMode] = useState<'COMPANIES' | 'FIELDS'>('FIELDS');
 
   const fetchStats = (year: number, month: number) => {
@@ -310,7 +313,18 @@ export function Dashboard({ currentView, onNavigate, currentUser, onLogout }: Da
                         })}
                       </div>
 
-                      <div className="dropdown-footer" style={{color:'#94a3b8',fontSize:'0.75rem',padding:'12px'}}>Abertura automática na virada do mês · horário de Brasília</div>
+                      <div className="dropdown-footer" style={{color:'#94a3b8',fontSize:'0.75rem',padding:'12px',borderTop:'1px solid rgba(255,255,255,0.08)'}}>
+                        <div>Abertura automática na virada do mês · horário de Brasília</div>
+                        <button
+                          type="button"
+                          className="btn-secondary-light"
+                          style={{ marginTop: '8px', width: '100%', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '6px', fontSize: '0.8rem', padding: '6px 12px' }}
+                          onClick={() => { setIsMonthPickerOpen(false); setIsManualModalOpen(true); }}
+                        >
+                          <CalendarPlus size={14} />
+                          Abrir Competência Manual
+                        </button>
+                      </div>
                     </div>
                   </>
                 )}
@@ -595,6 +609,18 @@ export function Dashboard({ currentView, onNavigate, currentUser, onLogout }: Da
             </>
           )}
         </div>
+
+        <ManualCompetenceModal
+          isOpen={isManualModalOpen}
+          onClose={() => setIsManualModalOpen(false)}
+          initialYear={selectedYear}
+          initialMonth={selectedMonth + 1}
+          onSuccess={(newYear, newMonth) => {
+            setSelectedYear(newYear);
+            setSelectedMonth(newMonth - 1);
+            fetchStats(newYear, newMonth - 1);
+          }}
+        />
       </main>
     </div>
   );

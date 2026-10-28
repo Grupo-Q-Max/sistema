@@ -12,7 +12,7 @@ import { issueSession, registerInstallments } from './installments';
 import { createAccountingYearEngine } from './accountingYear';
 import { ACCOUNTING_COLUMNS, ACCOUNTING_API_VERSION, accountingYear, accountingMonth, annualColumnActive, annualValues, accountingProgress } from '../src/config/accountingColumns';
 import { createRolloverEngine } from './monthRollover';
-import { latestOpenPeriod, periodIsOpen, blockedPeriodMessage } from '../src/config/competenceCalendar';
+import { latestOpenPeriod, periodIsOpen, blockedPeriodMessage, setManualLatestPeriod, normalizePeriod } from '../src/config/competenceCalendar';
 import { PAYROLL_API_VERSION, resolveColumnKey, effectiveFieldConfig, validateFieldConfig, validatePayrollValue } from '../src/config/payrollColumns';
 import { isColumnActive, validateVisibility, calculateColumnProgress, isColumnComplete } from '../src/config/columnVisibility';
 import { validatePopup, effectivePopup, FISCAL_POPUPS } from '../src/config/fiscalPopups';
@@ -315,6 +315,20 @@ const rolloverEngine = createRolloverEngine(prisma);
 const accountingEngine = createAccountingYearEngine(prisma);
 const syncMonthClosingsAndReplicate = rolloverEngine.sync;
 registerCushman(app,prisma,{sync:syncMonthClosingsAndReplicate,encrypt:encryptPassword,decrypt:decryptPassword});
+async function syncLatestCompetenceFromDb() {
+  try {
+    const maxClosing = await prisma.closing.findFirst({
+      orderBy: { referencePeriod: 'desc' },
+      select: { referencePeriod: true },
+    });
+    if (maxClosing?.referencePeriod) {
+      setManualLatestPeriod(new Date(maxClosing.referencePeriod));
+    }
+  } catch (err) {
+    console.error('Erro ao sincronizar competência do banco:', err);
+  }
+}
+
 function requireOpenPeriod(period: Date, res: any): boolean {
   if (periodIsOpen(period)) return true;
   res.status(423).json({error:blockedPeriodMessage(period),code:'COMPETENCE_NOT_RELEASED',latestOpenPeriod:latestOpenPeriod()});
@@ -322,6 +336,7 @@ function requireOpenPeriod(period: Date, res: any): boolean {
 }
 app.get('/api/competences', async (_req, res) => {
   try {
+    await syncLatestCompetenceFromDb();
     await rolloverEngine.ensureAutomatic();
     await accountingEngine.ensureAutomatic();
     res.json({latestOpenPeriod:latestOpenPeriod(),timeZone:'America/Sao_Paulo',automatic:true});
@@ -362,7 +377,7 @@ app.get('/api/accounting-closings', async (req,res)=>{
     const rows=result.companies.map((company:any)=>{
       const closing=map.get(company.id);const data=annualValues(company,year,result.columns,closing?.columnsData||{});
       for(const column of result.columns)if(column.inputType==='PASSWORD'){const key=resolveColumnKey(column)||column.id;if(data[key])data[key]=decryptPassword(data[key]);}
-      return {company:{...company,certificatePasswordDecrypted:decryptPassword(company.certificatePassword),ginfessPasswordDecrypted:decryptPassword(company.ginfessPassword),gissOnlinePasswordDecrypted:decryptPassword(company.gissOnlinePassword)},closingId:closing?.id,columnsData:data,...accountingProgress(company,year,result.columns,data)};
+      return {company:{...company,certificatePasswordDecrypted:decryptPassword(company.certificatePassword),ginfessPasswordDecrypted:decryptPassword(company.ginfessPassword),gissOnlinePasswordDecrypted:decryptPassword(company.gissOnlinePassword),sdPasswordDecrypted:decryptPassword(company.sdPassword)},closingId:closing?.id,columnsData:data,...accountingProgress(company,year,result.columns,data)};
     });
     const users=await prisma.user.findMany({where:{active:true},select:{id:true,name:true,email:true},orderBy:{name:'asc'}});
     res.json({accountingApiVersion:ACCOUNTING_API_VERSION,year,latestYear:accountingYear(),rows,columns,users,configured:result.columns.some((column:any)=>column.columnKey?.startsWith('cont_'))});
@@ -390,14 +405,20 @@ async function saveAccountingColumn(existing:any,columnKey:string,columnValue:an
   return res.json({success:true,closing:{...updated,columnsData:projected},...progress});
 }
 
-// Endpoint explícito de virada de mês / replicação
+// Endpoint explícito de virada de mês / replicação (manual ou automática)
 app.post('/api/closings/rollover', async (req, res) => {
   try {
     const target = getTargetReferencePeriod(req.body);
-    if (!requireOpenPeriod(target, res)) return;
+    const isManual = Boolean(req.body.manual || req.body.force);
+    if (isManual) {
+      setManualLatestPeriod(target);
+    } else {
+      if (!requireOpenPeriod(target, res)) return;
+    }
     await rolloverEngine.ensureAutomatic();
     await accountingEngine.ensureAutomatic();
-    const result = await syncMonthClosingsAndReplicate(target);
+    const result = await syncMonthClosingsAndReplicate(target, isManual);
+    setManualLatestPeriod(target);
 
     const monthLabel = target.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric', timeZone: 'UTC' });
 
@@ -407,11 +428,12 @@ app.post('/api/closings/rollover', async (req, res) => {
       monthLabel,
       createdCount: result.createdCount,
       replicatedColsCount: result.replicatedColsCount,
-      message: `Virada de mês concluída para ${monthLabel}. ${result.createdCount} fechamentos gerados com replicação de colunas ativas.`,
+      latestOpenPeriod: latestOpenPeriod(),
+      message: `Competência de ${monthLabel} aberta com sucesso! ${result.createdCount} fechamentos gerados com replicação de colunas ativas.`,
     });
-  } catch (error) {
-    console.error('Erro na virada de mês:', error);
-    res.status(500).json({ error: 'Erro ao executar virada de mês e replicação de colunas' });
+  } catch (error: any) {
+    console.error('Erro na abertura da competência:', error);
+    res.status(500).json({ error: error.message || 'Erro ao executar abertura de competência e replicação de colunas' });
   }
 });
 
@@ -503,6 +525,7 @@ app.get('/api/closings', async (req, res) => {
           certificatePasswordDecrypted: decryptPassword(c.certificatePassword),
           ginfessPasswordDecrypted: decryptPassword(c.ginfessPassword),
           gissOnlinePasswordDecrypted: decryptPassword(c.gissOnlinePassword),
+          sdPasswordDecrypted: decryptPassword(c.sdPassword),
         },
         closingId: closing?.id || null,
         closingStatus: closing?.status || calculatedStatus,
@@ -1100,6 +1123,7 @@ app.get('/api/companies', async (req, res) => {
       certificatePasswordDecrypted: decryptPassword(c.certificatePassword),
       ginfessPasswordDecrypted: decryptPassword(c.ginfessPassword),
       gissOnlinePasswordDecrypted: decryptPassword(c.gissOnlinePassword),
+      sdPasswordDecrypted: decryptPassword(c.sdPassword),
     }));
 
     res.json(formatted);
@@ -1145,10 +1169,24 @@ app.post('/api/companies', async (req, res) => {
       cityHallLink,
       ginfessPassword,
       gissOnlinePassword,
+      sdLogin,
+      sdPassword,
       dissidioMonthYear,
       notes,
       notesScope = 'GERAL',
+      userId,
     } = req.body;
+
+    let isPrivileged = false;
+    if (userId) {
+      const actor = await prisma.user.findUnique({ where: { id: userId } });
+      if (actor && (actor.role === 'ADMIN' || actor.role === 'SOCIO')) {
+        isPrivileged = true;
+      }
+    }
+    if ((sdLogin || sdPassword) && !isPrivileged) {
+      return res.status(403).json({ error: 'Apenas Administradores e Sócios podem cadastrar o SD Login e SD Senha.' });
+    }
 
     if (!name || !cnpj) {
       return res.status(400).json({ error: 'Nome/Razão Social e CNPJ são obrigatórios.' });
@@ -1206,6 +1244,8 @@ app.post('/api/companies', async (req, res) => {
         cityHallLink: cityHallLink ? cityHallLink.trim() : null,
         ginfessPassword: encryptPassword(ginfessPassword),
         gissOnlinePassword: encryptPassword(gissOnlinePassword),
+        sdLogin: isPrivileged && sdLogin ? sdLogin.trim() : null,
+        sdPassword: isPrivileged && sdPassword ? encryptPassword(sdPassword) : null,
         dissidioMonthYear: dissidioMonthYear ? dissidioMonthYear.trim() : null,
         notes: notes ? notes.trim() : null,
         notesScope: notesScope || 'GERAL',
@@ -1217,6 +1257,7 @@ app.post('/api/companies', async (req, res) => {
       certificatePasswordDecrypted: certificatePassword || null,
       ginfessPasswordDecrypted: ginfessPassword || null,
       gissOnlinePasswordDecrypted: gissOnlinePassword || null,
+      sdPasswordDecrypted: isPrivileged && sdPassword ? sdPassword : null,
     });
   } catch (error: any) {
     console.error('Erro ao cadastrar empresa:', error);
@@ -1261,9 +1302,12 @@ app.put('/api/companies/:id', async (req, res) => {
       cityHallLink,
       ginfessPassword,
       gissOnlinePassword,
+      sdLogin,
+      sdPassword,
       dissidioMonthYear,
       notes,
       notesScope,
+      userId,
     } = req.body;
 
     const existingCompany = await prisma.company.findUnique({ where: { id } });
@@ -1331,6 +1375,28 @@ app.put('/api/companies/:id', async (req, res) => {
       updateData.gissOnlinePassword = gissOnlinePassword ? encryptPassword(gissOnlinePassword) : null;
     }
 
+    let isPrivileged = false;
+    if (userId) {
+      const actor = await prisma.user.findUnique({ where: { id: userId } });
+      if (actor && (actor.role === 'ADMIN' || actor.role === 'SOCIO')) {
+        isPrivileged = true;
+      }
+    }
+
+    const currentSdLogin = existingCompany.sdLogin || '';
+    const currentSdPassword = decryptPassword(existingCompany.sdPassword) || '';
+    const newSdLogin = sdLogin !== undefined ? (sdLogin ? sdLogin.trim() : '') : currentSdLogin;
+    const newSdPassword = sdPassword !== undefined ? (sdPassword ? sdPassword.trim() : '') : currentSdPassword;
+
+    if ((newSdLogin !== currentSdLogin || newSdPassword !== currentSdPassword) && !isPrivileged) {
+      return res.status(403).json({ error: 'Apenas Administradores e Sócios podem alterar o SD Login e SD Senha.' });
+    }
+
+    if (isPrivileged) {
+      if (sdLogin !== undefined) updateData.sdLogin = sdLogin ? sdLogin.trim() : null;
+      if (sdPassword !== undefined) updateData.sdPassword = sdPassword ? encryptPassword(sdPassword) : null;
+    }
+
     if (dissidioMonthYear !== undefined) updateData.dissidioMonthYear = dissidioMonthYear ? dissidioMonthYear.trim() : null;
     if (notes !== undefined) updateData.notes = notes ? notes.trim() : null;
     if (notesScope !== undefined) updateData.notesScope = notesScope || 'GERAL';
@@ -1384,6 +1450,7 @@ app.put('/api/companies/:id', async (req, res) => {
       certificatePasswordDecrypted: decryptPassword(updated.certificatePassword),
       ginfessPasswordDecrypted: decryptPassword(updated.ginfessPassword),
       gissOnlinePasswordDecrypted: decryptPassword(updated.gissOnlinePassword),
+      sdPasswordDecrypted: decryptPassword(updated.sdPassword),
     });
   } catch (error: any) {
     console.error('Erro ao atualizar empresa:', error);
@@ -2098,14 +2165,15 @@ app.post('/api/columns/reorder', async (req, res) => {
       return res.status(400).json({ error: 'columnIds deve ser um array' });
     }
 
-    await Promise.all(
-      columnIds.map((id: string, idx: number) =>
-        prisma.departmentColumn.update({
+    for (let idx = 0; idx < columnIds.length; idx++) {
+      const id = columnIds[idx];
+      if (typeof id === 'string' && id) {
+        await prisma.departmentColumn.update({
           where: { id },
           data: { orderIndex: idx + 1 },
-        })
-      )
-    );
+        }).catch((e: any) => console.warn(`Falha ao reordenar coluna ${id}:`, e.message));
+      }
+    }
 
     res.json({ success: true });
   } catch (error) {
@@ -2116,6 +2184,7 @@ app.post('/api/columns/reorder', async (req, res) => {
 
 async function runAutomaticRollover() {
   try {
+    await syncLatestCompetenceFromDb();
     const result = await rolloverEngine.ensureAutomatic();
     await accountingEngine.ensureAutomatic();
     if (result.createdCount || result.replicatedColsCount) console.log('[Competências automáticas]', result);
