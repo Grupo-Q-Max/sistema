@@ -18,6 +18,7 @@ import { isColumnActive, validateVisibility, calculateColumnProgress, isColumnCo
 import { validatePopup, effectivePopup, FISCAL_POPUPS } from '../src/config/fiscalPopups';
 import express from 'express';
 import cors from 'cors';
+import compression from 'compression';
 import { PrismaClient } from '@prisma/client';
 import { PrismaMariaDb } from '@prisma/adapter-mariadb';
 import mariadb from 'mariadb';
@@ -25,6 +26,15 @@ import bcrypt from 'bcryptjs';
 import 'dotenv/config';
 
 const app = express();
+
+// Compressão Gzip/Deflate para acelerar tráfego de rede (reduz consumo em até 80%)
+app.use(compression({
+  threshold: 1024,
+  filter: (req, res) => {
+    if (req.headers['x-no-compression']) return false;
+    return compression.filter(req, res);
+  }
+}));
 
 const connectionString = process.env.DATABASE_URL || '';
 const url = new URL(connectionString);
@@ -37,6 +47,9 @@ const pool = mariadb.createPool({
   database: url.pathname.slice(1),
   dateStrings: true,
   connectionLimit: 15,
+  connectTimeout: 10000,
+  idleTimeout: 60000,
+  keepAliveDelay: 30000,
   ssl: useSsl ? { rejectUnauthorized: false } : undefined,
 });
 
@@ -2290,13 +2303,31 @@ async function runAutomaticRollover() {
 }
 
 const distPath = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'dist');
-app.use(express.static(distPath));
-app.use('/sistema', express.static(distPath));
+
+// Assets com hash no nome (/assets/*) são cacheados de forma imutável por 1 ano
+app.use('/assets', express.static(path.join(distPath, 'assets'), {
+  maxAge: '1y',
+  immutable: true,
+}));
+
+// Arquivos estáticos gerais com validação e sem cache no index.html
+const staticOptions = {
+  maxAge: '1h',
+  setHeaders: (res: express.Response, filePath: string) => {
+    if (filePath.endsWith('index.html')) {
+      res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+    }
+  },
+};
+
+app.use(express.static(distPath, staticOptions));
+app.use('/sistema', express.static(distPath, staticOptions));
 
 // Fallback do SPA para rotas do frontend
 app.use((req, res, next) => {
   if (req.path.startsWith('/api') || req.path.startsWith('/sistema/api')) return next();
   if (req.method !== 'GET' && req.method !== 'HEAD') return next();
+  res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
   res.sendFile(path.join(distPath, 'index.html'), (err) => { if (err) next(); });
 });
 
