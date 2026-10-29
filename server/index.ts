@@ -82,11 +82,38 @@ export async function logAction(
 app.use(cors());
 app.use(express.json());
 
-// Normaliza requisições vindas com prefixo legado /sistema/api para /api
+const KNOWN_API_PREFIXES = [
+  '/closings',
+  '/companies',
+  '/accounting-closings',
+  '/cushman-closings',
+  '/cushman-companies',
+  '/plans',
+  '/company',
+  '/competences',
+  '/dashboard',
+  '/analytics',
+  '/users',
+  '/logs',
+  '/login',
+  '/logout',
+];
+
+// Normaliza requisições vindas com prefixo legado /sistema ou sem /api
 app.use((req, res, next) => {
   if (req.url.startsWith('/sistema/api')) {
     req.url = req.url.substring('/sistema'.length);
+  } else if (req.url.startsWith('/sistema/')) {
+    req.url = req.url.substring('/sistema'.length);
   }
+
+  for (const prefix of KNOWN_API_PREFIXES) {
+    if (req.url === prefix || req.url.startsWith(prefix + '/') || req.url.startsWith(prefix + '?')) {
+      req.url = '/api' + req.url;
+      break;
+    }
+  }
+
   next();
 });
 

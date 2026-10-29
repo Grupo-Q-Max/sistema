@@ -156,7 +156,7 @@ export function PayrollClosings({ currentView, onNavigate, currentUser, onLogout
   async function load() {
     const sequence = ++fetchSequence.current; setLoading(true); setError('');
     try {
-      const res = await fetch(`${API}/closings?sector=DP&year=${period.getUTCFullYear()}&month=${period.getUTCMonth() + 1}`);
+      const res = await fetch(`${API}/api/closings?sector=DP&year=${period.getUTCFullYear()}&month=${period.getUTCMonth() + 1}`);
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Não foi possível carregar o fechamento DP.');
       if (sequence !== fetchSequence.current) return;
@@ -253,7 +253,7 @@ export function PayrollClosings({ currentView, onNavigate, currentUser, onLogout
     const capturedPeriod = currentPeriodKey.current;
     setPending(p => p + 1);
     const save = saveQueue.current.catch(() => { }).then(async () => {
-      const res = await fetch(`${API}/closings/${row.closingId}/column`, {
+      const res = await fetch(`${API}/api/closings/${row.closingId}/column`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ columnKey: key, columnValue: value })
@@ -277,7 +277,7 @@ export function PayrollClosings({ currentView, onNavigate, currentUser, onLogout
     if (!canEdit) return;
     const capturedPeriod = currentPeriodKey.current; setPending(p => p + 1);
     try {
-      const res = await fetch(`${API}/companies/${row.company.id}/responsible`, {
+      const res = await fetch(`${API}/api/companies/${row.company.id}/responsible`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ userId, sector: 'DP' })
