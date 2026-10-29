@@ -2,6 +2,7 @@ import {CompanyQuality} from './components/CompanyQuality';
 import {CushmanClosings} from './components/CushmanClosings';
 import { InstallmentSettings } from './components/InstallmentSettings';
 import { AccountingClosings } from './components/AccountingClosings';
+import { ErrorBoundary } from './components/ErrorBoundary';
 import React, { useState, useEffect } from 'react';
 import './index.css';
 import { Dashboard } from './components/Dashboard';
@@ -124,7 +125,7 @@ function App() {
 
   if (currentView === 'closings-accounting') return <AccountingClosings currentView={currentView} onNavigate={handleNavigate} currentUser={currentUser} onLogout={handleLogout} />;
 
-  if (currentView === 'closings-dp') return <PayrollClosings currentView={currentView} onNavigate={handleNavigate} currentUser={currentUser} onLogout={handleLogout} />;
+  if (currentView === 'closings-dp') return <ErrorBoundary fallbackTitle="Erro ao carregar o Fechamento DP"><PayrollClosings currentView={currentView} onNavigate={handleNavigate} currentUser={currentUser} onLogout={handleLogout} /></ErrorBoundary>;
 
   if (currentView === 'closings') {
     return (

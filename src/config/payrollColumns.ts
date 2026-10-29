@@ -33,9 +33,14 @@ export function resolveColumnKey(column: any): string | null {
   return PAYROLL_COLUMNS.find(c=>[c.name,...c.aliases].some(n=>normalize(n)===name))?.key || column.id || null;
 }
 export function effectiveFieldConfig(column: any): FieldConfig {
-  if(column.fieldConfig) return structuredClone(column.fieldConfig);
-  const template=[...PAYROLL_COLUMNS,...ACCOUNTING_COLUMNS].find(c=>c.key===resolveColumnKey(column));
-  return {version:1,placeholder:'',options:template ? [...template.options] : []};
+  if (column.fieldConfig) {
+    const cloned = structuredClone(column.fieldConfig);
+    if (!Array.isArray(cloned.options)) cloned.options = [];
+    if (typeof cloned.placeholder !== 'string') cloned.placeholder = '';
+    return cloned;
+  }
+  const template = [...PAYROLL_COLUMNS, ...ACCOUNTING_COLUMNS].find(c => c.key === resolveColumnKey(column));
+  return { version: 1, placeholder: '', options: template && Array.isArray(template.options) ? [...template.options] : [] };
 }
 export function validateFieldConfig(value: unknown): string | null {
   if(!value || typeof value!=='object') return 'Configuração de campo inválida.';

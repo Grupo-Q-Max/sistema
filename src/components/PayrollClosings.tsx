@@ -1,7 +1,7 @@
 import { latestOpenPeriod } from '../config/competenceCalendar';
 import { useCompetenceCalendar } from './useCompetenceCalendar';
 import { useEffect, useMemo, useRef, useState, useDeferredValue } from 'react';
-import { Building2, CheckCircle2, ChevronLeft, ChevronRight, Eye, EyeOff, RefreshCw, Users, X, ExternalLink, AlertTriangle, Copy, Search, AlertCircle, Filter, Check, Calendar, FileText } from 'lucide-react';
+import { Building2, CheckCircle2, ChevronLeft, ChevronRight, Eye, EyeOff, RefreshCw, Users, X, ExternalLink, AlertTriangle, Copy, Search, AlertCircle, Filter, Check, Calendar, FileText, Clock, Sparkles } from 'lucide-react';
 import { CompanyDetailsModal, getCertificateStatus, formatCnpj, formatRegimeLabel } from './CompanyDetailsModal';
 import { Sidebar } from './Sidebar';
 import { ClosingSectorTabs, hasSectorAccess } from './ClosingSectorTabs';
@@ -101,8 +101,9 @@ export function PayrollInput({ column, value, disabled, onSave }: { column: any;
   const config = effectiveFieldConfig(column);
   const inputProps = { value: draft, disabled: disabled || saving, 'aria-label': column.name, placeholder: config.placeholder, onChange: (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => { dirty.current = true; setDraft(e.target.value); }, onBlur: () => { void commit(); }, onKeyDown: (e: React.KeyboardEvent<HTMLInputElement>) => { if (e.key === 'Enter') e.currentTarget.blur(); } };
   if (column.inputType === 'CHECKBOX') return <div className="payroll-input-cell"><input aria-label={column.name} type="checkbox" checked={value === true} disabled={disabled || saving} onChange={async e => { setSaving(true); try { await onSave(e.target.checked); } catch (err) { setError(err instanceof Error ? err.message : 'Erro ao salvar.'); } finally { setSaving(false); } }} />{error && <small role="alert">{error}</small>}</div>;
+  const options = Array.isArray(config.options) ? config.options : [];
   return <div className="payroll-input-cell">
-    {column.inputType === 'SELECT' ? <select aria-label={column.name} value={draft} disabled={disabled || saving} onChange={e => { dirty.current = true; setDraft(e.target.value); void commit(e.target.value); }}><option value="">Selecione...</option>{draft && !config.options.includes(draft) && <option value={draft}>{draft} (anterior)</option>}{config.options.map(option => <option key={option} value={option}>{option}</option>)}</select>
+    {column.inputType === 'SELECT' ? <select aria-label={column.name} value={draft} disabled={disabled || saving} onChange={e => { dirty.current = true; setDraft(e.target.value); void commit(e.target.value); }}><option value="">Selecione...</option>{draft && !options.includes(draft) && <option value={draft}>{draft} (anterior)</option>}{options.map(option => <option key={option} value={option}>{option}</option>)}</select>
       : column.inputType === 'TEXTAREA' ? <textarea {...inputProps} onKeyDown={undefined} rows={1} />
         : <div className="payroll-password-cell"><input {...inputProps} type={column.inputType === 'NUMBER' ? 'number' : column.inputType === 'PASSWORD' && !revealed ? 'password' : 'text'} min={column.inputType === 'NUMBER' ? 0 : undefined} step={column.inputType === 'NUMBER' ? 1 : undefined} autoComplete="off" />{column.inputType === 'PASSWORD' && <button type="button" aria-label={revealed ? 'Ocultar senha' : 'Mostrar senha'} onClick={() => setRevealed(!revealed)}>{revealed ? <EyeOff size={14} /> : <Eye size={14} />}</button>}</div>}
     {saving && <small>Salvando...</small>}{error && <small role="alert">{error} <button type="button" onClick={() => { void commit(); }}>Tentar novamente</button></small>}
@@ -235,7 +236,16 @@ export function PayrollClosings({ currentView, onNavigate, currentUser, onLogout
     return sortValue(a).localeCompare(sortValue(b), 'pt-BR', { numeric: true }) * (sort.asc ? 1 : -1);
   }), [scopedRows, deferredSearch, statusFilter, responsibleFilter, regimeFilter, sort, users]);
 
-  const totalEmployees = scopedRows.reduce((total, row) => total + (Number(row.columnsData.dp_qtde_funcionarios) || 0), 0);
+  const totalEmployees = scopedRows.reduce((total, row) => total + (Number(row.columnsData?.dp_qtde_funcionarios) || 0), 0);
+
+  const summary = useMemo(() => {
+    const total = scopedRows.length;
+    const completed = scopedRows.filter(r => r.calculatedStatus === 'COMPLETED').length;
+    const inProgress = scopedRows.filter(r => r.calculatedStatus === 'IN_PROGRESS').length;
+    const pendingCount = scopedRows.filter(r => r.calculatedStatus === 'PENDING').length;
+    const overallPercent = total ? Math.round(scopedRows.reduce((acc, r) => acc + (r.progressPercent || 0), 0) / total) : 0;
+    return { total, completed, inProgress, pending: pendingCount, overallPercent };
+  }, [scopedRows]);
 
   function enqueueSave(row: PayrollRow, column: any, value: any): Promise<void> {
     if (!canEdit) return Promise.reject(new Error('Você tem acesso apenas de leitura ao DP.'));
@@ -415,89 +425,212 @@ export function PayrollClosings({ currentView, onNavigate, currentUser, onLogout
     setActionModal(null);
   }
 
-  return <div className="app-container"><Sidebar currentView={currentView} onNavigate={onNavigate} currentUser={currentUser} onLogout={onLogout} /><main className="main-content"><div className="payroll-layout">
-    <div className="payroll-hero">
-      <div className="payroll-hero-left">
-        <ClosingSectorTabs sector="DP" currentUser={currentUser} onNavigate={onNavigate} />
-        <h1 className="payroll-title">Fechamento Departamento Pessoal</h1>
-        <p className="payroll-subtitle">Acompanhamento operacional mensal por empresa</p>
-      </div>
-      <div className="payroll-hero-actions">
-        <div className="competence-nav" aria-label="Navegar entre competências">
-          <button type="button" className="competence-nav-btn" title="Mês anterior" aria-label="Mês anterior" onClick={() => setPeriod(new Date(Date.UTC(period.getUTCFullYear(), period.getUTCMonth() - 1, 1)))}><ChevronLeft size={16} /></button>
-          <span className="competence-indicator" aria-live="polite">{monthLabel}</span>
-          <button type="button" className="competence-nav-btn" title="Próximo mês" aria-label="Próximo mês" disabled={!canGoNext} onClick={() => setPeriod(new Date(Date.UTC(period.getUTCFullYear(), period.getUTCMonth() + 1, 1)))}><ChevronRight size={16} /></button>
-        </div>
-      </div>
-    </div>
-    {!canView ? <p className="payroll-error" style={{ marginTop: 24, fontSize: '1rem' }}>Você não tem acesso ao Departamento Pessoal.</p> : <>
-    <div className="payroll-toolbar">
-      <div className="payroll-search-wrapper">
-        <Search size={16} className="payroll-search-icon" />
-        <input className="payroll-search-input" aria-label="Buscar empresa" placeholder="Buscar por código, empresa, CNPJ, grupo ou cidade..." value={search} onChange={e => setSearch(e.target.value)} />
-        {search && <button type="button" className="payroll-search-clear" aria-label="Limpar busca" onClick={() => setSearch('')}><X size={14} /></button>}
-      </div>
-      <div className="payroll-controls">
-        <select className="closings-select" aria-label="Filtrar status" value={statusFilter} onChange={e => setStatusFilter(e.target.value)}><option value="ALL">Status: Todos</option>{Object.entries(STATUS_LABELS).map(([key, label]) => <option key={key} value={key}>{label}</option>)}</select>
-        <select className="closings-select" aria-label="Filtrar tributação" value={regimeFilter} onChange={e => setRegimeFilter(e.target.value)}><option value="ALL">Tributação: Todas</option>{regimes.map(regime => <option key={regime} value={regime}>{formatRegimeLabel(regime)}</option>)}</select>
-        <select className="closings-select" aria-label="Filtrar responsável" value={responsibleFilter} onChange={e => setResponsibleFilter(e.target.value)}><option value="ALL">Responsável: Todos</option>{users.map(user => <option key={user.id} value={user.id}>{user.name || user.email}</option>)}</select>
-        <button className="payroll-refresh-btn" type="button" title="Atualizar fechamento DP" aria-label="Atualizar fechamento DP" disabled={pending > 0 || loading} onClick={() => { void load(); }}><RefreshCw size={16} className={loading ? 'payroll-spin' : ''} /></button>
-        <button className="btn-secondary-light" onClick={handleExport} title="Exportar para Excel (CSV)">
-          <ExternalLink size={16} />
-          Exportar
-        </button>
-      </div>
-    </div>
-    <div className="payroll-table-meta"><span>{loading ? 'Carregando empresas...' : `${filtered.length} de ${scopedRows.length} empresas`}<span className="payroll-meta-separator">·</span><Users size={14} />{loading ? '-' : totalEmployees} funcionários</span><span className="payroll-save-status" aria-live="polite">{pending > 0 ? <><ButtonSpinner />Salvando alterações...</> : <><CheckCircle2 size={14} />Salvamento automático</>}</span></div>
-    {error && <div className="payroll-error" role="alert">{error}<button type="button" onClick={() => setError('')}>Fechar</button></div>}
-    {!loading && !error && columns.length === 0 && <p className="payroll-error">Nenhuma coluna operacional DP está ativa nesta competência. Confira meses, anos e atividade em Configurações → DP.</p>}
-    <div className="closings-table-card" ref={filterContainer}>{loading ? <div className="payroll-loading"><TableSkeleton count={6} /></div> : <><div className="payroll-scroll-top" ref={upperScroll} onScroll={e => { if (tableScroll.current) tableScroll.current.scrollLeft = e.currentTarget.scrollLeft; }}><div style={{ width: scrollWidth || 1080 + columns.length * 170, height: 1 }} /></div><div className="closings-table-wrapper payroll-table-scroll" ref={tableScroll} onScroll={e => { if (upperScroll.current) upperScroll.current.scrollLeft = e.currentTarget.scrollLeft; }}><table className="closings-table payroll-table" style={{ minWidth: `${1080 + columns.length * 170}px` }}><thead><tr>{PAYROLL_BASE_HEADERS.map(renderHeader)}{columns.map(column => <th key={column.id} title={visibilitySummary(column)}>{column.name}</th>)}</tr></thead><tbody>{filtered.length === 0 ? <tr><td colSpan={PAYROLL_BASE_HEADERS.length + columns.length} className="payroll-empty">Nenhuma empresa encontrada nesta competência.</td></tr> : filtered.map(row => {
-      const c = row.company;
-      const certInfo = c.hasClientCertificate ? getCertificateStatus(c.certificateExpiration) : null;
-      return <tr key={row.closingId}>
-        <td className="sticky-col-code"><span style={{ fontWeight: 600, color: '#94a3b8' }}>{c.code || '—'}</span></td>
-        <td className="sticky-col-company"><div className="company-cell-wrapper"><button type="button" className="company-interactive-link" title="Ver dados da empresa e certificado" onClick={() => setCompanyDetails(c)}><div className="company-link-left"><Building2 size={16} color="#818cf8" style={{ flexShrink: 0 }} /><span>{c.name}</span></div><div className="company-link-icon-chip"><span>Ver Dados</span><ExternalLink size={10} /></div></button>{c.tradeName && <div className="company-cell-trade">{c.tradeName}</div>}{certInfo && <button className={`cert-warning-tag ${certInfo.status === 'EXPIRED' ? 'expired' : ''}`} type="button" onClick={() => setCompanyDetails(c)} title={`Vencimento: ${c.certificateExpiration}`}><AlertTriangle size={11} />{certInfo.label}</button>}</div></td>
-        <td><span className={`tax-regime-pill ${c.taxRegime === 'SIMPLES_NACIONAL' ? 'simples' : c.taxRegime?.includes('PRESUMIDO') ? 'presumido' : c.taxRegime?.includes('REAL') ? 'real' : c.taxRegime === 'MEI' ? 'mei' : ''}`}>{formatRegimeLabel(c.taxRegime || '')}</span></td>
-        <td title={`Progresso: ${row.progressPercent}%`}><span className={`status-badge ${row.calculatedStatus === 'COMPLETED' ? 'completed' : row.calculatedStatus === 'IN_PROGRESS' ? 'in-progress' : 'pending'}`}>{STATUS_LABELS[row.calculatedStatus] || row.calculatedStatus}</span></td>
-        <td><select className="table-user-select" aria-label={`Responsável DP de ${c.name}`} disabled={!canEdit || pending > 0} value={getResponsible(c)?.userId || ''} onChange={e => { void changeResponsible(row, e.target.value); }}><option value="">Não atribuído</option>{users.map(user => <option key={user.id} value={user.id}>{user.name || user.email}</option>)}</select></td>
-        <td><button type="button" className="copy-badge-btn" title="Copiar CNPJ" onClick={() => { void navigator.clipboard.writeText(c.cnpj || '').then(() => setCopyMessage('CNPJ copiado!')).catch(() => setError('Não foi possível copiar o CNPJ.')); }}>{formatCnpj(c.cnpj || '')}<Copy size={12} /></button></td>
-        {columns.map(column => {
-          const key = resolveColumnKey(column) || column.id;
-          if (key === 'dp_reinf_fiscal') {
-            return <td key={column.id}>
-              <button className={`obligation-btn ${reinfAppearance(row.fiscalReinf).className}`} title="Consultar REINF do Fiscal desta competência" onClick={() => setReinfRow(row)}>
-                <Eye size={14} />{reinfAppearance(row.fiscalReinf).label}
-              </button>
-            </td>;
-          }
-          if (key === 'dp_observacao') {
-            return <td key={column.id}>
-              <button type="button" className="copy-badge-btn" style={{ background: row.columnsData[key] ? 'rgba(99, 102, 241, 0.15)' : undefined }} title={row.columnsData[key] || 'Observação do DP'} onClick={() => { setNotesDialog({ row, column }); setNotesDraft(String(row.columnsData[key] ?? '')); setNotesError(''); }}>
-                {row.columnsData[key] ? String(row.columnsData[key]).slice(0, 16) + (String(row.columnsData[key]).length > 16 ? '...' : '') : '+ Obs'}
-              </button>
-            </td>;
-          }
-          if (isPayrollActionColumn(key)) {
-            const appearance = getPayrollStatusAppearance(row.columnsData[key]);
-            return <td key={column.id}>
-              <button
-                type="button"
-                className={`obligation-btn ${appearance.className}`}
-                title={appearance.tooltip || appearance.label}
-                disabled={!canEdit || column.isEditable === false}
-                onClick={() => openActionModal(row, column, key)}
-              >
-                {appearance.label}
-              </button>
-            </td>;
-          }
-          return <td key={column.id}>
-            <PayrollInput column={column} value={row.columnsData[key]} disabled={!canEdit || column.isEditable === false || column.inputType === 'READONLY'} onSave={value => enqueueSave(row, column, value)} />
-          </td>;
-        })}
-      </tr>;
-    })}</tbody></table></div></>}</div></>}
-  </div></main>
+  return (
+    <div className="crm-dashboard">
+      <Sidebar currentView={currentView} onNavigate={onNavigate} currentUser={currentUser} onLogout={onLogout} />
+      <main className="crm-main">
+        <div className="closings-container payroll-closings">
+          <div className="closings-header">
+            <div className="closings-header-titles">
+              <h1>
+                <Users size={28} color="#818cf8" />
+                Fechamento Departamento Pessoal
+              </h1>
+              <p>Acompanhamento operacional mensal por empresa</p>
+            </div>
+            <div className="closings-header-actions">
+              <ClosingSectorTabs sector="DP" currentUser={currentUser} onNavigate={onNavigate} />
+              <div className="month-selector-box">
+                <button
+                  type="button"
+                  className="month-nav-btn"
+                  title="Mês anterior"
+                  aria-label="Mês anterior"
+                  disabled={pending > 0}
+                  onClick={() => setPeriod(new Date(Date.UTC(period.getUTCFullYear(), period.getUTCMonth() - 1, 1)))}
+                >
+                  <ChevronLeft size={20} />
+                </button>
+                <span className="month-display-text">{monthLabel}</span>
+                <button
+                  type="button"
+                  className="month-nav-btn"
+                  title="Próximo mês"
+                  aria-label="Próximo mês"
+                  disabled={!canGoNext || pending > 0}
+                  onClick={() => setPeriod(new Date(Date.UTC(period.getUTCFullYear(), period.getUTCMonth() + 1, 1)))}
+                >
+                  <ChevronRight size={20} />
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {!canView ? (
+            <p className="payroll-error" style={{ marginTop: 24, fontSize: '1rem' }}>Você não tem acesso ao Departamento Pessoal.</p>
+          ) : (
+            <>
+              <div className="closings-stats-grid">
+                {[
+                  { label: 'Total Empresas', value: summary.total, kind: 'total', Icon: Building2 },
+                  { label: 'Concluídos', value: summary.completed, kind: 'completed', Icon: CheckCircle2 },
+                  { label: 'Em Andamento', value: summary.inProgress, kind: 'in-progress', Icon: Clock },
+                  { label: 'Pendentes', value: summary.pending, kind: 'pending', Icon: AlertCircle },
+                  { label: 'Progresso (Campos)', value: summary.overallPercent + '%', kind: 'percent', Icon: Sparkles },
+                  { label: 'Total Funcionários', value: totalEmployees, kind: 'percent', Icon: Users },
+                ].map(({ label, value, kind, Icon }) => (
+                  <div key={label} className="closing-stat-card">
+                    <div className={`closing-stat-icon ${kind}`}><Icon size={22} /></div>
+                    <div className="closing-stat-info">
+                      <span>{label}</span>
+                      <strong>{loading ? '—' : value}</strong>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              <div className="closings-toolbar">
+                <div className="closings-search-box">
+                  <Search size={18} color="#94a3b8" />
+                  <input
+                    aria-label="Buscar empresa"
+                    placeholder="Buscar por código, empresa, CNPJ, grupo ou cidade..."
+                    value={search}
+                    onChange={e => setSearch(e.target.value)}
+                  />
+                  {search && (
+                    <button type="button" className="payroll-search-clear" aria-label="Limpar busca" onClick={() => setSearch('')}>
+                      <X size={14} />
+                    </button>
+                  )}
+                </div>
+                <div className="closings-filters">
+                  <select className="closings-select" aria-label="Filtrar status" value={statusFilter} onChange={e => setStatusFilter(e.target.value)}>
+                    <option value="ALL">Status: Todos</option>
+                    {Object.entries(STATUS_LABELS).map(([key, label]) => <option key={key} value={key}>{label}</option>)}
+                  </select>
+                  <select className="closings-select" aria-label="Filtrar tributação" value={regimeFilter} onChange={e => setRegimeFilter(e.target.value)}>
+                    <option value="ALL">Tributação: Todas</option>
+                    {regimes.map(regime => <option key={regime} value={regime}>{formatRegimeLabel(regime)}</option>)}
+                  </select>
+                  <select className="closings-select" aria-label="Filtrar responsável" value={responsibleFilter} onChange={e => setResponsibleFilter(e.target.value)}>
+                    <option value="ALL">Responsável: Todos</option>
+                    {users.map(user => <option key={user.id} value={user.id}>{user.name || user.email}</option>)}
+                  </select>
+                  <button className="payroll-refresh-btn" type="button" title="Atualizar fechamento DP" aria-label="Atualizar fechamento DP" disabled={pending > 0 || loading} onClick={() => { void load(); }}>
+                    <RefreshCw size={16} className={loading ? 'payroll-spin' : ''} />
+                  </button>
+                  <button className="btn-secondary-light" onClick={handleExport} title="Exportar para Excel (CSV)">
+                    <ExternalLink size={16} />
+                    Exportar
+                  </button>
+                </div>
+              </div>
+
+              <div className="payroll-table-meta">
+                <span>{loading ? 'Carregando empresas...' : `${filtered.length} de ${scopedRows.length} empresas`}<span className="payroll-meta-separator">·</span><Users size={14} />{loading ? '-' : totalEmployees} funcionários</span>
+                <span className="payroll-save-status" aria-live="polite">{pending > 0 ? <><ButtonSpinner />Salvando alterações...</> : <><CheckCircle2 size={14} />Salvamento automático</>}</span>
+              </div>
+              {error && <div className="payroll-error" role="alert">{error}<button type="button" onClick={() => setError('')}>Fechar</button></div>}
+              {!loading && !error && columns.length === 0 && <p className="payroll-error">Nenhuma coluna operacional DP está ativa nesta competência. Confira meses, anos e atividade em Configurações → DP.</p>}
+              <div className="closings-table-card" ref={filterContainer}>
+                {loading ? (
+                  <div className="payroll-loading"><TableSkeleton count={6} /></div>
+                ) : (
+                  <>
+                    <div className="payroll-scroll-top" ref={upperScroll} onScroll={e => { if (tableScroll.current) tableScroll.current.scrollLeft = e.currentTarget.scrollLeft; }}>
+                      <div style={{ width: scrollWidth || 1080 + columns.length * 170, height: 1 }} />
+                    </div>
+                    <div className="closings-table-wrapper payroll-table-scroll" ref={tableScroll} onScroll={e => { if (upperScroll.current) upperScroll.current.scrollLeft = e.currentTarget.scrollLeft; }}>
+                      <table className="closings-table payroll-table" style={{ minWidth: `${1080 + columns.length * 170}px` }}>
+                        <thead>
+                          <tr>
+                            {PAYROLL_BASE_HEADERS.map(renderHeader)}
+                            {columns.map(column => <th key={column.id} title={visibilitySummary(column)}>{column.name}</th>)}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {filtered.length === 0 ? (
+                            <tr><td colSpan={PAYROLL_BASE_HEADERS.length + columns.length} className="payroll-empty">Nenhuma empresa encontrada nesta competência.</td></tr>
+                          ) : (
+                            filtered.map(row => {
+                              const c = row.company;
+                              const certInfo = c.hasClientCertificate ? getCertificateStatus(c.certificateExpiration) : null;
+                              return (
+                                <tr key={row.closingId}>
+                                  <td className="sticky-col-code"><span style={{ fontWeight: 600, color: '#94a3b8' }}>{c.code || '—'}</span></td>
+                                  <td className="sticky-col-company">
+                                    <div className="company-cell-wrapper">
+                                      <button type="button" className="company-interactive-link" title="Ver dados da empresa e certificado" onClick={() => setCompanyDetails(c)}>
+                                        <div className="company-link-left"><Building2 size={16} color="#818cf8" style={{ flexShrink: 0 }} /><span>{c.name}</span></div>
+                                        <div className="company-link-icon-chip"><span>Ver Dados</span><ExternalLink size={10} /></div>
+                                      </button>
+                                      {c.tradeName && <div className="company-cell-trade">{c.tradeName}</div>}
+                                      {certInfo && (
+                                        <button className={`cert-warning-tag ${certInfo.status === 'EXPIRED' ? 'expired' : ''}`} type="button" onClick={() => setCompanyDetails(c)} title={`Vencimento: ${c.certificateExpiration}`}>
+                                          <AlertTriangle size={11} />{certInfo.label}
+                                        </button>
+                                      )}
+                                    </div>
+                                  </td>
+                                  <td><span className={`tax-regime-pill ${c.taxRegime === 'SIMPLES_NACIONAL' ? 'simples' : c.taxRegime?.includes('PRESUMIDO') ? 'presumido' : c.taxRegime?.includes('REAL') ? 'real' : c.taxRegime === 'MEI' ? 'mei' : ''}`}>{formatRegimeLabel(c.taxRegime || '')}</span></td>
+                                  <td title={`Progresso: ${row.progressPercent}%`}><span className={`status-badge ${row.calculatedStatus === 'COMPLETED' ? 'completed' : row.calculatedStatus === 'IN_PROGRESS' ? 'in-progress' : 'pending'}`}>{STATUS_LABELS[row.calculatedStatus] || row.calculatedStatus}</span></td>
+                                  <td><select className="table-user-select" aria-label={`Responsável DP de ${c.name}`} disabled={!canEdit || pending > 0} value={getResponsible(c)?.userId || ''} onChange={e => { void changeResponsible(row, e.target.value); }}><option value="">Não atribuído</option>{users.map(user => <option key={user.id} value={user.id}>{user.name || user.email}</option>)}</select></td>
+                                  <td><button type="button" className="copy-badge-btn" title="Copiar CNPJ" onClick={() => { void navigator.clipboard.writeText(c.cnpj || '').then(() => setCopyMessage('CNPJ copiado!')).catch(() => setError('Não foi possível copiar o CNPJ.')); }}>{formatCnpj(c.cnpj || '')}<Copy size={12} /></button></td>
+                                  {columns.map(column => {
+                                    const key = resolveColumnKey(column) || column.id;
+                                    if (key === 'dp_reinf_fiscal') {
+                                      return (
+                                        <td key={column.id}>
+                                          <button className={`obligation-btn ${reinfAppearance(row.fiscalReinf).className}`} title="Consultar REINF do Fiscal desta competência" onClick={() => setReinfRow(row)}>
+                                            <Eye size={14} />{reinfAppearance(row.fiscalReinf).label}
+                                          </button>
+                                        </td>
+                                      );
+                                    }
+                                    if (key === 'dp_observacao') {
+                                      return (
+                                        <td key={column.id}>
+                                          <button type="button" className="copy-badge-btn" style={{ background: row.columnsData[key] ? 'rgba(99, 102, 241, 0.15)' : undefined }} title={row.columnsData[key] || 'Observação do DP'} onClick={() => { setNotesDialog({ row, column }); setNotesDraft(String(row.columnsData[key] ?? '')); setNotesError(''); }}>
+                                            {row.columnsData[key] ? String(row.columnsData[key]).slice(0, 16) + (String(row.columnsData[key]).length > 16 ? '...' : '') : '+ Obs'}
+                                          </button>
+                                        </td>
+                                      );
+                                    }
+                                    if (isPayrollActionColumn(key)) {
+                                      const appearance = getPayrollStatusAppearance(row.columnsData[key]);
+                                      return (
+                                        <td key={column.id}>
+                                          <button
+                                            type="button"
+                                            className={`obligation-btn ${appearance.className}`}
+                                            title={appearance.tooltip || appearance.label}
+                                            disabled={!canEdit || column.isEditable === false}
+                                            onClick={() => openActionModal(row, column, key)}
+                                          >
+                                            {appearance.label}
+                                          </button>
+                                        </td>
+                                      );
+                                    }
+                                    return (
+                                      <td key={column.id}>
+                                        <PayrollInput column={column} value={row.columnsData[key]} disabled={!canEdit || column.isEditable === false || column.inputType === 'READONLY'} onSave={value => enqueueSave(row, column, value)} />
+                                      </td>
+                                    );
+                                  })}
+                                </tr>
+                              );
+                            })
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                  </>
+                )}
+              </div>
+            </>
+          )}
     {copyMessage && <div className="payroll-copy-toast" role="status"><CheckCircle2 size={16} />{copyMessage}</div>}
     {companyDetails && <CompanyDetailsModal company={companyDetails} notesLabel="Observações do cadastro" onClose={() => setCompanyDetails(null)} />}
     {notesDialog && <div className="closing-modal-backdrop" onClick={() => { if (!notesSaving) setNotesDialog(null); }}><div className="closing-modal-content" style={{ maxWidth: 500 }} onClick={e => e.stopPropagation()}><div className="closing-modal-header"><div className="closing-modal-title">Observação do DP</div><button type="button" className="closing-modal-close-btn" aria-label="Fechar observação do DP" disabled={notesSaving} onClick={() => setNotesDialog(null)}><X size={20} /></button></div><div className="closing-modal-body"><p>{notesDialog.row.company.name} · {monthLabel}</p><textarea className="payroll-note-textarea" rows={6} value={notesDraft} disabled={notesSaving || !canEdit || notesDialog.column.isEditable === false} onChange={e => setNotesDraft(e.target.value)} placeholder="Observações do DP para esta competência" />{notesError && <p role="alert">{notesError}</p>}<div className="sub-modal-actions"><button type="button" className="btn-secondary-light" disabled={notesSaving} onClick={() => setNotesDialog(null)}>Fechar</button>{canEdit && notesDialog.column.isEditable !== false && <button type="button" className="btn-primary-gradient" disabled={notesSaving} onClick={async () => { setNotesSaving(true); setNotesError(''); try { await enqueueSave(notesDialog.row, notesDialog.column, notesDraft); setNotesDialog(null); } catch (err) { setNotesError(err instanceof Error ? err.message : 'Erro ao salvar.'); } finally { setNotesSaving(false); } }}>{notesSaving ? 'Salvando...' : 'Salvar observação'}</button>}</div></div></div></div>}
@@ -671,7 +804,10 @@ export function PayrollClosings({ currentView, onNavigate, currentUser, onLogout
         </div>
       </div>
     )}
-  </div>;
+        </div>
+      </main>
+    </div>
+  );
 }
 
 export function PayrollReinfPreview({ row, definition, monthLabel, onClose }: { row: PayrollRow; definition: PopupConfig; monthLabel: string; onClose: () => void }) {
