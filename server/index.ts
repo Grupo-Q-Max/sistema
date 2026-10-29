@@ -2259,11 +2259,14 @@ app.use((req, res, next) => {
 });
 
 // Resposta 404 JSON estruturada para qualquer rota de API não encontrada (evita retornar HTML)
-app.all(['/api', '/api/*', '/sistema/api', '/sistema/api/*'], (req, res) => {
+app.use(['/api', '/sistema/api'], (req, res) => {
   res.status(404).json({ error: `Endpoint não encontrado: ${req.method} ${req.originalUrl}` });
 });
 
-const apiPort = Number(process.env.PORT || process.env.API_PORT || 3001);
+// No Azure App Service Linux, Azure passa WEBSITES_PORT ou PORT (normalmente 8080).
+// Se PORT for 33306 (porta de MySQL herdada), ignoramos e usamos a porta web padrão 8080/3001.
+const rawPort = process.env.WEBSITES_PORT || process.env.PORT || process.env.API_PORT;
+const apiPort = Number(rawPort && Number(rawPort) !== 33306 ? rawPort : 8080);
 app.listen(apiPort, '0.0.0.0', () => {
   void runAutomaticRollover();
   setInterval(() => { void runAutomaticRollover(); }, 60_000).unref();

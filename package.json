@@ -6,9 +6,10 @@
   "scripts": {
     "dev": "vite",
     "dev:api": "tsx watch server/index.ts",
-    "start": "tsx server/index.ts",
+    "start": "node dist-server/index.js",
     "typecheck": "tsc -b --pretty false",
-    "build": "tsc -b && vite build",
+    "build:server": "esbuild server/index.ts --platform=node --format=esm --packages=external --bundle --outfile=dist-server/index.js",
+    "build": "tsc -b && vite build && npm run build:server",
     "lint": "oxlint",
     "preview": "vite preview"
   },
@@ -33,6 +34,7 @@
     "@types/react": "^19.2.18",
     "@types/react-dom": "^19.2.7",
     "@vitejs/plugin-react": "^6.1.1",
+    "esbuild": "^0.28.2",
     "oxlint": "^1.81.0",
     "prisma": "^7.10.0",
     "typescript": "~6.0.2",
