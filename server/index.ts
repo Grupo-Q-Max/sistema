@@ -35,7 +35,7 @@ const pool = mariadb.createPool({
   password: decodeURIComponent(url.password),
   database: url.pathname.slice(1),
   dateStrings: true,
-  connectionLimit: 5,
+  connectionLimit: 15,
 });
 
 const adapter = new PrismaMariaDb(pool as any);
@@ -345,10 +345,11 @@ function requireOpenPeriod(period: Date, res: any): boolean {
 }
 app.get('/api/competences', async (_req, res) => {
   try {
-    await syncLatestCompetenceFromDb();
-    await rolloverEngine.ensureAutomatic();
-    await accountingEngine.ensureAutomatic();
     res.json({latestOpenPeriod:latestOpenPeriod(),timeZone:'America/Sao_Paulo',automatic:true});
+    // Executa em segundo plano sem travar a resposta imediata
+    void syncLatestCompetenceFromDb();
+    void rolloverEngine.ensureAutomatic();
+    void accountingEngine.ensureAutomatic();
   } catch(error) { console.error('Erro no calendário automático:',error); res.status(500).json({error:'Não foi possível sincronizar as competências.'}); }
 });
 
@@ -456,14 +457,21 @@ app.get('/api/closings', async (req, res) => {
     if(sector==='CONTABIL')return res.status(400).json({error:'O Contábil usa a tela anual e a rota /api/accounting-closings.'});
     const monthStart = getTargetReferencePeriod(req.query);
     if (!requireOpenPeriod(monthStart, res)) return;
-    await rolloverEngine.ensureAutomatic();
-    await accountingEngine.ensureAutomatic();
     const y = monthStart.getUTCFullYear();
     const m = monthStart.getUTCMonth();
     const nextMonthStart = new Date(Date.UTC(y, m + 1, 1));
 
-    // Garante sincronização de fechamentos no mês
-    await syncMonthClosingsAndReplicate(monthStart);
+    // Se ainda não existirem fechamentos gerados no mês, executa a sincronização inicial
+    const existingCount = await prisma.closing.count({
+      where: { type: sector as any, referencePeriod: { gte: monthStart, lt: nextMonthStart } }
+    });
+    if (existingCount === 0) {
+      await syncMonthClosingsAndReplicate(monthStart);
+    } else {
+      void syncMonthClosingsAndReplicate(monthStart);
+    }
+    void rolloverEngine.ensureAutomatic();
+    void accountingEngine.ensureAutomatic();
 
     const activeWhere = {
       AND: [externalCompaniesExcluded, companyExitWhere(monthStart)],

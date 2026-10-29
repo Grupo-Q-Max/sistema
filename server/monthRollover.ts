@@ -34,8 +34,19 @@ function closingStatus(columns: any[], data: Record<string, any>, period: Date):
 export function createRolloverEngine(prisma: any, now: () => Date = () => new Date()) {
   let queue: Promise<any> = Promise.resolve();
   let automaticRun: Promise<any> | null = null;
+  const syncedCache = new Map<string, number>();
+
   async function synchronize(target: Date, force = false) {
     const monthStart = normalizePeriod(target);
+    const cacheKey = monthStart.toISOString().slice(0, 7);
+    const lastSyncTime = syncedCache.get(cacheKey) || 0;
+    const nowMs = Date.now();
+    
+    // Se sincronizou nos últimos 15 minutos e não for forçado, não repete as milhares de queries
+    if (!force && nowMs - lastSyncTime < 15 * 60 * 1000) {
+      return { createdCount: 0, replicatedColsCount: 0 };
+    }
+
     if (!force && !periodIsOpen(monthStart, now())) throw new Error('Competência ainda não liberada.');
     const nextMonthStart = new Date(Date.UTC(monthStart.getUTCFullYear(), monthStart.getUTCMonth() + 1, 1));
     const prevMonthStart = new Date(Date.UTC(monthStart.getUTCFullYear(), monthStart.getUTCMonth() - 1, 1));
@@ -68,15 +79,18 @@ export function createRolloverEngine(prisma: any, now: () => Date = () => new Da
       if (sector === 'DP' && owns(copy,'dp_qtde_funcionarios')) dashboardMetrics.employees = Number(copy.dp_qtde_funcionarios) || 0;
       const update = {columnsData:data,status:closingStatus(columns,data,monthStart),dashboardMetrics};
       if (destination) {
-        // Não sobrescreve uma edição feita após a leitura pelo replicador.
-        const result = await prisma.closing.updateMany({where:{id:destination.id,updatedAt:destination.updatedAt},data:update});
-        if (result.count) replicatedColsCount += copiedKeys.length;
+        // Apenas atualiza se realmente houve dados copiados novos
+        if (copiedKeys.length > 0) {
+          const result = await prisma.closing.updateMany({where:{id:destination.id,updatedAt:destination.updatedAt},data:update});
+          if (result.count) replicatedColsCount += copiedKeys.length;
+        }
       } else {
         create.push({companyId:company.id,type:sector,referencePeriod:monthStart,...update});
         replicatedColsCount += copiedKeys.length;
       }
     }
     const result = create.length ? await prisma.closing.createMany({data:create,skipDuplicates:true}) : {count:0};
+    syncedCache.set(cacheKey, Date.now());
     return {createdCount:result.count,replicatedColsCount};
   }
   function sync(target: Date, force = false) {

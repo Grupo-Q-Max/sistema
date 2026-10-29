@@ -170,7 +170,17 @@ export function PayrollClosings({ currentView, onNavigate, currentUser, onLogout
     finally { if (sequence === fetchSequence.current) setLoading(false); }
   }
 
-  useEffect(() => { if (canView) void load(); return () => { fetchSequence.current++; }; }, [periodKey, canView]);
+  useEffect(() => {
+    if (latestPeriod && Number.isFinite(latestPeriod.getTime())) {
+      setPeriod(prev => prev.getTime() < latestPeriod.getTime() ? latestPeriod : prev);
+    }
+  }, [latestPeriod]);
+
+  useEffect(() => {
+    if (canView) void load();
+    else setLoading(false);
+    return () => { fetchSequence.current++; };
+  }, [periodKey, canView]);
   useEffect(() => { setReinfRow(null); setCompanyDetails(null); setNotesDialog(null); setOpenHeaderFilter(null); setActionModal(null); }, [periodKey]);
   useEffect(() => {
     const close = (e: KeyboardEvent) => {
@@ -420,6 +430,7 @@ export function PayrollClosings({ currentView, onNavigate, currentUser, onLogout
         </div>
       </div>
     </div>
+    {!canView ? <p className="payroll-error" style={{ marginTop: 24, fontSize: '1rem' }}>Você não tem acesso ao Departamento Pessoal.</p> : <>
     <div className="payroll-toolbar">
       <div className="payroll-search-wrapper">
         <Search size={16} className="payroll-search-icon" />
@@ -485,7 +496,7 @@ export function PayrollClosings({ currentView, onNavigate, currentUser, onLogout
           </td>;
         })}
       </tr>;
-    })}</tbody></table></div></>}</div>
+    })}</tbody></table></div></>}</div></>}
   </div></main>
     {copyMessage && <div className="payroll-copy-toast" role="status"><CheckCircle2 size={16} />{copyMessage}</div>}
     {companyDetails && <CompanyDetailsModal company={companyDetails} notesLabel="Observações do cadastro" onClose={() => setCompanyDetails(null)} />}
