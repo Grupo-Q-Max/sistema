@@ -731,6 +731,7 @@ app.put('/api/closings/:id/column', async (req, res) => {
       const key = resolveColumnKey(column) || column.id;
       if (column.inputType === 'PASSWORD' && responseColumnsData[key]) responseColumnsData[key] = decryptPassword(responseColumnsData[key]);
     }
+    invalidateDashboardCache();
     res.json({
       success: true,
       closing: { ...updated, columnsData: responseColumnsData },
@@ -785,26 +786,39 @@ app.put('/api/companies/:id/notes', async (req, res) => {
   }
 });
 
+const dashboardCache = new Map<string, { timestamp: number; payload: any }>();
+function invalidateDashboardCache() {
+  dashboardCache.clear();
+}
+
 app.get('/api/dashboard', async (req, res) => {
   try {
     const monthStart = getTargetReferencePeriod(req.query);
     if (!requireOpenPeriod(monthStart, res)) return;
-    await rolloverEngine.ensureAutomatic();
-    await accountingEngine.ensureAutomatic();
+
+    const rawUserId = req.query.userId;
+    const userId = Array.isArray(rawUserId) ? rawUserId[0] : rawUserId;
+    const cacheKey = `${monthStart.toISOString().slice(0, 7)}:${userId || 'all'}`;
+    const cached = dashboardCache.get(cacheKey);
+    const nowMs = Date.now();
+    if (cached && nowMs - cached.timestamp < 15_000) {
+      return res.json(cached.payload);
+    }
+
+    // Executa rotinas de sincronização em segundo plano para NÃO bloquear a resposta HTTP
+    void rolloverEngine.ensureAutomatic();
+    void accountingEngine.ensureAutomatic();
+    void syncMonthClosingsAndReplicate(monthStart);
+
     const y = monthStart.getUTCFullYear();
     const m = monthStart.getUTCMonth();
     const nextMonthStart = new Date(Date.UTC(y, m + 1, 1));
     const now = new Date();
 
-    // Garante que o mês solicitado tenha os fechamentos e colunas replicadas
-    await syncMonthClosingsAndReplicate(monthStart);
-
     // Inclui cadastros que ja possuem fechamento mensal nesta competencia,
     // mesmo quando o legado nao informou a data de inicio da obrigacao.
     // O mes da saida participa somente quando a empresa tem obrigacoes nele.
     // O fechamento CONTABIL anual nao comprova participacao em todos os meses.
-    const rawUserId = req.query.userId;
-    const userId = Array.isArray(rawUserId) ? rawUserId[0] : rawUserId;
     let userFilter: any = {};
     if (userId) {
       const user = await prisma.user.findUnique({
@@ -846,7 +860,7 @@ app.get('/api/dashboard', async (req, res) => {
       activeWhere.AND.push(userFilter);
     }
 
-    const [totalCompanies, regimesGroup, companies, closings, allColumns] = await Promise.all([
+    const [totalCompanies, regimesGroup, companies, closings, allColumns, distinctPeriods] = await Promise.all([
       prisma.company.count({ where: activeWhere }),
       prisma.company.groupBy({ by: ['taxRegime'], _count: { _all: true }, where: activeWhere }),
       prisma.company.findMany({
@@ -875,6 +889,11 @@ app.get('/api/dashboard', async (req, res) => {
         select: { type: true, status: true, dashboardMetrics: true, columnsData: true, companyId: true, referencePeriod: true },
       }),
       prisma.departmentColumn.findMany(),
+      prisma.closing.findMany({
+        select: { referencePeriod: true },
+        distinct: ['referencePeriod'],
+        orderBy: { referencePeriod: 'asc' },
+      }),
     ]);
 
     const regimesMap = regimesGroup.reduce((acc: any, curr: any) => {
@@ -969,13 +988,6 @@ app.get('/api/dashboard', async (req, res) => {
       .filter((c: any) => c.type === 'DP')
       .reduce((sum: number, c: any) => sum + (Number(c.dashboardMetrics?.employees) || 0), 0);
 
-    // Busca todos os meses que possuem fechamentos cadastrados no banco (deduplicados por ano/mês)
-    const distinctPeriods = await prisma.closing.findMany({
-      select: { referencePeriod: true },
-      distinct: ['referencePeriod'],
-      orderBy: { referencePeriod: 'asc' },
-    });
-
     const seenMonths = new Set<string>();
     const availableMonths: any[] = [];
     for (const p of distinctPeriods) {
@@ -995,7 +1007,7 @@ app.get('/api/dashboard', async (req, res) => {
       }
     }
 
-    res.json({
+    const payload = {
       referencePeriod: monthStart,
       totalActive: totalCompanies,
       totalEmployees,
@@ -1016,7 +1028,10 @@ app.get('/api/dashboard', async (req, res) => {
         ASSOCIACOES: regimesMap['ASSOCIACOES'] || 0,
         PESSOA_FISICA: regimesMap['PESSOA_FISICA'] || 0,
       },
-    });
+    };
+
+    dashboardCache.set(cacheKey, { timestamp: Date.now(), payload });
+    res.json(payload);
   } catch (error) {
     console.error('Erro no dashboard:', error);
     res.status(500).json({ error: 'Erro ao buscar dados do banco' });
