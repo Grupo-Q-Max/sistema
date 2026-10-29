@@ -81,6 +81,26 @@ export async function logAction(
 
 app.use(cors());
 app.use(express.json());
+
+// Normaliza requisições vindas com prefixo legado /sistema/api para /api
+app.use((req, res, next) => {
+  if (req.url.startsWith('/sistema/api')) {
+    req.url = req.url.substring('/sistema'.length);
+  }
+  next();
+});
+
+// Endpoint de saúde para checagem rápida no Azure
+app.get('/api/health', (_req, res) => {
+  res.json({
+    status: 'ok',
+    uptime: process.uptime(),
+    dbConnected: !!pool,
+    hasDatabaseUrl: !!process.env.DATABASE_URL,
+    timestamp: new Date().toISOString()
+  });
+});
+
 registerInstallments(app,prisma);
 registerCompanyQuality(app,prisma,decryptPassword);
 registerAnalytics(app,prisma);
@@ -2230,10 +2250,17 @@ async function runAutomaticRollover() {
 const distPath = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'dist');
 app.use(express.static(distPath));
 app.use('/sistema', express.static(distPath));
+
+// Fallback do SPA para rotas do frontend
 app.use((req, res, next) => {
   if (req.path.startsWith('/api') || req.path.startsWith('/sistema/api')) return next();
   if (req.method !== 'GET' && req.method !== 'HEAD') return next();
   res.sendFile(path.join(distPath, 'index.html'), (err) => { if (err) next(); });
+});
+
+// Resposta 404 JSON estruturada para qualquer rota de API não encontrada (evita retornar HTML)
+app.all(['/api', '/api/*', '/sistema/api', '/sistema/api/*'], (req, res) => {
+  res.status(404).json({ error: `Endpoint não encontrado: ${req.method} ${req.originalUrl}` });
 });
 
 const apiPort = Number(process.env.PORT || process.env.API_PORT || 3001);
