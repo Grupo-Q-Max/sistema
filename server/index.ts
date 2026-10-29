@@ -28,6 +28,7 @@ const app = express();
 
 const connectionString = process.env.DATABASE_URL || '';
 const url = new URL(connectionString);
+const useSsl = url.hostname.includes('azure') || url.searchParams.get('ssl') === 'true';
 const pool = mariadb.createPool({
   host: url.hostname,
   port: parseInt(url.port, 10) || 3306,
@@ -36,6 +37,7 @@ const pool = mariadb.createPool({
   database: url.pathname.slice(1),
   dateStrings: true,
   connectionLimit: 15,
+  ssl: useSsl ? { rejectUnauthorized: false } : undefined,
 });
 
 const adapter = new PrismaMariaDb(pool as any);
