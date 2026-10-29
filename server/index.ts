@@ -2236,7 +2236,7 @@ app.use((req, res, next) => {
   res.sendFile(path.join(distPath, 'index.html'), (err) => { if (err) next(); });
 });
 
-const apiPort = Number(process.env.API_PORT || 3001);
+const apiPort = Number(process.env.PORT || process.env.API_PORT || 3001);
 app.listen(apiPort, '0.0.0.0', () => {
   void runAutomaticRollover();
   setInterval(() => { void runAutomaticRollover(); }, 60_000).unref();
