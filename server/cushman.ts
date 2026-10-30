@@ -1,7 +1,7 @@
 import {companyExitAllowsPeriod,exitDecisionError,exitDecisionValue} from '../src/config/companyExit';
 import {resolveAuthenticatedUser} from './installments';
 import {queryClosingsBySectorAndRange} from './cleanClosingsSql';
-import {CUSHMAN_API_VERSION,CUSHMAN_COLUMNS,CUSHMAN_COMPANY_FIELDS,resolveCushmanKey,cushmanAccess,cushmanCompanyAllowed,cushmanCompanyEligible,cushmanApplicableColumns} from '../src/config/cushmanColumns';
+import {CUSHMAN_API_VERSION,CUSHMAN_COLUMNS,CUSHMAN_COMPANY_FIELDS,resolveCushmanKey,cushmanAccess,cushmanCompanyAllowed,cushmanCompanyEditable,cushmanCompanyEligible,cushmanApplicableColumns} from '../src/config/cushmanColumns';
 import {periodIsOpen,blockedPeriodMessage} from '../src/config/competenceCalendar';
 import {isColumnActive,calculateColumnProgress} from '../src/config/columnVisibility';
 import {effectivePopup} from '../src/config/fiscalPopups';
@@ -28,7 +28,7 @@ export function validateCushmanCompanyPatch(body:any,existing:any,encrypt:(value
   if(field.type==='date'){const parsed=text?validDate(text):null;if(text&&!parsed)fail(400,`${field.label}: data inválida.`);if(!parsed&&['contractDate','obligationStartDate'].includes(field.key))fail(400,`${field.label} é obrigatória.`);data[field.key]=parsed;}
   else if(field.type==='password'){const protectedValue=value?encrypt(value):null;data[field.key]=protectedValue;}
   else if(field.type==='url'){if(text){try{const url=new URL(text);if(!['http:','https:'].includes(url.protocol))throw new Error();}catch{fail(400,'Link Prefeitura: informe uma URL começando com https:// ou http://.');}}data[field.key]=text||null;}
-  else if(field.type==='certificate'){if(text&&!['A1','A3 CARTÃO','A3 TOKEN'].includes(text)&&text!==existing.certificateType)fail(400,'Selecione um tipo de certificado válido.');data[field.key]=text||null;}
+  else if(field.type==='certificate'){if(text&&text.length>60)fail(400,'Selecione um tipo de certificado válido.');data[field.key]=text||null;}
   else{if(['certificateIssue','certificateExpiration'].includes(field.key)&&text){const month=text.match(/^(\d{2})\/(\d{4})$/);const br=text.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);if(!(month&&Number(month[1])>=1&&Number(month[1])<=12&&Number(month[2])>=1900)&&!(br&&validDate(`${br[3]}-${br[2]}-${br[1]}`))&&!validDate(text))fail(400,`${field.label}: use MM/AAAA, DD/MM/AAAA ou AAAA-MM-DD.`);}data[field.key]=text||null;}
  }
  const start=data.obligationStartDate??existing.obligationStartDate,exit=data.exitDate!==undefined?data.exitDate:existing.exitDate;
@@ -89,12 +89,12 @@ export function registerCushman(app:any,prisma:any,options:{sync:(period:Date)=>
    for(const column of columns){const key=resolveCushmanKey(column)||column.id;if(column.inputType==='PASSWORD'&&data[key])data[key]=options.decrypt(data[key]);}
    if(data.cush_observacao===undefined&&company.notesScope==='CUSHMAN')data.cush_observacao=company.notes||'';
    const progress=calculateColumnProgress(participates?columns.filter((column:any)=>column.countsProgress):[],data,column=>resolveCushmanKey(column)||column.id);
-   return {company:safeCompany(company),closingId:closing?.id||null,columnsData:data,participates,...progress,calculatedStatus:participates?progress.calculatedStatus:'NOT_APPLICABLE',updatedAt:closing?.updatedAt||null};
+   return {company:safeCompany(company),closingId:closing?.id||null,columnsData:data,participates,editable:cushmanCompanyEditable(user,company),...progress,calculatedStatus:participates?progress.calculatedStatus:'NOT_APPLICABLE',updatedAt:closing?.updatedAt||null};
   });
   res.json({cushmanApiVersion:CUSHMAN_API_VERSION,rows,columns,configured:CUSHMAN_COLUMNS.every(template=>storedColumns.some((column:any)=>column.columnKey===template.key)),access:{edit:cushmanAccess(user,true)}});
  }));
  app.put('/api/cushman-companies/:id',endpoint(async(req:any,res:any,user:any)=>{
-  if(!cushmanAccess(user,true))fail(403,'Permissão somente de leitura no Cushman.');const company=await companyAllowed(user,req.params.id);
+  if(!cushmanAccess(user,true))fail(403,'Permissão somente de leitura no Cushman.');const company=await companyAllowed(user,req.params.id);if(!cushmanCompanyEditable(user,company))fail(403,'Você só pode editar empresas sob sua responsabilidade.');
   if(!req.body.expectedUpdatedAt||new Date(req.body.expectedUpdatedAt).getTime()!==new Date(company.updatedAt).getTime())fail(409,'O cadastro foi alterado por outra pessoa. Atualize a tela antes de editar novamente.');
   const data=validateCushmanCompanyPatch(req.body,company,options.encrypt);const updated=await prisma.company.updateMany({where:{id:company.id,updatedAt:company.updatedAt},data});if(!updated.count)fail(409,'O cadastro mudou durante a edição. Atualize a tela.');
   options.onCompanyUpdated?.();
@@ -102,7 +102,7 @@ export function registerCushman(app:any,prisma:any,options:{sync:(period:Date)=>
  }));
  app.put('/api/cushman-closings/:id/column',endpoint(async(req:any,res:any,user:any)=>{
   if(!cushmanAccess(user,true))fail(403,'Permissão somente de leitura no Cushman.');const closing=await prisma.closing.findUnique({where:{id:req.params.id}});if(!closing||closing.type!=='CUSHMAN')fail(404,'Fechamento Cushman não encontrado.');
-  const company=await companyAllowed(user,closing.companyId);const period=new Date(closing.referencePeriod);if(!periodIsOpen(period))fail(423,blockedPeriodMessage(period));if(!companyExitAllowsPeriod(company,period)||(!cushmanCompanyEligible(company,period)&&!closing.columnsData?._legacy))fail(403,'Esta empresa não tem obrigação Cushman nesta competência.');
+  const company=await companyAllowed(user,closing.companyId);if(!cushmanCompanyEditable(user,company))fail(403,'Você só pode editar empresas sob sua responsabilidade.');const period=new Date(closing.referencePeriod);if(!periodIsOpen(period))fail(423,blockedPeriodMessage(period));if(!companyExitAllowsPeriod(company,period)||(!cushmanCompanyEligible(company,period)&&!closing.columnsData?._legacy))fail(403,'Esta empresa não tem obrigação Cushman nesta competência.');
   const {columnKey,columnValue,expectedUpdatedAt}=req.body;const columns=await prisma.departmentColumn.findMany({where:{department:'CUSHMAN'}});const column=columns.find((item:any)=>resolveCushmanKey(item)===columnKey);
   if(!column||!isColumnActive(column,period)||column.isEditable===false||column.inputType==='READONLY')fail(403,'Coluna indisponível para edição.');
   if(!expectedUpdatedAt||new Date(expectedUpdatedAt).getTime()!==new Date(closing.updatedAt).getTime())fail(409,'O fechamento foi alterado. Atualize a tela antes de editar novamente.');

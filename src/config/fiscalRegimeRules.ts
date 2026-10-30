@@ -1,11 +1,6 @@
 /**
- * Regras operacionais de preenchimento automático por regime tributário no setor FISCAL:
- * - Imune IRPJ: Carnê Leão N/A, restante obrigatório
- * - Lucro Presumido: Carnê Leão N/A, restante obrigatório
- * - Lucro Real: Carnê Leão N/A, restante obrigatório
- * - Simples Nacional: Carnê Leão, Sped Contribuições e MIT N/A, restante obrigatório
- * - MEI: Impostos obrigatório, o restante N/A
- * - Pessoa Física: Carnê Leão obrigatório, o restante N/A
+ * Regras operacionais de preenchimento automático por regime tributário no setor FISCAL.
+ * Suporta regras padrão e regras customizáveis salvas no banco (AppConfig: fiscal_regime_rules).
  */
 
 export const ALL_FISCAL_KEYS = [
@@ -19,52 +14,130 @@ export const ALL_FISCAL_KEYS = [
   'destda',
 ] as const;
 
-export function getFiscalNaKeysForRegime(regime: string | null | undefined): string[] {
-  if (!regime) return [];
-  const normalized = regime.toUpperCase().trim();
+export const ALL_TAX_REGIMES = [
+  { key: 'MEI', label: 'MEI' },
+  { key: 'SIMPLES_NACIONAL', label: 'Simples Nacional' },
+  { key: 'LUCRO_PRESUMIDO', label: 'Lucro Presumido' },
+  { key: 'LUCRO_REAL_TRIMESTRAL', label: 'Lucro Real / Trimestral' },
+  { key: 'LUCRO_REAL_ESTIMATIVA', label: 'Lucro Real / Estimativa' },
+  { key: 'LUCRO_REAL_ANUAL', label: 'Lucro Real / Anual' },
+  { key: 'IMUNE_IRPJ', label: 'Imune IRPJ' },
+  { key: 'CONDOMINIOS', label: 'Condomínios' },
+  { key: 'DOMESTICA', label: 'Doméstica' },
+  { key: 'ASSOCIACOES', label: 'Associações' },
+  { key: 'PESSOA_FISICA', label: 'Pessoa Física' },
+] as const;
 
+export type FiscalRegimeNaMap = Record<string, string[]>;
+
+export const DEFAULT_FISCAL_REGIME_NA_RULES: FiscalRegimeNaMap = {
+  IMUNE_IRPJ: ['carne_leao'],
+  LUCRO_PRESUMIDO: ['carne_leao'],
+  LUCRO_REAL_TRIMESTRAL: ['carne_leao'],
+  LUCRO_REAL_ESTIMATIVA: ['carne_leao'],
+  LUCRO_REAL_ANUAL: ['carne_leao'],
+  SIMPLES_NACIONAL: ['carne_leao', 'sped_contribuicao', 'mit'],
+  MEI: ['carne_leao', 'reinf', 'iss', 'mit', 'sped_fiscal', 'sped_contribuicao', 'destda'],
+  PESSOA_FISICA: ['reinf', 'impostos', 'iss', 'mit', 'sped_fiscal', 'sped_contribuicao', 'destda'],
+  CONDOMINIOS: [],
+  DOMESTICA: [],
+  ASSOCIACOES: [],
+};
+
+let activeRuntimeNaRules: FiscalRegimeNaMap | null = null;
+
+export function normalizeFiscalRegimeRules(raw: any): FiscalRegimeNaMap {
+  const result: FiscalRegimeNaMap = {};
+  for (const r of ALL_TAX_REGIMES) {
+    const incoming = raw && typeof raw === 'object' ? raw[r.key] : undefined;
+    if (Array.isArray(incoming)) {
+      result[r.key] = Array.from(
+        new Set(
+          incoming
+            .filter((k: any) => typeof k === 'string' && k.trim())
+            .map((k: string) => k.trim())
+        )
+      );
+    } else {
+      result[r.key] = [...(DEFAULT_FISCAL_REGIME_NA_RULES[r.key] || [])];
+    }
+  }
+  return result;
+}
+
+export function setActiveFiscalRegimeRules(rules: any) {
+  activeRuntimeNaRules = rules ? normalizeFiscalRegimeRules(rules) : null;
+}
+
+export function getActiveFiscalRegimeRules(): FiscalRegimeNaMap {
+  return activeRuntimeNaRules || normalizeFiscalRegimeRules(DEFAULT_FISCAL_REGIME_NA_RULES);
+}
+
+export function normalizeRegimeKey(regime: string | null | undefined): string {
+  if (!regime) return '';
+  const normalized = regime.toUpperCase().trim();
   switch (normalized) {
     case 'IMUNE_IRPJ':
     case 'IMUNE IRPJ':
-      return ['carne_leao'];
-
+      return 'IMUNE_IRPJ';
     case 'LUCRO_PRESUMIDO':
     case 'LUCRO PRESUMIDO':
-      return ['carne_leao'];
-
+      return 'LUCRO_PRESUMIDO';
     case 'LUCRO_REAL_TRIMESTRAL':
-    case 'LUCRO_REAL_ESTIMATIVA':
-    case 'LUCRO_REAL_ANUAL':
     case 'LUCRO REAL / TRIMESTRAL':
+    case 'LUCRO REAL/TRIMESTRAL':
+      return 'LUCRO_REAL_TRIMESTRAL';
+    case 'LUCRO_REAL_ESTIMATIVA':
     case 'LUCRO REAL / ESTIMATIVA':
+    case 'LUCRO REAL/ESTIMATIVA':
+      return 'LUCRO_REAL_ESTIMATIVA';
+    case 'LUCRO_REAL_ANUAL':
     case 'LUCRO REAL / ANUAL':
+    case 'LUCRO REAL/ANUAL':
     case 'LUCRO REAL':
-      return ['carne_leao'];
-
+      return 'LUCRO_REAL_ANUAL';
     case 'SIMPLES_NACIONAL':
     case 'SIMPLES NACIONAL':
-      return ['carne_leao', 'sped_contribuicao', 'mit'];
-
+      return 'SIMPLES_NACIONAL';
     case 'MEI':
-      // Apenas IMPOSTOS é obrigatório; todas as outras 7 obrigações são N/A
-      return ['carne_leao', 'reinf', 'iss', 'mit', 'sped_fiscal', 'sped_contribuicao', 'destda'];
-
+      return 'MEI';
     case 'PESSOA_FISICA':
     case 'PESSOA FÍSICA':
     case 'PESSOA FISICA':
-      // Apenas CARNÊ LEÃO é obrigatório; todas as outras 7 obrigações são N/A
-      return ['reinf', 'impostos', 'iss', 'mit', 'sped_fiscal', 'sped_contribuicao', 'destda'];
-
+      return 'PESSOA_FISICA';
+    case 'CONDOMINIOS':
+    case 'CONDOMÍNIOS':
+      return 'CONDOMINIOS';
+    case 'DOMESTICA':
+    case 'DOMÉSTICA':
+      return 'DOMESTICA';
+    case 'ASSOCIACOES':
+    case 'ASSOCIAÇÕES':
+      return 'ASSOCIACOES';
     default:
-      return [];
+      return normalized;
   }
+}
+
+export function getFiscalNaKeysForRegime(
+  regime: string | null | undefined,
+  customRules?: FiscalRegimeNaMap | null
+): string[] {
+  const key = normalizeRegimeKey(regime);
+  if (!key) return [];
+  const rules = customRules || activeRuntimeNaRules || DEFAULT_FISCAL_REGIME_NA_RULES;
+  return Array.isArray(rules[key]) ? rules[key] : [];
 }
 
 /**
  * Retorna se para aquele regime aquela obrigação específica é dispensada por regra (N/A)
  */
-export function isFiscalObligationNA(regime: string | null | undefined, colKey: string): boolean {
-  const naKeys = getFiscalNaKeysForRegime(regime);
+export function isFiscalObligationNA(
+  regime: string | null | undefined,
+  colKey: string,
+  customRules?: FiscalRegimeNaMap | null
+): boolean {
+  const naKeys = getFiscalNaKeysForRegime(regime, customRules);
   return naKeys.includes(colKey);
 }
 
@@ -73,14 +146,21 @@ export function isFiscalObligationNA(regime: string | null | undefined, colKey: 
  */
 export function applyFiscalRegimeRules(
   regime: string | null | undefined,
-  columnsData: Record<string, any> = {}
+  columnsData: Record<string, any> = {},
+  customRules?: FiscalRegimeNaMap | null
 ): Record<string, any> {
-  const naKeys = new Set(getFiscalNaKeysForRegime(regime));
-  const updated = { ...columnsData };
+  const naKeys = new Set(getFiscalNaKeysForRegime(regime, customRules));
+  const updated: Record<string, any> = { ...columnsData };
+
+  // Se uma coluna tinha sido autoFilled=true com N/A anteriormente, mas a regra mudou para Obrigatório, libera!
+  for (const [key, val] of Object.entries(updated)) {
+    if (val && typeof val === 'object' && val.status === 'N/A' && val.autoFilled === true && !naKeys.has(key)) {
+      delete updated[key];
+    }
+  }
 
   for (const key of naKeys) {
     const existing = updated[key];
-    // Se não tiver valor ou não tiver status ou for vazio/pendente, define N/A
     if (!existing || typeof existing !== 'object' || !existing.status || existing.status === 'PENDING' || existing.status === 'PENDENTE') {
       updated[key] = {
         status: 'N/A',
@@ -92,4 +172,3 @@ export function applyFiscalRegimeRules(
 
   return updated;
 }
-

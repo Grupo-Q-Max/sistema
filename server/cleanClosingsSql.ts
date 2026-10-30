@@ -235,3 +235,4 @@ export async function queryFallbackClosingsForPeriods(
     columnsData: parseJsonCol(r.columnsData) || {},
   }));
 }
+

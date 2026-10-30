@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { API } from '../api';
 import { Shield, Search } from 'lucide-react';
+import { canUserViewCompany } from '../config/companyPermissions';
 import './Certificates.css';
 
 interface Company {
@@ -21,7 +22,7 @@ interface CertificatesProps {
   currentUser: any;
 }
 
-export function Certificates(_props: CertificatesProps) {
+export function Certificates({ currentUser }: CertificatesProps) {
   const [companies, setCompanies] = useState<Company[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
@@ -68,6 +69,7 @@ export function Certificates(_props: CertificatesProps) {
   const filtered = useMemo(() => {
     return companies.filter(c => {
       if (c.exitDate) return false; // Ativas apenas
+      if (!canUserViewCompany(currentUser, c, null)) return false;
       
       const search = searchTerm.toLowerCase();
       const matchSearch = c.name?.toLowerCase().includes(search) || c.cnpj?.includes(search);
@@ -90,7 +92,7 @@ export function Certificates(_props: CertificatesProps) {
 
       return matchSearch && matchFilter;
     });
-  }, [companies, searchTerm, filterType]);
+  }, [companies, searchTerm, filterType, currentUser]);
 
   const stats = useMemo(() => {
     const active = companies.filter(c => !c.exitDate);

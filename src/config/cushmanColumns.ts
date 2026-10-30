@@ -1,4 +1,5 @@
 import {companyExitAllowsPeriod} from './companyExit';
+import {canUserEditCompany,canUserViewCompany} from './companyPermissions';
 import {defaultPopup,type PopupConfig} from './fiscalPopups';
 import {isColumnActive} from './columnVisibility';
 export const CUSHMAN_API_VERSION=2;
@@ -31,9 +32,10 @@ export function cushmanAccess(user:any,edit=false):boolean {
  const permission=user.sectorPermissions?.find((item:any)=>item.sector==='CUSHMAN');return edit?permission?.access==='EDIT':['VIEW','EDIT'].includes(permission?.access);
 }
 export function cushmanCompanyAllowed(user:any,company:any):boolean {
- if(['ADMIN','SOCIO'].includes(user.role)||user.companyScope==='ALL')return true;
- if(user.companyScope==='CUSTOM')return user.companyAccess?.some((access:any)=>access.companyId===company.id)||false;
- return user.companyScope==='RESPONSIBLE'&&(company.responsibles?.some((entry:any)=>entry.userId===user.id&&(!entry.sector||entry.sector==='CUSHMAN'))||user.responsibleAssignments?.some((entry:any)=>entry.companyId===company.id&&(!entry.sector||entry.sector==='CUSHMAN')))||false;
+ return canUserViewCompany(user,company,'CUSHMAN');
+}
+export function cushmanCompanyEditable(user:any,company:any):boolean {
+ return cushmanAccess(user,true)&&canUserEditCompany(user,company,'CUSHMAN');
 }
 export function cushmanCompanyEligible(company:any,period:Date):boolean {
  const sectors=(company.activeSectors||'TODOS').split(',').map((item:string)=>item.trim());const next=new Date(Date.UTC(period.getUTCFullYear(),period.getUTCMonth()+1,1));

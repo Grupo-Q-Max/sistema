@@ -13,6 +13,8 @@ import { defaultPopup, type PopupConfig } from '../config/fiscalPopups';
 import { visibilitySummary } from '../config/columnVisibility';
 import { exportToCsv } from '../utils/exportCsv';
 import { compareCodes, formatCompanyCode } from '../utils/codeSort';
+import { canUserEditCompany, canUserViewCompany, isUserResponsibleForCompany } from '../config/companyPermissions';
+import { installmentHeaders } from '../config/installments';
 import './Closings.css';
 import './PayrollClosings.css';
 
@@ -255,17 +257,13 @@ export function PayrollClosings({ currentView, onNavigate, currentUser, onLogout
   const isRowEditable = (row: PayrollRow) => {
     if (!canEdit) return false;
     if (isPrivileged) return true;
-    const resp = getResponsible(row.company);
-    return resp?.userId === currentUser?.id || row.company.responsibleId === currentUser?.id;
+    return canUserEditCompany(currentUser, row.company, 'DP');
   };
 
   const scopedRows = useMemo(() => rows.filter(row => {
-    const isMine = row.company.responsibles?.some((r: any) => r.userId === currentUser?.id && r.sector === 'DP') || row.company.responsibleId === currentUser?.id;
-    if (onlyMyCompanies) return isMine;
+    if (onlyMyCompanies) return isUserResponsibleForCompany(currentUser, row.company, 'DP');
     if (!currentUser || isPrivileged) return true;
-    if (currentUser.companyScope === 'CUSTOM') return currentUser.companyAccess?.some(a => a.companyId === row.company.id);
-    if (currentUser.companyScope === 'ALL') return true;
-    return isMine;
+    return canUserViewCompany(currentUser, row.company, 'DP');
   }), [rows, currentUser, onlyMyCompanies, isPrivileged]);
 
   function sortValue(row: PayrollRow) {
@@ -297,15 +295,15 @@ export function PayrollClosings({ currentView, onNavigate, currentUser, onLogout
   }, [scopedRows]);
 
   function enqueueSave(row: PayrollRow, column: any, value: any): Promise<void> {
-    if (!canEdit) return Promise.reject(new Error('Você tem acesso apenas de leitura ao DP.'));
+    if (!isRowEditable(row)) return Promise.reject(new Error('Você só pode editar empresas sob sua responsabilidade.'));
     const key = resolveColumnKey(column) || column.id;
     const capturedPeriod = currentPeriodKey.current;
     setPending(p => p + 1);
     const save = saveQueue.current.catch(() => { }).then(async () => {
       const res = await fetch(`${API}/api/closings/${row.closingId}/column`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ columnKey: key, columnValue: value })
+        headers: installmentHeaders(currentUser),
+        body: JSON.stringify({ columnKey: key, columnValue: value, userId: currentUser?.id, userName: currentUser?.name, userEmail: currentUser?.email })
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Erro ao salvar campo.');
@@ -323,13 +321,13 @@ export function PayrollClosings({ currentView, onNavigate, currentUser, onLogout
   }
 
   async function changeResponsible(row: PayrollRow, userId: string) {
-    if (!canEdit) return;
+    if (!isRowEditable(row)) return;
     const capturedPeriod = currentPeriodKey.current; setPending(p => p + 1);
     try {
       const res = await fetch(`${API}/api/companies/${row.company.id}/responsible`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId, sector: 'DP' })
+        headers: installmentHeaders(currentUser),
+        body: JSON.stringify({ userId, sector: 'DP', actorId: currentUser?.id, actorEmail: currentUser?.email, actorName: currentUser?.name || currentUser?.email })
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Erro ao atualizar responsável.');
@@ -697,7 +695,7 @@ export function PayrollClosings({ currentView, onNavigate, currentUser, onLogout
                                   </td>
                                   <td><span className={`tax-regime-pill ${c.taxRegime === 'SIMPLES_NACIONAL' ? 'simples' : c.taxRegime?.includes('PRESUMIDO') ? 'presumido' : c.taxRegime?.includes('REAL') ? 'real' : c.taxRegime === 'MEI' ? 'mei' : ''}`}>{formatRegimeLabel(c.taxRegime || '')}</span></td>
                                   <td title={`Progresso: ${row.progressPercent}%`}><span className={`status-badge ${row.calculatedStatus === 'COMPLETED' ? 'completed' : row.calculatedStatus === 'IN_PROGRESS' ? 'in-progress' : 'pending'}`}>{STATUS_LABELS[row.calculatedStatus] || row.calculatedStatus}</span></td>
-                                  <td><select className="table-user-select" aria-label={`Responsável DP de ${c.name}`} disabled={!canEdit || pending > 0} value={getResponsible(c)?.userId || ''} onChange={e => { void changeResponsible(row, e.target.value); }}><option value="">Não atribuído</option>{users.map(user => <option key={user.id} value={user.id} disabled={user.active === false}>{user.name || user.email}</option>)}</select></td>
+                                  <td><select className="table-user-select" aria-label={`Responsável DP de ${c.name}`} disabled={!isRowEditable(row) || pending > 0} value={getResponsible(c)?.userId || ''} onChange={e => { void changeResponsible(row, e.target.value); }}><option value="">Não atribuído</option>{users.map(user => <option key={user.id} value={user.id} disabled={user.active === false}>{user.name || user.email}</option>)}</select></td>
                                   <td><button type="button" className="copy-badge-btn" title="Copiar CNPJ" onClick={() => { void navigator.clipboard.writeText(c.cnpj || '').then(() => setCopyMessage('CNPJ copiado!')).catch(() => setError('Não foi possível copiar o CNPJ.')); }}>{formatCnpj(c.cnpj || '')}<Copy size={12} /></button></td>
                                   {columns.map(column => {
                                     const key = resolveColumnKey(column) || column.id;
@@ -755,7 +753,7 @@ export function PayrollClosings({ currentView, onNavigate, currentUser, onLogout
           )}
     {copyMessage && <div className="payroll-copy-toast" role="status"><CheckCircle2 size={16} />{copyMessage}</div>}
     {companyDetails && <CompanyDetailsModal company={companyDetails} notesLabel="Observações do cadastro" onClose={() => setCompanyDetails(null)} />}
-    {notesDialog && <div className="closing-modal-backdrop" onClick={() => { if (!notesSaving) setNotesDialog(null); }}><div className="closing-modal-content" style={{ maxWidth: 500 }} onClick={e => e.stopPropagation()}><div className="closing-modal-header"><div className="closing-modal-title">Observação do DP</div><button type="button" className="closing-modal-close-btn" aria-label="Fechar observação do DP" disabled={notesSaving} onClick={() => setNotesDialog(null)}><X size={20} /></button></div><div className="closing-modal-body"><p>{notesDialog.row.company.name} · {monthLabel}</p><textarea className="payroll-note-textarea" rows={6} value={notesDraft} disabled={notesSaving || !canEdit || notesDialog.column.isEditable === false} onChange={e => setNotesDraft(e.target.value)} placeholder="Observações do DP para esta competência" />{notesError && <p role="alert">{notesError}</p>}<div className="sub-modal-actions"><button type="button" className="btn-secondary-light" disabled={notesSaving} onClick={() => setNotesDialog(null)}>Fechar</button>{canEdit && notesDialog.column.isEditable !== false && <button type="button" className="btn-primary-gradient" disabled={notesSaving} onClick={async () => { setNotesSaving(true); setNotesError(''); try { await enqueueSave(notesDialog.row, notesDialog.column, notesDraft); setNotesDialog(null); } catch (err) { setNotesError(err instanceof Error ? err.message : 'Erro ao salvar.'); } finally { setNotesSaving(false); } }}>{notesSaving ? 'Salvando...' : 'Salvar observação'}</button>}</div></div></div></div>}
+    {notesDialog && <div className="closing-modal-backdrop" onClick={() => { if (!notesSaving) setNotesDialog(null); }}><div className="closing-modal-content" style={{ maxWidth: 500 }} onClick={e => e.stopPropagation()}><div className="closing-modal-header"><div className="closing-modal-title">Observação do DP</div><button type="button" className="closing-modal-close-btn" aria-label="Fechar observação do DP" disabled={notesSaving} onClick={() => setNotesDialog(null)}><X size={20} /></button></div><div className="closing-modal-body"><p>{notesDialog.row.company.name} · {monthLabel}</p><textarea className="payroll-note-textarea" rows={6} value={notesDraft} disabled={notesSaving || !isRowEditable(notesDialog.row) || notesDialog.column.isEditable === false} onChange={e => setNotesDraft(e.target.value)} placeholder="Observações do DP para esta competência" />{notesError && <p role="alert">{notesError}</p>}<div className="sub-modal-actions"><button type="button" className="btn-secondary-light" disabled={notesSaving} onClick={() => setNotesDialog(null)}>Fechar</button>{isRowEditable(notesDialog.row) && notesDialog.column.isEditable !== false && <button type="button" className="btn-primary-gradient" disabled={notesSaving} onClick={async () => { setNotesSaving(true); setNotesError(''); try { await enqueueSave(notesDialog.row, notesDialog.column, notesDraft); setNotesDialog(null); } catch (err) { setNotesError(err instanceof Error ? err.message : 'Erro ao salvar.'); } finally { setNotesSaving(false); } }}>{notesSaving ? 'Salvando...' : 'Salvar observação'}</button>}</div></div></div></div>}
     {reinfRow && <PayrollReinfPreview row={reinfRow} definition={reinfDefinition} monthLabel={monthLabel} onClose={() => setReinfRow(null)} />}
 
     {/* MODAL PADRONIZADO DO DP (IDÊNTICO AO FISCAL: OK - DATA, OK - SEM MOVIMENTO, PENDÊNCIA, N/A, LIMPAR) */}

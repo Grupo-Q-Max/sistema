@@ -18,7 +18,10 @@ import { latestOpenPeriod, periodIsOpen, blockedPeriodMessage, setManualLatestPe
 import { PAYROLL_API_VERSION, resolveColumnKey, effectiveFieldConfig, validateFieldConfig, validatePayrollValue } from '../src/config/payrollColumns';
 import { isColumnActive, validateVisibility, calculateColumnProgress, isColumnComplete } from '../src/config/columnVisibility';
 import { validatePopup, effectivePopup, FISCAL_POPUPS } from '../src/config/fiscalPopups';
-import { applyFiscalRegimeRules } from '../src/config/fiscalRegimeRules';
+import { applyFiscalRegimeRules, normalizeFiscalRegimeRules, setActiveFiscalRegimeRules, type FiscalRegimeNaMap } from '../src/config/fiscalRegimeRules';
+import { computeInstallmentsProgress } from '../src/config/installments';
+import { buildUserCompanyPrismaFilter, canUserEditCompany, isPrivilegedUser } from '../src/config/companyPermissions';
+import { normalizeCompanyCatalog, type CompanyCatalogConfig } from '../src/config/systemCatalogs';
 import express from 'express';
 import cors from 'cors';
 import compression from 'compression';
@@ -107,6 +110,7 @@ const KNOWN_API_PREFIXES = [
   '/cushman-companies',
   '/installments',
   '/admin',
+  '/app-config',
   '/session',
   '/plans',
   '/company',
@@ -150,20 +154,110 @@ app.get('/api/health', (_req, res) => {
   });
 });
 
-registerInstallments(app,prisma);
+registerInstallments(app, prisma, { onChanged: () => invalidateDashboardCache() });
 registerCompanyQuality(app,prisma,decryptPassword);
 registerAnalytics(app,prisma);
 registerDeploy(app);
 registerAutomation(app,prisma);
 
+let appConfigCache: {
+  ts: number;
+  fiscalRegimeRules: FiscalRegimeNaMap;
+  companyCatalog: CompanyCatalogConfig;
+} | null = null;
+
+function invalidateAppConfigCache() {
+  appConfigCache = null;
+}
+
+async function getAppConfigPayload() {
+  const now = Date.now();
+  if (appConfigCache && now - appConfigCache.ts < 300_000) {
+    setActiveFiscalRegimeRules(appConfigCache.fiscalRegimeRules);
+    return {
+      fiscalRegimeRules: appConfigCache.fiscalRegimeRules,
+      companyCatalog: appConfigCache.companyCatalog,
+    };
+  }
+  const rows = await prisma.appConfig.findMany().catch(() => []);
+  const map = new Map<string, any>((rows || []).map((r: any) => [r.id, r.value]));
+  const fiscalRegimeRules = normalizeFiscalRegimeRules(map.get('fiscal_regime_rules'));
+  const companyCatalog = normalizeCompanyCatalog(map.get('company_catalog'));
+  setActiveFiscalRegimeRules(fiscalRegimeRules);
+  appConfigCache = { ts: now, fiscalRegimeRules, companyCatalog };
+  return { fiscalRegimeRules, companyCatalog };
+}
+
+app.get('/api/app-config', async (_req, res) => {
+  try {
+    const payload = await getAppConfigPayload();
+    res.json(payload);
+  } catch (error) {
+    console.error('Erro ao carregar app-config:', error);
+    res.status(500).json({ error: 'Erro ao carregar configurações do sistema' });
+  }
+});
+
+app.put('/api/app-config/:key', async (req, res) => {
+  try {
+    const { key } = req.params;
+    const actor = await resolveAuthenticatedUser(prisma, req);
+    if (actor && !isPrivilegedUser(actor) && !actor.screenPermissions?.some((p: any) => p.screen === 'settings-columns' && p.allowed)) {
+      return res.status(403).json({ error: 'Sem permissão para alterar configurações do sistema.' });
+    }
+
+    let normalizedValue: any;
+    if (key === 'fiscal_regime_rules') {
+      normalizedValue = normalizeFiscalRegimeRules(req.body?.value ?? req.body);
+      setActiveFiscalRegimeRules(normalizedValue);
+    } else if (key === 'company_catalog') {
+      normalizedValue = normalizeCompanyCatalog(req.body?.value ?? req.body);
+    } else {
+      return res.status(400).json({ error: 'Chave de configuração inválida.' });
+    }
+
+    await prisma.appConfig.upsert({
+      where: { id: key },
+      create: { id: key, value: normalizedValue },
+      update: { value: normalizedValue },
+    });
+
+    invalidateAppConfigCache();
+    invalidateAllDataCaches();
+    const payload = await getAppConfigPayload();
+
+    if (actor) {
+      void logAction(
+        actor.id,
+        actor.email,
+        actor.name || actor.email,
+        'ATUALIZOU_CONFIGURACAO',
+        'CONFIGURACAO',
+        key,
+        { key },
+        getClientIp(req)
+      );
+    }
+
+    res.json({ success: true, ...payload });
+  } catch (error) {
+    console.error('Erro ao salvar app-config:', error);
+    res.status(500).json({ error: 'Erro ao salvar configurações do sistema' });
+  }
+});
+
 const ALL_SECTORS = ['CONTABIL', 'FISCAL', 'PARCELAMENTO', 'DP', 'CUSHMAN'];
 const ALL_SCREENS = [
   { id: 'dashboard', label: 'Visão Geral' },
+  { id: 'analytics', label: 'Gráficos e Indicadores' },
   { id: 'closings', label: 'Fechamentos' },
   { id: 'companies', label: 'Empresas' },
+  { id: 'certificates', label: 'Certificados e Procurações' },
   { id: 'installments-create', label: 'Criar parcelamentos na tela Fiscal' },
+  { id: 'settings-data-quality', label: 'Avisos de Cadastro' },
+  { id: 'logs', label: 'Logs de Auditoria do Sistema' },
   { id: 'settings-permissions', label: 'Configurações: Permissões' },
-  { id: 'settings-columns', label: 'Configurações: Colunas' },
+  { id: 'settings-columns', label: 'Configurações: Colunas, Regras e Cadastros' },
 ];
 
 // ========================
@@ -191,6 +285,7 @@ app.post('/api/login', async (req, res) => {
       include: {
         sectorPermissions: true,
         screenPermissions: true,
+        responsibleAssignments: { select: { companyId: true, sector: true } },
         companyAccess: {
           include: { company: { select: { id: true, name: true, cnpj: true } } },
         },
@@ -290,6 +385,7 @@ app.post('/api/session/refresh', async (req, res) => {
       include: {
         sectorPermissions: true,
         screenPermissions: true,
+        responsibleAssignments: { select: { companyId: true, sector: true } },
         companyAccess: {
           include: { company: { select: { id: true, name: true, cnpj: true } } },
         },
@@ -573,11 +669,17 @@ app.get('/api/accounting-closings', async (req,res)=>{
     res.json({accountingApiVersion:ACCOUNTING_API_VERSION,year,latestYear:accountingYear(),rows,columns,users,configured:result.columns.some((column:any)=>column.columnKey?.startsWith('cont_'))});
   }catch(error){console.error('Erro no Contábil anual:',error);res.status(500).json({error:'Não foi possível carregar o Contábil anual.'});}
 });
-async function saveAccountingColumn(existing:any,columnKey:string,columnValue:any,res:any){
+async function saveAccountingColumn(existing:any,columnKey:string,columnValue:any,res:any,req?:any){
   const year=new Date(existing.referencePeriod).getUTCFullYear();
   if(new Date(existing.referencePeriod).getUTCMonth()!==0)return res.status(400).json({error:'Este registro antigo é mensal. Use a tela Contábil anual.'});
   if(year>accountingYear())return res.status(423).json({error:'Este ano contábil ainda não foi liberado.'});
-  const company=await prisma.company.findUnique({where:{id:existing.companyId}});
+  const company=await prisma.company.findUnique({where:{id:existing.companyId},include:{responsibles:true}});
+  if(req){
+    const actor=await resolveAuthenticatedUser(prisma,req);
+    if(actor&&!canUserEditCompany(actor,company,'CONTABIL')){
+      return res.status(403).json({error:'Você só pode editar fechamentos das empresas sob sua responsabilidade no Contábil.'});
+    }
+  }
   const columns=await prisma.departmentColumn.findMany({where:{department:'CONTABIL'}});
   const column=columns.find((item:any)=>(resolveColumnKey(item)||item.id)===columnKey);
   if(!column||!annualColumnActive(column,year))return res.status(400).json({error:'Coluna indisponível neste ano.'});
@@ -666,7 +768,7 @@ app.get('/api/closings', async (req, res) => {
       ],
     };
 
-    let [companies, closings, allColumns, distinctPeriods, baseSectorUsers, fiscalReinfMap] = await Promise.all([
+    let [companies, closings, allColumns, distinctPeriods, baseSectorUsers, fiscalReinfMap, appCfg] = await Promise.all([
       prisma.company.findMany({
         where: activeWhere,
         omit: { legacyData: true },
@@ -685,6 +787,7 @@ app.get('/api/closings', async (req, res) => {
       cachedDistinctPeriods(),
       getCachedBaseSectorUsers(sector as 'FISCAL' | 'DP'),
       sector === 'DP' ? queryFiscalReinfMap(pool, prisma, monthStart, nextMonthStart) : Promise.resolve(new Map<string, any>()),
+      getAppConfigPayload(),
     ]);
 
     if (closings.length === 0) {
@@ -799,6 +902,10 @@ app.get('/api/closings', async (req, res) => {
       }
       if (sector === 'FISCAL') {
         columnsData = applyFiscalRegimeRules(c.taxRegime, columnsData);
+        for (const column of configuredColumns) {
+          const key = resolveColumnKey(column) || column.id;
+          if (column.inputType === 'PASSWORD' && typeof columnsData[key] === 'string' && columnsData[key]) columnsData[key] = decryptPassword(columnsData[key]) ?? columnsData[key];
+        }
       }
       if (sector === 'DP') {
         for (const column of configuredColumns) {
@@ -867,6 +974,7 @@ app.get('/api/closings', async (req, res) => {
       fiscalUsers,
       popupColumns: configuredColumns.length ? activeColumns.map((col: any) => ({ ...col, columnKey: resolveColumnKey(col) || col.id })) : Object.entries(FISCAL_POPUPS).map(([columnKey, config]) => ({ columnKey, name: config.title.replace('Detalhes ', ''), isEditable: true })),
       availableMonths,
+      ...(sector === 'FISCAL' ? { fiscalRegimeRules: appCfg.fiscalRegimeRules } : {}),
       ...(sector === 'DP' ? { payrollApiVersion: PAYROLL_API_VERSION, payrollConfigured: configuredColumns.some((col: any) => col.columnKey?.startsWith('dp_')), payrollColumns: activeColumns.map((col: any) => ({ ...col, columnKey: resolveColumnKey(col) || col.id })), reinfDefinition: effectivePopup(reinfColumn, 'reinf') } : {}),
       summary: {
         total: totalCompanies,
@@ -898,13 +1006,17 @@ app.put('/api/closings/:id/column', async (req, res) => {
     }
 
     if(existing.type==='CUSHMAN')return res.status(400).json({error:'Use a edição autenticada da tela Cushman.'});
-    if(existing.type==='CONTABIL')return await saveAccountingColumn(existing,columnKey,columnValue,res);
+    if(existing.type==='CONTABIL')return await saveAccountingColumn(existing,columnKey,columnValue,res,req);
     if (!requireOpenPeriod(new Date(existing.referencePeriod), res)) return;
-    const [closingCompany, allCols] = await Promise.all([
-      prisma.company.findUnique({ where: { id: existing.companyId } }),
+    const [closingCompany, allCols, actor] = await Promise.all([
+      prisma.company.findUnique({ where: { id: existing.companyId }, include: { responsibles: true } }),
       cachedDepartmentColumns(),
+      resolveAuthenticatedUser(prisma, req),
     ]);
     if (!closingCompany || !companyExitAllowsPeriod(closingCompany, new Date(existing.referencePeriod))) return res.status(403).json({error:'A empresa não tem obrigações nesta competência conforme sua saída.'});
+    if (actor && !canUserEditCompany(actor, closingCompany, existing.type as any)) {
+      return res.status(403).json({ error: 'Você só pode editar fechamentos das empresas em que é responsável.' });
+    }
 
     const configuredColumns = (allCols || [])
       .filter((col: any) => col.department === existing.type)
@@ -925,7 +1037,7 @@ app.put('/api/closings/:id/column', async (req, res) => {
     const currentData = (existing.columnsData as Record<string, any>) || {};
     const updatedData: Record<string, any> = {
       ...currentData,
-      [columnKey]: existing.type === 'DP' && popupColumn?.inputType === 'PASSWORD' ? (encryptPassword(columnValue) || '') : columnValue,
+      [columnKey]: popupColumn?.inputType === 'PASSWORD' ? (encryptPassword(columnValue) || '') : columnValue,
     };
 
     const activeColumns = configuredColumns.filter((col: any) => isColumnActive(col, new Date(existing.referencePeriod)));
@@ -994,10 +1106,15 @@ app.put('/api/companies/:id/responsible', async (req, res) => {
     const { id } = req.params;
     const { userId, sector = 'FISCAL', actorId, actorEmail, actorName } = req.body;
 
-    const [company, newUser] = await Promise.all([
-      prisma.company.findUnique({ where: { id }, select: { code: true, name: true } }),
-      userId ? prisma.user.findUnique({ where: { id: userId }, select: { id: true, name: true, email: true, active: true } }) : null
+    const [company, newUser, actor] = await Promise.all([
+      prisma.company.findUnique({ where: { id }, select: { id: true, code: true, name: true, responsibles: true } }),
+      userId ? prisma.user.findUnique({ where: { id: userId }, select: { id: true, name: true, email: true, active: true } }) : null,
+      resolveAuthenticatedUser(prisma, req),
     ]);
+
+    if (actor && !canUserEditCompany(actor, company, sector as any)) {
+      return res.status(403).json({ error: 'Você só pode alterar o responsável das empresas sob sua permissão de edição.' });
+    }
 
     if (userId && !newUser?.active) {
       return res.status(400).json({ error: 'Selecione um usuário ativo para ser responsável.' });
@@ -1039,6 +1156,15 @@ app.put('/api/companies/:id/notes', async (req, res) => {
   try {
     const { id } = req.params;
     const { notes, notesScope = 'FISCAL' } = req.body;
+
+    const actor = await resolveAuthenticatedUser(prisma, req);
+    if (actor) {
+      const targetComp = await prisma.company.findUnique({ where: { id }, include: { responsibles: true } });
+      const checkSector = ['FISCAL', 'DP', 'CONTABIL', 'CUSHMAN'].includes(notesScope) ? (notesScope as any) : null;
+      if (targetComp && !canUserEditCompany(actor, targetComp, checkSector)) {
+        return res.status(403).json({ error: 'Você só pode editar observações das empresas sob sua responsabilidade.' });
+      }
+    }
 
     const updated = await prisma.company.update({
       where: { id },
@@ -1124,16 +1250,8 @@ async function computeDashboardPayload(monthStart: Date, userId?: string): Promi
         where: { id: userId },
         include: { companyAccess: true }
       });
-      if (user && user.role !== 'ADMIN' && user.role !== 'SOCIO') {
-        if (['FISCAL', 'DP', 'CONTABIL'].includes(user.role)) {
-          userFilter = { responsibles: { some: { userId } } };
-        } else if (user.companyScope === 'CUSTOM') {
-          userFilter = { id: { in: user.companyAccess.map((a: any) => a.companyId) } };
-        } else if (user.companyScope === 'ALL') {
-          userFilter = {};
-        } else {
-          userFilter = { responsibles: { some: { userId } } };
-        }
+      if (user) {
+        userFilter = buildUserCompanyPrismaFilter(user);
       }
     }
 
@@ -1159,7 +1277,7 @@ async function computeDashboardPayload(monthStart: Date, userId?: string): Promi
       activeWhere.AND.push(userFilter);
     }
 
-    const [companies, allColumns, distinctPeriods, rawClosings] = await Promise.all([
+    const [companies, allColumns, distinctPeriods, rawClosings, installmentPlans, installmentSetting] = await Promise.all([
       prisma.company.findMany({
         where: activeWhere,
         select: {
@@ -1185,6 +1303,11 @@ async function computeDashboardPayload(monthStart: Date, userId?: string): Promi
       cachedDepartmentColumns(),
       cachedDistinctPeriods(),
       queryClosingsForDashboard(pool, prisma, monthStart, nextMonthStart, annualStart),
+      prisma.installmentPlan.findMany({
+        include: { payments: true },
+      }).catch(() => []),
+      prisma.installmentSetting.findUnique({ where: { id: 'global' } }).catch(() => null),
+      getAppConfigPayload(),
     ]);
 
     const companyMap = new Map<string, any>(companies.map((c: any) => [c.id, c]));
@@ -1224,7 +1347,14 @@ async function computeDashboardPayload(monthStart: Date, userId?: string): Promi
     };
 
     const openLatest = latestOpenPeriod();
+    const hasScopeFilter = Object.keys(userFilter).length > 0;
     const progress = ALL_SECTORS.map((type) => {
+      if (type === 'PARCELAMENTO') {
+        const scopedPlans = hasScopeFilter
+          ? (installmentPlans || []).filter((p: any) => companyMap.has(p.companyId) || (userId && p.responsibleId === userId))
+          : (installmentPlans || []);
+        return computeInstallmentsProgress(scopedPlans, installmentSetting, monthStart, null);
+      }
       const list = closings.filter((c: any) => {
         if (c.type !== type || c.status === 'NOT_APPLICABLE') return false;
         const comp = companyMap.get(c.companyId);
@@ -1742,9 +1872,14 @@ app.put('/api/companies/:id', async (req, res) => {
       userId,
     } = req.body;
 
-    const existingCompany = await prisma.company.findUnique({ where: { id } });
+    const existingCompany = await prisma.company.findUnique({ where: { id }, include: { responsibles: true } });
     if (!existingCompany) {
       return res.status(404).json({ error: 'Empresa não encontrada.' });
+    }
+
+    const actor = await resolveAuthenticatedUser(prisma, req);
+    if (actor && !canUserEditCompany(actor, existingCompany, null)) {
+      return res.status(403).json({ error: 'Você só pode editar dados cadastrais das empresas sob sua responsabilidade.' });
     }
 
     const updateData: any = {};
@@ -1957,6 +2092,7 @@ app.get('/api/users', async (req, res) => {
         active: true,
         companyScope: true,
         canViewAllCompanies: true,
+        editOnlyResponsible: true,
         createdAt: true,
         sectorPermissions: true,
         screenPermissions: true,
@@ -1991,6 +2127,7 @@ app.post('/api/users', async (req, res) => {
       role = 'CADASTRO',
       companyScope = 'ALL',
       canViewAllCompanies,
+      editOnlyResponsible = false,
       sectorPermissions = [],
       screenPermissions = [],
       companyAccessIds = [],
@@ -2033,7 +2170,7 @@ app.post('/api/users', async (req, res) => {
       const found = screenPermissions.find((p: any) => p.screen === sc.id);
       if (found) return { screen: sc.id, allowed: Boolean(found.allowed) };
       if (role === 'ADMIN' || role === 'SOCIO') return { screen: sc.id, allowed: true };
-      if (sc.id === 'settings-permissions' || sc.id === 'settings-columns' || sc.id === 'installments-create') return { screen: sc.id, allowed: false };
+      if (['settings-permissions', 'settings-columns', 'installments-create', 'settings-data-quality', 'logs'].includes(sc.id)) return { screen: sc.id, allowed: false };
       return { screen: sc.id, allowed: true };
     });
 
@@ -2045,6 +2182,7 @@ app.post('/api/users', async (req, res) => {
         role,
         companyScope: scope,
         canViewAllCompanies: scope === 'ALL',
+        editOnlyResponsible: scope === 'RESPONSIBLE' ? true : Boolean(editOnlyResponsible),
         sectorPermissions: {
           create: sectorData,
         },
@@ -2086,6 +2224,7 @@ app.put('/api/users/:id', async (req, res) => {
       active,
       companyScope,
       canViewAllCompanies,
+      editOnlyResponsible,
       sectorPermissions,
       screenPermissions,
       companyAccessIds,
@@ -2115,9 +2254,15 @@ app.put('/api/users/:id', async (req, res) => {
     if (companyScope !== undefined) {
       updateData.companyScope = companyScope;
       updateData.canViewAllCompanies = companyScope === 'ALL';
+      if (companyScope === 'RESPONSIBLE') {
+        updateData.editOnlyResponsible = true;
+      }
     } else if (canViewAllCompanies !== undefined) {
       updateData.canViewAllCompanies = Boolean(canViewAllCompanies);
       updateData.companyScope = canViewAllCompanies ? 'ALL' : 'CUSTOM';
+    }
+    if (editOnlyResponsible !== undefined && companyScope !== 'RESPONSIBLE') {
+      updateData.editOnlyResponsible = Boolean(editOnlyResponsible);
     }
     if (password) updateData.password = bcrypt.hashSync(password, 10);
 
@@ -2648,6 +2793,7 @@ async function warmServerCaches() {
     lastCompetenceBgSync = Date.now();
     const openPeriod = latestOpenPeriod();
     await Promise.all([
+      getAppConfigPayload(),
       cachedDepartmentColumns(),
       cachedDistinctPeriods(),
       fetchFormattedCompanies(),

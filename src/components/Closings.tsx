@@ -43,7 +43,8 @@ import { visibilitySummary, isColumnComplete } from '../config/columnVisibility'
 import { FISCAL_POPUPS, effectivePopup, type PopupAction } from '../config/fiscalPopups';
 import { exportToCsv } from '../utils/exportCsv';
 import { compareCodes, formatCompanyCode } from '../utils/codeSort';
-import { applyFiscalRegimeRules, isFiscalObligationNA } from '../config/fiscalRegimeRules';
+import { applyFiscalRegimeRules, isFiscalObligationNA, setActiveFiscalRegimeRules } from '../config/fiscalRegimeRules';
+import { canUserEditCompany, canUserViewCompany, isUserResponsibleForCompany } from '../config/companyPermissions';
 
 function brDateToIso(val: string): string {
   const m = String(val || '').trim().match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
@@ -115,9 +116,7 @@ export function Closings({ currentView, onNavigate, currentUser, onLogout }: Clo
   const isRowEditable = (row: any) => {
     if (!canEditFiscal) return false;
     if (isPrivileged) return true;
-    const fiscalResp = getFiscalResponsible(row.company);
-    const respId = fiscalResp?.userId || fiscalResp?.user?.id;
-    return respId === currentUser?.id || row.company?.responsibles?.some((r: any) => r.userId === currentUser?.id && r.sector === 'FISCAL');
+    return canUserEditCompany(currentUser, row?.company, 'FISCAL');
   };
   async function loadInstallmentSummaries(companies: any[], requestId = fetchSequence.current) {
     if (!viewInstallments) return;
@@ -209,7 +208,7 @@ export function Closings({ currentView, onNavigate, currentUser, onLogout }: Clo
   const [popupForm, setPopupForm] = useState<Record<string, string>>({});
   const activePopupColumn = popupColumns.find(col => col.columnKey === activeModal?.colKey);
   const activePopupConfig = effectivePopup(activePopupColumn, activeModal?.colKey || '');
-  const canEditPopup = canEditFiscal && activePopupColumn?.isEditable !== false;
+  const canEditPopup = Boolean(activeModal?.row && isRowEditable(activeModal.row) && activePopupColumn?.isEditable !== false);
 
   const [notesText, setNotesText] = useState('');
 
@@ -223,6 +222,7 @@ export function Closings({ currentView, onNavigate, currentUser, onLogout }: Clo
       if (res.ok) {
         const data = await res.json();
         if (requestId !== fetchSequence.current) return;
+        if (data.fiscalRegimeRules) setActiveFiscalRegimeRules(data.fiscalRegimeRules);
         const normalizedRows = (data.rows || []).map((r: any) => ({
           ...r,
           columnsData: applyFiscalRegimeRules(r.company?.taxRegime, r.columnsData || {}),
@@ -326,7 +326,7 @@ export function Closings({ currentView, onNavigate, currentUser, onLogout }: Clo
     try {
       const res = await fetch(`${API}/api/companies/${companyId}/responsible`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
+        headers: installmentHeaders(currentUser),
         body: JSON.stringify({
           userId,
           sector: 'FISCAL',
@@ -398,7 +398,7 @@ export function Closings({ currentView, onNavigate, currentUser, onLogout }: Clo
     try {
       const res = await fetch(`${API}/api/closings/${closingId}/column`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
+        headers: installmentHeaders(currentUser),
         body: JSON.stringify({
           columnKey: colKey,
           columnValue: payload,
@@ -554,12 +554,11 @@ export function Closings({ currentView, onNavigate, currentUser, onLogout }: Clo
   };
 
   const handleSaveNotes = async () => {
-    if (!canEditFiscal) return;
-    if (!activeModal) return;
+    if (!activeModal || !isRowEditable(activeModal.row)) return;
     try {
       const res = await fetch(`${API}/api/companies/${activeModal.row.company.id}/notes`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
+        headers: installmentHeaders(currentUser),
         body: JSON.stringify({ notes: notesText, notesScope: 'FISCAL' }),
       });
       if (res.ok) {
@@ -607,14 +606,9 @@ export function Closings({ currentView, onNavigate, currentUser, onLogout }: Clo
 
   const scopedRows = useMemo(() => rows.filter(row => {
     if (!companyBelongsToFiscal(row.company)) return false;
-    const fiscalResp = getFiscalResponsible(row.company);
-    const respId = fiscalResp?.userId || fiscalResp?.user?.id;
-    const isMine = respId === currentUser?.id || row.company?.responsibles?.some((r: any) => r.userId === currentUser?.id && r.sector === 'FISCAL');
-    if (onlyMyCompanies) return isMine;
+    if (onlyMyCompanies) return isUserResponsibleForCompany(currentUser, row.company, 'FISCAL');
     if (!currentUser || isPrivileged) return true;
-    if (currentUser.companyScope === 'CUSTOM') return currentUser.companyAccess?.some(a => a.companyId === row.company.id);
-    if (currentUser.companyScope === 'ALL') return true;
-    return isMine;
+    return canUserViewCompany(currentUser, row.company, 'FISCAL');
   }), [rows, currentUser, onlyMyCompanies, isPrivileged]);
 
   const summary = useMemo(() => {
@@ -672,7 +666,7 @@ export function Closings({ currentView, onNavigate, currentUser, onLogout }: Clo
           const definition = popupColumns.find(col => col.columnKey === obCol);
           if (!definition) continue;
           const value = r.columnsData?.[obCol];
-          const itemStatus = definition.inputType === 'TEXT' || definition.inputType === 'CHECKBOX' ? (isColumnComplete(definition, value) ? 'CONCLUIDO' : 'PENDENTE') : value?.status;
+          const itemStatus = ['TEXT', 'CHECKBOX', 'NUMBER', 'TEXTAREA', 'PASSWORD', 'SELECT', 'MULTISELECT'].includes(definition.inputType) ? (isColumnComplete(definition, value) ? 'CONCLUIDO' : 'PENDENTE') : value?.status;
           if (obStatus === 'PENDENTE') {
             if (itemStatus && itemStatus !== 'PENDENTE') return false;
           } else if (itemStatus !== obStatus) {
@@ -724,9 +718,29 @@ export function Closings({ currentView, onNavigate, currentUser, onLogout }: Clo
     const definition = popupColumns.find(col => col.columnKey === colKey);
     const rowEditable = isRowEditable(row);
     const readOnly = !rowEditable || definition?.isEditable === false;
-    if (definition?.inputType === 'TEXT') {
+    if (definition?.inputType === 'TEXT' || definition?.inputType === 'NUMBER' || definition?.inputType === 'PASSWORD' || definition?.inputType === 'TEXTAREA') {
       const text = typeof val === 'string' || typeof val === 'number' ? String(val) : '';
-      return <input className="fiscal-column-text" aria-label={definition.name} key={`${row.closingId}_${colKey}_${text}`} type="text" defaultValue={text} disabled={readOnly || savingAction} onBlur={e => { if (e.target.value !== text) saveColumnValue(row.closingId, colKey, e.target.value); }} onKeyDown={e => { if (e.key === 'Enter') e.currentTarget.blur(); }} />;
+      const htmlType = definition.inputType === 'NUMBER' ? 'number' : definition.inputType === 'PASSWORD' ? 'password' : 'text';
+      return <input className="fiscal-column-text" aria-label={definition.name} key={`${row.closingId}_${colKey}_${text}`} type={htmlType} placeholder={definition.fieldConfig?.placeholder || ''} title={definition.inputType === 'TEXTAREA' ? text : undefined} defaultValue={text} disabled={readOnly || savingAction} onBlur={e => { if (e.target.value !== text) saveColumnValue(row.closingId, colKey, definition.inputType === 'NUMBER' && e.target.value !== '' ? Number(e.target.value) : e.target.value); }} onKeyDown={e => { if (e.key === 'Enter') e.currentTarget.blur(); }} />;
+    }
+    if (definition?.inputType === 'SELECT') {
+      const current = typeof val === 'string' ? val : '';
+      const options: string[] = Array.isArray(definition.fieldConfig?.options) ? definition.fieldConfig.options : [];
+      const pendingOpts: string[] = Array.isArray(definition.fieldConfig?.pendingOptions) ? definition.fieldConfig.pendingOptions : [];
+      const isPending = !current || pendingOpts.includes(current);
+      return (
+        <select
+          className={`table-user-select ${isPending ? 'select-pending' : 'select-done'}`}
+          aria-label={definition.name}
+          value={current}
+          disabled={readOnly || savingAction}
+          onChange={e => saveColumnValue(row.closingId, colKey, e.target.value || null)}
+          style={{ minWidth: 110, borderColor: isPending ? 'rgba(245,158,11,0.5)' : 'rgba(16,185,129,0.5)' }}
+        >
+          <option value="">{definition.fieldConfig?.placeholder || 'Selecione...'}</option>
+          {(current && !options.includes(current) ? [current, ...options] : options).map(opt => <option key={opt} value={opt}>{opt}</option>)}
+        </select>
+      );
     }
     if (definition?.inputType === 'CHECKBOX') {
       return <input type="checkbox" aria-label={definition.name} checked={val === true} disabled={readOnly || savingAction} onChange={e => saveColumnValue(row.closingId, colKey, e.target.checked)} />;
@@ -844,8 +858,10 @@ export function Closings({ currentView, onNavigate, currentUser, onLogout }: Clo
 
       popupColumns.forEach(col => {
         const val = c.columnsData?.[col.columnKey];
-        if (col.inputType === 'TEXT') {
-          row[col.columnKey] = val || '';
+        if (col.inputType === 'TEXT' || col.inputType === 'NUMBER' || col.inputType === 'TEXTAREA' || col.inputType === 'SELECT') {
+          row[col.columnKey] = val ?? '';
+        } else if (col.inputType === 'PASSWORD') {
+          row[col.columnKey] = val ? '••••' : '';
         } else if (col.inputType === 'CHECKBOX') {
           row[col.columnKey] = val ? 'Sim' : 'Não';
         } else if (col.inputType === 'MULTISELECT') {
@@ -1292,7 +1308,7 @@ export function Closings({ currentView, onNavigate, currentUser, onLogout }: Clo
                                       { value: 'PENDENCIA', label: 'Pendência' },
                                       { value: 'N/A', label: 'N/A' },
                                       { value: 'PENDENTE', label: 'Pendente' },
-                                    ].filter(item => !['TEXT', 'CHECKBOX'].includes(column.inputType) || ['ALL', 'CONCLUIDO', 'PENDENTE'].includes(item.value)).map((item) => (
+                                    ].filter(item => !['TEXT', 'CHECKBOX', 'NUMBER', 'TEXTAREA', 'PASSWORD', 'SELECT', 'MULTISELECT'].includes(column.inputType) || ['ALL', 'CONCLUIDO', 'PENDENTE'].includes(item.value)).map((item) => (
                                       <button
                                         key={item.value}
                                         className={`th-filter-popover-item ${currentObFilter === item.value ? 'active' : ''}`}
@@ -1401,7 +1417,7 @@ export function Closings({ currentView, onNavigate, currentUser, onLogout }: Clo
                             <td>
                               <select
                                 className="table-user-select"
-                                disabled={!canEditFiscal}
+                                disabled={!isRowEditable(r)}
                                 value={currentRespId}
                                 onChange={(e) => handleResponsibleChange(c.id, e.target.value)}
                               >
@@ -1656,6 +1672,7 @@ export function Closings({ currentView, onNavigate, currentUser, onLogout }: Clo
                   rows={5}
                   placeholder="Digite as observações específicas deste cliente para o setor Fiscal..."
                   value={notesText}
+                  disabled={!isRowEditable(activeModal.row)}
                   onChange={(e) => setNotesText(e.target.value)}
                   style={{
                     padding: '10px 12px',
@@ -1669,7 +1686,7 @@ export function Closings({ currentView, onNavigate, currentUser, onLogout }: Clo
                   <button className="btn-secondary-light" onClick={closeAllModals}>
                     Cancelar
                   </button>
-                  <button className="btn-primary-gradient" disabled={!canEditFiscal} onClick={handleSaveNotes}>
+                  <button className="btn-primary-gradient" disabled={!isRowEditable(activeModal.row)} onClick={handleSaveNotes}>
                     Salvar Observação
                   </button>
                 </div>
@@ -1786,7 +1803,7 @@ export function Closings({ currentView, onNavigate, currentUser, onLogout }: Clo
                     </button>
                     <button
                       className="btn-primary-gradient"
-                      disabled={!canEditFiscal || savingAction}
+                      disabled={!isRowEditable(multiSelectModal.row) || savingAction}
                       onClick={async () => {
                         await saveColumnValue(
                           multiSelectModal.row.closingId,

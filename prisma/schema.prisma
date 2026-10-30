@@ -82,6 +82,7 @@ model User {
 
   // Mantido para compatibilidade booleana
   canViewAllCompanies Boolean @default(true)
+  editOnlyResponsible Boolean @default(false)
 
   createdById String?
 
@@ -397,4 +398,11 @@ model AutomationTask {
   closing         Closing?    @relation(fields: [closingId], references: [id], onDelete: SetNull)
 
   @@index([status, createdAt])
+}
+
+
+model AppConfig {
+  id        String   @id
+  value     Json
+  updatedAt DateTime @updatedAt
 }

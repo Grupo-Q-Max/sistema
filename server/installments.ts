@@ -1,6 +1,6 @@
 import {EXTERNAL_INSTALLMENT_SECTOR,normalizeCompanyCnpj,validateExternalInstallmentCompany} from '../src/config/installmentCompanies';
 import crypto from 'node:crypto';
-import {DEFAULT_INSTALLMENT_RULES,installmentAccess,canCreateInstallment,canConfigureInstallments,normalizeTypeName,moneyCents,decimalMoney,validDate,endOfPlan,validateRules,planOverview,companySituation,scheduleItem,dayInBrasilia} from '../src/config/installments';
+import {DEFAULT_INSTALLMENT_RULES,installmentAccess,canEditCompanyInstallment,canCreateInstallment,canConfigureInstallments,normalizeTypeName,moneyCents,decimalMoney,validDate,endOfPlan,validateRules,planOverview,companySituation,scheduleItem,dayInBrasilia} from '../src/config/installments';
 import {normalizePeriod,periodIsOpen,blockedPeriodMessage} from '../src/config/competenceCalendar';
 const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 dias
 export function getSessionSecret(): string {
@@ -23,7 +23,7 @@ export async function resolveAuthenticatedUser(prisma: any, req: any): Promise<a
   const bearer = String(req.headers.authorization || '').replace(/^Bearer\s+/i, '').trim();
   let userId = sessionUser(bearer, secret);
   if (!userId) {
-    const fallbackId = String(req.headers['x-user-id'] || req.query?.userId || req.body?.userId || '').trim();
+    const fallbackId = String(req.headers['x-user-id'] || req.query?.userId || req.body?.userId || req.body?.actorId || '').trim();
     if (fallbackId) userId = fallbackId;
   }
   if (!userId) return null;
@@ -43,13 +43,14 @@ export async function resolveAuthenticatedUser(prisma: any, req: any): Promise<a
   return user;
 }
 export function installmentCompanyScope(user:any):any {
-  if(installmentAccess(user,true)||user.companyScope==='ALL')return {};
+  if(['ADMIN','SOCIO'].includes(user.role)||user.companyScope==='ALL')return {};
   if(user.companyScope==='CUSTOM')return {id:{in:(user.companyAccess||[]).map((entry:any)=>entry.companyId)}};
   if(user.companyScope==='RESPONSIBLE')return {OR:[{responsibles:{some:{userId:user.id,OR:[{sector:null},{sector:{in:['FISCAL','PARCELAMENTO']}}]}}},{installmentPlans:{some:{responsibleId:user.id}}}]};
   return {id:{in:[]}};
 }
 function failure(status:number,message:string):never {throw Object.assign(new Error(message),{status});}
-export function registerInstallments(app:any,prisma:any){
+export function registerInstallments(app:any,prisma:any,options?:{onChanged?:()=>void}){
+  const notifyChanged=()=>options?.onChanged?.();
   const endpoint=(handler:any)=>async(req:any,res:any)=>{try{
     const user=await resolveAuthenticatedUser(prisma,req);
     if(!user)failure(401,'Sua sessão precisa ser renovada. Saia e entre novamente para acessar parcelamentos.');
@@ -58,11 +59,21 @@ export function registerInstallments(app:any,prisma:any){
     await handler(req,res,user);
   }catch(error:any){if(!error.status)console.error('Erro em parcelamentos:',error);res.status(error.status||500).json({error:error.status?error.message:'Não foi possível concluir a operação de parcelamento.'});}};
   async function companyAllowed(user:any,companyId:string){
-    const company=await prisma.company.findUnique({where:{id:companyId}});if(!company)failure(404,'Empresa não encontrada.');
-    if(installmentAccess(user,true)||user.companyScope==='ALL')return company;
+    const company=await prisma.company.findUnique({where:{id:companyId},include:{responsibles:true}});if(!company)failure(404,'Empresa não encontrada.');
+    if(['ADMIN','SOCIO'].includes(user.role)||user.companyScope==='ALL')return company;
     if(user.companyScope==='CUSTOM'&&user.companyAccess.some((access:any)=>access.companyId===companyId))return company;
     if(user.companyScope==='RESPONSIBLE'&&(user.responsibleAssignments.some((entry:any)=>entry.companyId===companyId&&(!entry.sector||['FISCAL','PARCELAMENTO'].includes(entry.sector)))||await prisma.installmentPlan.findFirst({where:{companyId,responsibleId:user.id}})))return company;
     failure(403,'Empresa fora do seu acesso.');
+  }
+  async function requireCompanyEdit(user:any,companyId:string,plans?:any[]){
+    requireEdit(user);
+    const company=await companyAllowed(user,companyId);
+    if(['ADMIN','SOCIO'].includes(user.role))return company;
+    const companyPlans=plans||await prisma.installmentPlan.findMany({where:{companyId},select:{responsibleId:true}});
+    if(!canEditCompanyInstallment(user,company,companyPlans)){
+      failure(403,'Você só pode editar parcelamentos das empresas em que é responsável.');
+    }
+    return company;
   }
   async function rules(){return {...DEFAULT_INSTALLMENT_RULES,...(await prisma.installmentSetting.findUnique({where:{id:'global'}})||{})};}
   const requireEdit=(user:any)=>{if(!installmentAccess(user,true))failure(403,'Permissão apenas de leitura para parcelamentos.');};
@@ -83,17 +94,17 @@ export function registerInstallments(app:any,prisma:any){
     res.json({companies:companies.slice(0,50),hasMore:companies.length>50,nextOffset:offset+50});
   }));
   app.get('/api/installments/plans',endpoint(async(req:any,res:any,user:any)=>{
-    const period=reference(req);const offset=Number(req.query.offset||0);const query=String(req.query.q||'').trim().slice(0,120);
+    const period=reference(req);const offset=Number(req.query.offset||0);const takeLimit=Math.min(Math.max(Number(req.query.limit)||25,1),10000);const query=String(req.query.q||'').trim().slice(0,120);
     if(!Number.isInteger(offset)||offset<0||offset>1000000)failure(400,'Página inválida.');
     const scope=installmentCompanyScope(user);const normalized=normalizeCompanyCnpj(query);
     const search=query?{OR:[{typeName:{contains:query}},...['name','tradeName','code','cnpj','groupName'].map(field=>({company:{is:{[field]:{contains:query}}}})),...(normalized.length>=3?[{company:{is:{cnpj:{contains:normalized}}}}]:[])]}:{};
     const where={AND:[{company:{is:scope}},search]};
     const [stored,total,configuration]=await Promise.all([
-      prisma.installmentPlan.findMany({where,include:{payments:true,company:{select:{id:true,name:true,tradeName:true,code:true,cnpj:true,activeSectors:true}}},orderBy:[{createdAt:'desc'},{id:'asc'}],skip:offset,take:25}),
+      prisma.installmentPlan.findMany({where,include:{payments:true,company:{select:{id:true,name:true,tradeName:true,code:true,cnpj:true,activeSectors:true,responsibles:{select:{userId:true,sector:true}}}}},orderBy:[{createdAt:'desc'},{id:'asc'}],skip:offset,take:takeLimit}),
       prisma.installmentPlan.count({where}),rules(),
     ]);
-    const plans=await formatted(stored,configuration);
-    res.json({plans,total,hasMore:offset+plans.length<total,nextOffset:offset+25,period,access:{edit:installmentAccess(user,true),create:canCreateInstallment(user)}});
+    const plans=(await formatted(stored,configuration)).map((plan:any,idx:number)=>({...plan,canEdit:canEditCompanyInstallment(user,stored[idx]?.company,[stored[idx]])}));
+    res.json({plans,total,hasMore:offset+plans.length<total,nextOffset:offset+takeLimit,period,access:{edit:installmentAccess(user,true),create:canCreateInstallment(user)}});
   }));
   app.post('/api/installments/companies',endpoint(async(req:any,res:any,user:any)=>{
     if(!canCreateInstallment(user))failure(403,'Sem autorização para cadastrar empresa para parcelamento.');
@@ -102,26 +113,26 @@ export function registerInstallments(app:any,prisma:any){
     if(await prisma.company.findFirst({where:{cnpj:{in:[cnpj,formattedCnpj]}}}))failure(409,'Este CNPJ já está cadastrado. Pesquise a empresa na lista; se não aparecer, peça acesso ao administrador.');
     const now=new Date();let company:any;
     try{company=await prisma.$transaction(async(tx:any)=>{
-      // Datas obrigatórias do cadastro legado registram apenas a criação técnica.
-      // O marcador externo exclui a empresa de contratos, clientes e competências.
       const created=await tx.company.create({data:{name:req.body.name.trim(),cnpj,taxRegime:req.body.taxRegime,code:req.body.code?.trim()||null,tradeName:req.body.tradeName?.trim()||null,city:req.body.city?.trim()||null,groupName:req.body.groupName?.trim()||null,notes:req.body.notes?.trim()||null,notesScope:'PARCELAMENTO',activeSectors:EXTERNAL_INSTALLMENT_SECTOR,contractDate:now,obligationStartDate:now,exitDate:null}});
       await tx.companyResponsible.create({data:{companyId:created.id,userId:user.id,sector:'PARCELAMENTO'}});
       if(user.companyScope==='CUSTOM')await tx.userCompanyAccess.create({data:{companyId:created.id,userId:user.id}});
       return created;
     });}catch(error:any){if(error.code==='P2002')failure(409,'Este CNPJ já está cadastrado. Pesquise a empresa na lista.');throw error;}
+    notifyChanged();
     res.status(201).json({company:{id:company.id,name:company.name,cnpj:company.cnpj,code:company.code,tradeName:company.tradeName,activeSectors:company.activeSectors}});
   }));
   app.get('/api/installments/company/:companyId',endpoint(async(req:any,res:any,user:any)=>{
-    await companyAllowed(user,req.params.companyId);const period=reference(req);const configuration=await rules();const stored=await prisma.installmentPlan.findMany({where:{companyId:req.params.companyId},include:{payments:true},orderBy:{startsAt:'asc'}});
+    const company=await companyAllowed(user,req.params.companyId);const period=reference(req);const configuration=await rules();const stored=await prisma.installmentPlan.findMany({where:{companyId:req.params.companyId},include:{payments:true},orderBy:{startsAt:'asc'}});
     const plans=await formatted(stored,configuration);const [types,candidates]=await Promise.all([prisma.installmentType.findMany({orderBy:{name:'asc'}}),prisma.user.findMany({where:{active:true},include:{sectorPermissions:true}})]);
     const people=candidates.filter((person:any)=>installmentAccess(person,true)).map((person:any)=>({id:person.id,name:person.name,email:person.email}));
-    res.json({plans,types,people,rules:configuration,period,access:{edit:installmentAccess(user,true),create:canCreateInstallment(user)},situation:companySituation(plans,period)});
+    const canEditThis=canEditCompanyInstallment(user,company,stored);
+    res.json({plans,types,people,rules:configuration,period,access:{edit:canEditThis,create:canCreateInstallment(user)&&canEditThis},situation:companySituation(plans,period)});
   }));
   app.post('/api/installments/summary',endpoint(async(req:any,res:any,user:any)=>{
     const period=reference(req);if(!Array.isArray(req.body.companyIds)||req.body.companyIds.length>5000)failure(400,'Lista de empresas inválida.');const ids=Array.from(new Set(req.body.companyIds.filter((id:any)=>typeof id==='string')));
     const scope=new Set(user.companyAccess.map((access:any)=>access.companyId));
     if(user.companyScope==='RESPONSIBLE'){for(const entry of user.responsibleAssignments)if(!entry.sector||['FISCAL','PARCELAMENTO'].includes(entry.sector))scope.add(entry.companyId);for(const plan of await prisma.installmentPlan.findMany({where:{responsibleId:user.id,companyId:{in:ids}},select:{companyId:true}}))scope.add(plan.companyId);}
-    const allowed:string[]=ids.filter((id:any)=>installmentAccess(user,true)||user.companyScope==='ALL'||scope.has(id)) as string[];
+    const allowed:string[]=ids.filter((id:any)=>['ADMIN','SOCIO'].includes(user.role)||user.companyScope==='ALL'||scope.has(id)) as string[];
     const [rawPlans,currentRules]=await Promise.all([prisma.installmentPlan.findMany({where:{companyId:{in:allowed}},include:{payments:true}}),rules()]);
     const plans=await formatted(rawPlans,currentRules);
     const byCompany=new Map<string,any[]>();for(const p of plans){const list=byCompany.get(p.companyId);if(list)list.push(p);else byCompany.set(p.companyId,[p]);}
@@ -138,22 +149,84 @@ export function registerInstallments(app:any,prisma:any){
     return {companyId:existing?.companyId||body.companyId,typeName:body.typeName.trim().replace(/\s+/g,' '),totalAmount:decimalMoney(cents!),installmentCount:count,startsAt:start,endsAt:end,status:body.status,responsibleId:body.responsibleId||null,lateMode:body.lateMode||null,lateMonthOffset:body.lateMonthOffset===null||body.lateMonthOffset===undefined||body.lateMonthOffset===''?null:Number(body.lateMonthOffset),dueDay:body.dueDay===null||body.dueDay===undefined||body.dueDay===''?null:Number(body.dueDay),dueMonthOffset:body.dueMonthOffset===null||body.dueMonthOffset===undefined||body.dueMonthOffset===''?null:Number(body.dueMonthOffset)};
   }
   app.post('/api/installments/plans',endpoint(async(req:any,res:any,user:any)=>{
-    if(!canCreateInstallment(user))failure(403,'Sem autorização para criar parcelamentos.');await companyAllowed(user,String(req.body.companyId||''));const data=await validatePlan(req.body,user);
-    const plan=await prisma.$transaction(async(tx:any)=>{await tx.installmentType.upsert({where:{nameKey:normalizeTypeName(data.typeName)},create:{name:data.typeName,nameKey:normalizeTypeName(data.typeName)},update:{}});const created=await tx.installmentPlan.create({data:{...data,createdById:user.id}});await tx.installmentEvent.create({data:{planId:created.id,action:'CREATE_PLAN',actorId:user.id,data:{...data,startsAt:data.startsAt!.toISOString(),endsAt:data.endsAt!.toISOString()}}});return created;});res.status(201).json({plan});
+    if(!canCreateInstallment(user))failure(403,'Sem autorização para criar parcelamentos.');await requireCompanyEdit(user,String(req.body.companyId||''));const data=await validatePlan(req.body,user);
+    const plan=await prisma.$transaction(async(tx:any)=>{await tx.installmentType.upsert({where:{nameKey:normalizeTypeName(data.typeName)},create:{name:data.typeName,nameKey:normalizeTypeName(data.typeName)},update:{}});const created=await tx.installmentPlan.create({data:{...data,createdById:user.id}});await tx.installmentEvent.create({data:{planId:created.id,action:'CREATE_PLAN',actorId:user.id,data:{...data,startsAt:data.startsAt!.toISOString(),endsAt:data.endsAt!.toISOString()}}});return created;});
+    notifyChanged();
+    res.status(201).json({plan});
   }));
   app.put('/api/installments/plans/:id',endpoint(async(req:any,res:any,user:any)=>{
-    requireEdit(user);const existing=await prisma.installmentPlan.findUnique({where:{id:req.params.id}});if(!existing)failure(404,'Parcelamento não encontrado.');await companyAllowed(user,existing.companyId);const data=await validatePlan(req.body,user,existing);
-    const updated=await prisma.$transaction(async(tx:any)=>{await tx.$queryRawUnsafe('SELECT `id` FROM `InstallmentPlan` WHERE `id` = ? FOR UPDATE',existing.id);const latest=await tx.installmentPlan.findUnique({where:{id:existing.id}});if(new Date(latest.updatedAt).getTime()!==new Date(existing.updatedAt).getTime())failure(409,'Cadastro alterado por outro usuário. Atualize a lista.');await validatePlan(req.body,user,latest);await tx.installmentType.upsert({where:{nameKey:normalizeTypeName(data.typeName)},create:{name:data.typeName,nameKey:normalizeTypeName(data.typeName)},update:{}});const plan=await tx.installmentPlan.update({where:{id:existing.id},data});await tx.installmentEvent.create({data:{planId:plan.id,action:'EDIT_PLAN',actorId:user.id,data:{before:JSON.parse(JSON.stringify(existing)),after:JSON.parse(JSON.stringify(plan))}}});return plan;});res.json({plan:updated});
+    requireEdit(user);const existing=await prisma.installmentPlan.findUnique({where:{id:req.params.id}});if(!existing)failure(404,'Parcelamento não encontrado.');await requireCompanyEdit(user,existing.companyId,[existing]);const data=await validatePlan(req.body,user,existing);
+    const updated=await prisma.$transaction(async(tx:any)=>{await tx.$queryRawUnsafe('SELECT `id` FROM `InstallmentPlan` WHERE `id` = ? FOR UPDATE',existing.id);const latest=await tx.installmentPlan.findUnique({where:{id:existing.id}});if(new Date(latest.updatedAt).getTime()!==new Date(existing.updatedAt).getTime())failure(409,'Cadastro alterado por outro usuário. Atualize a lista.');await validatePlan(req.body,user,latest);await tx.installmentType.upsert({where:{nameKey:normalizeTypeName(data.typeName)},create:{name:data.typeName,nameKey:normalizeTypeName(data.typeName)},update:{}});const plan=await tx.installmentPlan.update({where:{id:existing.id},data});await tx.installmentEvent.create({data:{planId:plan.id,action:'EDIT_PLAN',actorId:user.id,data:{before:JSON.parse(JSON.stringify(existing)),after:JSON.parse(JSON.stringify(plan))}}});return plan;});
+    notifyChanged();
+    res.json({plan:updated});
   }));
   app.put('/api/installments/plans/:id/payments/:number',endpoint(async(req:any,res:any,user:any)=>{
-    requireEdit(user);const plan=await prisma.installmentPlan.findUnique({where:{id:req.params.id}});if(!plan)failure(404,'Parcelamento não encontrado.');await companyAllowed(user,plan.companyId);const number=Number(req.params.number);if(!Number.isInteger(number)||number<1||number>plan.installmentCount)failure(400,'Número de parcela inválido.');
+    requireEdit(user);const plan=await prisma.installmentPlan.findUnique({where:{id:req.params.id}});if(!plan)failure(404,'Parcelamento não encontrado.');await requireCompanyEdit(user,plan.companyId,[plan]);const number=Number(req.params.number);if(!Number.isInteger(number)||number<1||number>plan.installmentCount)failure(400,'Número de parcela inválido.');
     const item=scheduleItem(plan,number,await rules());if(!item.editable)failure(423,blockedPeriodMessage(new Date(item.period)));if(plan.status==='QUITADO')failure(409,'A quitação está declarada no cadastro. Altere o status do parcelamento para reabrir uma parcela.');
     if(!['PENDING','PAID','OVERDUE'].includes(req.body.status))failure(400,'Situação de parcela inválida.');const paidOn=req.body.status==='PAID'?validDate(req.body.paidOn):null;if(req.body.status==='PAID'&&(!paidOn||paidOn.toISOString().slice(0,10)>dayInBrasilia()))failure(400,'Informe a data real do pagamento, sem data futura.');
     const paidCents=req.body.status==='PAID'?moneyCents(req.body.paidAmount||item.amount):null;if(req.body.status==='PAID'&&paidCents===null)failure(400,'Valor pago inválido.');if(req.body.note!==undefined&&(typeof req.body.note!=='string'||req.body.note.length>4000))failure(400,'Observação inválida (máximo 4000 caracteres).');
     const data={status:req.body.status,paidOn,paidAmount:paidCents===null?null:decimalMoney(paidCents),note:req.body.note||'',updatedById:user.id};
-    const payment=await prisma.$transaction(async(tx:any)=>{await tx.$queryRawUnsafe('SELECT `id` FROM `InstallmentPlan` WHERE `id` = ? FOR UPDATE',plan.id);const latest=await tx.installmentPlan.findUnique({where:{id:plan.id}});if(new Date(latest.updatedAt).getTime()!==new Date(plan.updatedAt).getTime())failure(409,'Cadastro alterado. Atualize a lista antes de confirmar o pagamento.');const previous=await tx.installmentPayment.findUnique({where:{planId_installmentNumber:{planId:plan.id,installmentNumber:number}}});const next=await tx.installmentPayment.upsert({where:{planId_installmentNumber:{planId:plan.id,installmentNumber:number}},create:{planId:plan.id,installmentNumber:number,...data},update:data});await tx.installmentEvent.create({data:{planId:plan.id,installmentNumber:number,action:'PAYMENT_STATUS',actorId:user.id,data:{before:previous?JSON.parse(JSON.stringify(previous)):null,after:JSON.parse(JSON.stringify(next))}}});return next;});res.json({payment});
+    const payment=await prisma.$transaction(async(tx:any)=>{await tx.$queryRawUnsafe('SELECT `id` FROM `InstallmentPlan` WHERE `id` = ? FOR UPDATE',plan.id);const latest=await tx.installmentPlan.findUnique({where:{id:plan.id}});if(new Date(latest.updatedAt).getTime()!==new Date(plan.updatedAt).getTime())failure(409,'Cadastro alterado. Atualize a lista antes de confirmar o pagamento.');const previous=await tx.installmentPayment.findUnique({where:{planId_installmentNumber:{planId:plan.id,installmentNumber:number}}});const next=await tx.installmentPayment.upsert({where:{planId_installmentNumber:{planId:plan.id,installmentNumber:number}},create:{planId:plan.id,installmentNumber:number,...data},update:data});await tx.installmentEvent.create({data:{planId:plan.id,installmentNumber:number,action:'PAYMENT_STATUS',actorId:user.id,data:{before:previous?JSON.parse(JSON.stringify(previous)):null,after:JSON.parse(JSON.stringify(next))}}});return next;});
+    notifyChanged();
+    res.json({payment});
   }));
   app.get('/api/installments/plans/:id/events',endpoint(async(req:any,res:any,user:any)=>{const plan=await prisma.installmentPlan.findUnique({where:{id:req.params.id}});if(!plan)failure(404,'Parcelamento não encontrado.');await companyAllowed(user,plan.companyId);const events=await prisma.installmentEvent.findMany({where:{planId:plan.id},orderBy:{createdAt:'desc'},take:100});const ids=Array.from(new Set(events.map((event:any)=>event.actorId)));const users=await prisma.user.findMany({where:{id:{in:ids}},select:{id:true,name:true,email:true}});res.json({events:events.map((event:any)=>({...event,actor:users.find((person:any)=>person.id===event.actorId)||null}))});}));
-  app.get('/api/installments/settings',endpoint(async(_req:any,res:any,user:any)=>{requireConfiguration(user);res.json({rules:await rules(),types:await prisma.installmentType.findMany({orderBy:{name:'asc'}})});}));
-  app.put('/api/installments/settings',endpoint(async(req:any,res:any,user:any)=>{requireConfiguration(user);const error=validateRules(req.body);if(error)failure(400,error);const {lateMode,lateMonthOffset,dueDay,dueMonthOffset}=req.body;const configuration=await prisma.installmentSetting.upsert({where:{id:'global'},create:{id:'global',lateMode,lateMonthOffset,dueDay,dueMonthOffset},update:{lateMode,lateMonthOffset,dueDay,dueMonthOffset}});res.json({rules:configuration});}));
+  app.get('/api/installments/settings',endpoint(async(_req:any,res:any,user:any)=>{
+    requireConfiguration(user);
+    const [currentRules,types,planTypeCounts]=await Promise.all([
+      rules(),
+      prisma.installmentType.findMany({orderBy:{name:'asc'}}),
+      prisma.installmentPlan.groupBy({by:['typeName'],_count:{_all:true}}).catch(()=>[]),
+    ]);
+    const countMap=new Map<string,number>(planTypeCounts.map((entry:any)=>[normalizeTypeName(entry.typeName||''),Number(entry._count?._all||0)]));
+    res.json({
+      rules:currentRules,
+      types:types.map((t:any)=>({...t,usageCount:countMap.get(t.nameKey)||0})),
+    });
+  }));
+  app.put('/api/installments/settings',endpoint(async(req:any,res:any,user:any)=>{
+    requireConfiguration(user);const error=validateRules(req.body);if(error)failure(400,error);
+    const {lateMode,lateMonthOffset,dueDay,dueMonthOffset}=req.body;
+    const configuration=await prisma.installmentSetting.upsert({where:{id:'global'},create:{id:'global',lateMode,lateMonthOffset,dueDay,dueMonthOffset},update:{lateMode,lateMonthOffset,dueDay,dueMonthOffset}});
+    notifyChanged();
+    res.json({rules:configuration});
+  }));
+  // CRUD de Tipos de Parcelamento
+  app.post('/api/installments/types',endpoint(async(req:any,res:any,user:any)=>{
+    requireConfiguration(user);
+    const rawName=typeof req.body?.name==='string'?req.body.name.trim().replace(/\s+/g,' '):'';
+    if(!rawName||rawName.length>120)failure(400,'Informe o nome do tipo de parcelamento (até 120 caracteres).');
+    const nameKey=normalizeTypeName(rawName);
+    const existing=await prisma.installmentType.findUnique({where:{nameKey}});
+    if(existing)failure(409,'Já existe um tipo de parcelamento com este nome.');
+    const created=await prisma.installmentType.create({data:{name:rawName,nameKey}});
+    res.status(201).json({type:{...created,usageCount:0}});
+  }));
+  app.put('/api/installments/types/:id',endpoint(async(req:any,res:any,user:any)=>{
+    requireConfiguration(user);
+    const existing=await prisma.installmentType.findUnique({where:{id:req.params.id}});
+    if(!existing)failure(404,'Tipo de parcelamento não encontrado.');
+    const rawName=typeof req.body?.name==='string'?req.body.name.trim().replace(/\s+/g,' '):'';
+    if(!rawName||rawName.length>120)failure(400,'Informe o nome do tipo de parcelamento (até 120 caracteres).');
+    const nameKey=normalizeTypeName(rawName);
+    const conflict=await prisma.installmentType.findUnique({where:{nameKey}});
+    if(conflict&&conflict.id!==existing.id)failure(409,'Já existe outro tipo com este nome.');
+    const updatePlans=req.body?.updatePlans!==false;
+    const updated=await prisma.$transaction(async(tx:any)=>{
+      const type=await tx.installmentType.update({where:{id:existing.id},data:{name:rawName,nameKey}});
+      if(updatePlans&&existing.name!==rawName){
+        await tx.installmentPlan.updateMany({where:{typeName:existing.name},data:{typeName:rawName}});
+      }
+      return type;
+    });
+    notifyChanged();
+    res.json({type:updated});
+  }));
+  app.delete('/api/installments/types/:id',endpoint(async(req:any,res:any,user:any)=>{
+    requireConfiguration(user);
+    const existing=await prisma.installmentType.findUnique({where:{id:req.params.id}});
+    if(!existing)failure(404,'Tipo de parcelamento não encontrado.');
+    await prisma.installmentType.delete({where:{id:existing.id}});
+    res.json({success:true});
+  }));
 }

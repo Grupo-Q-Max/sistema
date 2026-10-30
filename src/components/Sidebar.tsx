@@ -19,6 +19,8 @@ import {
   Activity,
   BarChart3,
   KeyRound,
+  Scale,
+  ListChecks,
 } from 'lucide-react';
 import type { CurrentUser } from '../types/auth';
 import { ChangePasswordModal } from './ChangePasswordModal';
@@ -104,11 +106,11 @@ export function Sidebar({ currentView, onNavigate, currentUser, onLogout }: Side
   // Verificação de permissões de tela
   const isPrivileged = currentUser?.role === 'ADMIN' || currentUser?.role === 'SOCIO';
 
-  const canAccessScreen = (screenId: string) => {
+  const canAccessScreen = (screenId: string, defaultAllowed = false) => {
     if (!currentUser) return false;
     if (isPrivileged) return true;
     const perm = currentUser.screenPermissions?.find((p) => p.screen === screenId);
-    return perm ? perm.allowed : false;
+    return perm ? perm.allowed : defaultAllowed;
   };
 
   const [qualityCount,setQualityCount]=useState(()=>cachedQualitySummary?.count||0);
@@ -126,7 +128,8 @@ export function Sidebar({ currentView, onNavigate, currentUser, onLogout }: Side
     const timer=window.setInterval(()=>refresh(true),60000);
     return()=>{controller.abort();window.clearInterval(timer);};
   },[isPrivileged,currentUser?.sessionToken,currentUser?.id,currentView]);
-  const showDashboard = true; // Exibe para todos, pois os dados são filtrados no backend
+  const showDashboard = canAccessScreen('dashboard', true);
+  const showAnalytics = canAccessScreen('analytics', showDashboard);
   const showClosings = canAccessScreen('closings');
   const closingItems = [
     {view:'closings',label:'Fiscal',sector:'FISCAL' as const,Icon:FileCheck},
@@ -135,9 +138,12 @@ export function Sidebar({ currentView, onNavigate, currentUser, onLogout }: Side
     {view:'closings-cushman',label:'Cushman',sector:'CUSHMAN' as const,Icon:Building2},
   ].filter(item => showClosings && hasSectorAccess(currentUser,item.sector));
   const showCompanies = canAccessScreen('companies');
+  const showCertificates = canAccessScreen('certificates', showCompanies);
+  const showDataQuality = canAccessScreen('settings-data-quality', false);
+  const showLogs = canAccessScreen('logs', false);
   const showPermissions = canAccessScreen('settings-permissions');
   const showColumns = canAccessScreen('settings-columns');
-  const showSettingsGroup = showPermissions || showColumns;
+  const showSettingsGroup = showPermissions || showColumns || showLogs || canConfigureInstallments(currentUser);
 
   const roleLabelMap: Record<string, string> = {
     ADMIN: 'Administrador',
@@ -191,7 +197,7 @@ export function Sidebar({ currentView, onNavigate, currentUser, onLogout }: Side
           </a>
         )}
 
-        {showDashboard && (
+        {showAnalytics && (
           <a
             href="#"
             id="nav-analytics"
@@ -265,7 +271,7 @@ export function Sidebar({ currentView, onNavigate, currentUser, onLogout }: Side
           </a>
         )}
 
-        {showCompanies && (
+        {showCertificates && (
           <a
             href="#"
             className={`nav-item ${currentView === 'certificates' ? 'active' : ''}`}
@@ -280,7 +286,7 @@ export function Sidebar({ currentView, onNavigate, currentUser, onLogout }: Side
           </a>
         )}
 
-        {isPrivileged && (
+        {showDataQuality && (
           <a
             href="#"
             className={`nav-item ${currentView === 'settings-data-quality' ? 'active' : ''}`}
@@ -335,20 +341,44 @@ export function Sidebar({ currentView, onNavigate, currentUser, onLogout }: Side
                     </a>
                   )}
                   {showColumns && (
-                    <a
-                      href="#"
-                      className={`nav-subitem ${currentView === 'settings-columns' ? 'active' : ''}`}
-                      onClick={(e) => {
-                        e.preventDefault();
-                        navigate('settings-columns');
-                      }}
-                    >
-                      <Columns3 size={16} />
-                      Colunas
-                    </a>
+                    <>
+                      <a
+                        href="#"
+                        className={`nav-subitem ${currentView === 'settings-columns' ? 'active' : ''}`}
+                        onClick={(e) => {
+                          e.preventDefault();
+                          navigate('settings-columns');
+                        }}
+                      >
+                        <Columns3 size={16} />
+                        Colunas & Setores
+                      </a>
+                      <a
+                        href="#"
+                        className={`nav-subitem ${currentView === 'settings-fiscal-rules' ? 'active' : ''}`}
+                        onClick={(e) => {
+                          e.preventDefault();
+                          navigate('settings-fiscal-rules');
+                        }}
+                      >
+                        <Scale size={16} />
+                        Regras Fiscais
+                      </a>
+                      <a
+                        href="#"
+                        className={`nav-subitem ${currentView === 'settings-catalogs' ? 'active' : ''}`}
+                        onClick={(e) => {
+                          e.preventDefault();
+                          navigate('settings-catalogs');
+                        }}
+                      >
+                        <ListChecks size={16} />
+                        Listas de Cadastro
+                      </a>
+                    </>
                   )}
                   {canConfigureInstallments(currentUser)&&<a href="#" className={`nav-subitem ${currentView==='settings-installments'?'active':''}`} onClick={event=>{event.preventDefault();navigate('settings-installments');}}><FileCheck size={16}/>Parcelamentos</a>}
-                  {isPrivileged && (
+                  {showLogs && (
                     <a
                       href="#"
                       className={`nav-subitem ${currentView === 'logs' ? 'active' : ''}`}

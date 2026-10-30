@@ -990,3 +990,42 @@
   .col-user, .col-role, .col-sectors, .col-companies, .col-status { flex-basis: 100%; }
   .form-grid, .companies-access-toggle { grid-template-columns: 1fr; }
 }
+
+/* ===== Seletor de seções de Configurações ===== */
+.settings-section-switcher {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 6px;
+  background: var(--card-bg);
+  border: 1px solid var(--border-color);
+  border-radius: 14px;
+  width: fit-content;
+  max-width: 100%;
+}
+.settings-section-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 16px;
+  border-radius: 10px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--text-muted);
+  font-family: inherit;
+  font-size: 13.5px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.18s;
+}
+.settings-section-btn:hover { color: var(--text-main); background: rgba(255, 255, 255, 0.05); }
+.settings-section-btn.active {
+  color: #fff;
+  background: rgba(217, 15, 129, 0.14);
+  border-color: rgba(217, 15, 129, 0.45);
+  box-shadow: 0 0 0 3px rgba(217, 15, 129, 0.1);
+}
+
+.companies-access-toggle.four-cols {
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+}

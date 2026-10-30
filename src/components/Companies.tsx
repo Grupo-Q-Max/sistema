@@ -33,6 +33,9 @@ import type { CurrentUser } from '../types/auth';
 import './Dashboard.css';
 import './Companies.css';
 import { compareCodes, formatCompanyCode } from '../utils/codeSort';
+import { canUserEditCompany, canUserViewCompany, isUserResponsibleForCompany } from '../config/companyPermissions';
+import { installmentHeaders } from '../config/installments';
+import { DEFAULT_COMPANY_CATALOG, normalizeCompanyCatalog, mergeOptionsWithCurrent, type CompanyCatalogConfig } from '../config/systemCatalogs';
 
 interface Company {
   id: string;
@@ -123,16 +126,6 @@ const COMPANY_TYPE_OPTIONS = [
   'Transporte',
 ];
 
-// Opções do Método de Envio (Foto 3)
-const DELIVERY_METHOD_OPTIONS = [
-  'E-mail',
-  'Nibo',
-  'Nibo/WhatsApp',
-  'Nibo/E-mail',
-  'Nibo/Onvio',
-  'Onvio',
-];
-
 // Setores disponíveis
 const SECTOR_OPTIONS = [
   { key: 'FISCAL', label: 'Fiscal' },
@@ -180,6 +173,8 @@ function formatMonthYearMask(value: string): string {
 export function Companies({ currentView, onNavigate, currentUser, onLogout }: CompaniesProps) {
   const [companies, setCompanies] = useState<Company[]>([]);
   const isPrivileged = currentUser?.role === 'ADMIN' || currentUser?.role === 'SOCIO';
+  const [onlyMyCompanies, setOnlyMyCompanies] = useState(false);
+  const [catalog, setCatalog] = useState<CompanyCatalogConfig>(() => normalizeCompanyCatalog(DEFAULT_COMPANY_CATALOG));
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [filterRegime, setFilterRegime] = useState('ALL');
@@ -263,10 +258,19 @@ export function Companies({ currentView, onNavigate, currentUser, onLogout }: Co
   const fetchCompanies = async () => {
     setLoading(true);
     try {
-      const res = await fetch(`${API}/api/companies`);
-      if (res.ok) {
-        const data = await res.json();
+      const [compsRes, cfgRes] = await Promise.all([
+        fetch(`${API}/api/companies`),
+        fetch(`${API}/api/app-config`).catch(() => null),
+      ]);
+      if (compsRes.ok) {
+        const data = await compsRes.json();
         setCompanies(Array.isArray(data)?data.filter(company=>!isExternalInstallmentCompany(company)):[]);
+      }
+      if (cfgRes && cfgRes.ok) {
+        const cfgData = await cfgRes.json();
+        if (cfgData?.companyCatalog) {
+          setCatalog(normalizeCompanyCatalog(cfgData.companyCatalog));
+        }
       }
     } catch (err) {
       console.error('Erro ao buscar empresas:', err);
@@ -529,7 +533,7 @@ export function Companies({ currentView, onNavigate, currentUser, onLogout }: Co
 
       const res = await fetch(url, {
         method,
-        headers: { 'Content-Type': 'application/json' },
+        headers: installmentHeaders(currentUser),
         body: JSON.stringify(payload),
       });
 
@@ -593,7 +597,7 @@ export function Companies({ currentView, onNavigate, currentUser, onLogout }: Co
     try {
       const res = await fetch(`${API}/api/companies/${exitModalCompany.id}`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
+        headers: installmentHeaders(currentUser),
         body: JSON.stringify({ 
           exitDate: exitModalDate.trim() || null, 
           exitMonthHasObligations: !!exitModalDate.trim() && exitModalDecision === 'SIM',
@@ -627,7 +631,7 @@ export function Companies({ currentView, onNavigate, currentUser, onLogout }: Co
     try {
       const res = await fetch(`${API}/api/companies/${exitModalCompany.id}`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
+        headers: installmentHeaders(currentUser),
         body: JSON.stringify({ 
           exitDate: null, 
           exitMonthHasObligations: false,
@@ -661,6 +665,8 @@ export function Companies({ currentView, onNavigate, currentUser, onLogout }: Co
 
   const filteredCompanies = useMemo(() => {
     return companies.filter((c) => {
+      if (onlyMyCompanies && !isUserResponsibleForCompany(currentUser, c, null)) return false;
+      if (!isPrivileged && !canUserViewCompany(currentUser, c, null)) return false;
       const search = searchTerm.toLowerCase();
       const matchSearch =
         (c.name && c.name.toLowerCase().includes(search)) ||
@@ -679,7 +685,7 @@ export function Companies({ currentView, onNavigate, currentUser, onLogout }: Co
 
       return matchSearch && matchRegime && matchType && matchCert;
     }).sort((a, b) => compareCodes(a.code, b.code, true));
-  }, [companies, searchTerm, filterRegime, filterType, filterCert]);
+  }, [companies, searchTerm, filterRegime, filterType, filterCert, onlyMyCompanies, currentUser, isPrivileged]);
 
   const stats = useMemo(() => {
     const total = companies.length;
@@ -797,6 +803,16 @@ export function Companies({ currentView, onNavigate, currentUser, onLogout }: Co
               </div>
 
               <div className="companies-filters-group">
+                <label className="checkbox-label filter-my-companies" style={{ display: 'inline-flex', alignItems: 'center', gap: 6, margin: 0, padding: '0 8px', cursor: 'pointer', userSelect: 'none', fontSize: 13, color: '#cbd5e1' }}>
+                  <input
+                    type="checkbox"
+                    checked={onlyMyCompanies}
+                    onChange={(e) => setOnlyMyCompanies(e.target.checked)}
+                    style={{ accentColor: '#d90f81', cursor: 'pointer' }}
+                  />
+                  <span>Minhas empresas</span>
+                </label>
+
                 <select
                   className="companies-filter-select"
                   value={filterRegime}
@@ -1003,36 +1019,43 @@ export function Companies({ currentView, onNavigate, currentUser, onLogout }: Co
 
                             {/* Ações */}
                             <td style={{ textAlign: 'right' }}>
-                              <div className="comp-actions-cell">
-                                {comp.cityHallLink && (
-                                  <a
-                                    href={comp.cityHallLink.startsWith('http') ? comp.cityHallLink : `https://${comp.cityHallLink}`}
-                                    target="_blank"
-                                    rel="noreferrer"
-                                    className="comp-action-btn"
-                                    title="Abrir Link da Prefeitura"
-                                  >
-                                    <ExternalLink size={13} />
-                                  </a>
-                                )}
-                                <button
-                                  type="button"
-                                  className="comp-action-btn"
-                                  title="Editar Empresa"
-                                  onClick={() => openEditCompanyModal(comp)}
-                                >
-                                  <Edit2 size={13} />
-                                </button>
-                                <button
-                                  type="button"
-                                  className={`comp-action-btn ${comp.exitDate ? 'comp-action-btn--inactive' : ''}`}
-                                  title={comp.exitDate ? `Saída registrada: ${formatDateToBr(comp.exitDate)}. Clique para gerenciar ou reativar.` : "Registrar Data de Saída"}
-                                  onClick={() => openExitModal(comp)}
-                                  style={{ color: comp.exitDate ? '#fbbf24' : '#f87171' }}
-                                >
-                                  {comp.exitDate ? <RotateCcw size={13} /> : <CalendarX size={13} />}
-                                </button>
-                              </div>
+                              {(() => {
+                                const canEditThis = isPrivileged || canUserEditCompany(currentUser, comp, null);
+                                return (
+                                  <div className="comp-actions-cell">
+                                    {comp.cityHallLink && (
+                                      <a
+                                        href={comp.cityHallLink.startsWith('http') ? comp.cityHallLink : `https://${comp.cityHallLink}`}
+                                        target="_blank"
+                                        rel="noreferrer"
+                                        className="comp-action-btn"
+                                        title="Abrir Link da Prefeitura"
+                                      >
+                                        <ExternalLink size={13} />
+                                      </a>
+                                    )}
+                                    <button
+                                      type="button"
+                                      className="comp-action-btn"
+                                      disabled={!canEditThis}
+                                      title={canEditThis ? "Editar Empresa" : "Somente visualização (você não é responsável por esta empresa)"}
+                                      onClick={() => openEditCompanyModal(comp)}
+                                    >
+                                      <Edit2 size={13} />
+                                    </button>
+                                    <button
+                                      type="button"
+                                      disabled={!canEditThis}
+                                      className={`comp-action-btn ${comp.exitDate ? 'comp-action-btn--inactive' : ''}`}
+                                      title={!canEditThis ? "Somente visualização (você não é responsável por esta empresa)" : comp.exitDate ? `Saída registrada: ${formatDateToBr(comp.exitDate)}. Clique para gerenciar ou reativar.` : "Registrar Data de Saída"}
+                                      onClick={() => openExitModal(comp)}
+                                      style={{ color: comp.exitDate ? '#fbbf24' : '#f87171' }}
+                                    >
+                                      {comp.exitDate ? <RotateCcw size={13} /> : <CalendarX size={13} />}
+                                    </button>
+                                  </div>
+                                );
+                              })()}
                             </td>
                           </tr>
                         );
@@ -1162,10 +1185,16 @@ export function Companies({ currentView, onNavigate, currentUser, onLogout }: Co
                       <input
                         id="modal-group"
                         type="text"
+                        list="company-group-suggestions"
                         placeholder="Grupo econômico"
                         value={groupName}
                         onChange={(e) => setGroupName(e.target.value)}
                       />
+                      <datalist id="company-group-suggestions">
+                        {catalog.groupSuggestions.map((g) => (
+                          <option key={g} value={g} />
+                        ))}
+                      </datalist>
                     </div>
 
                     <div className="input-field">
@@ -1334,7 +1363,7 @@ export function Companies({ currentView, onNavigate, currentUser, onLogout }: Co
                         onChange={(e) => setCompanyType(e.target.value)}
                         required
                       >
-                        {COMPANY_TYPE_OPTIONS.map((t) => (
+                        {mergeOptionsWithCurrent(catalog.companyTypes, companyType).map((t) => (
                           <option key={t} value={t}>
                             {t}
                           </option>
@@ -1352,7 +1381,7 @@ export function Companies({ currentView, onNavigate, currentUser, onLogout }: Co
                         onChange={(e) => setDeliveryMethod(e.target.value)}
                         required
                       >
-                        {DELIVERY_METHOD_OPTIONS.map((m) => (
+                        {mergeOptionsWithCurrent(catalog.deliveryMethods, deliveryMethod).map((m) => (
                           <option key={m} value={m}>
                             {m}
                           </option>
@@ -1425,9 +1454,11 @@ export function Companies({ currentView, onNavigate, currentUser, onLogout }: Co
                             value={certificateType}
                             onChange={(e) => setCertificateType(e.target.value)}
                           >
-                            <option value="A1">A1 (Arquivo)</option>
-                            <option value="A3 CARTÃO">A3 CARTÃO</option>
-                            <option value="A3 TOKEN">A3 TOKEN</option>
+                            {mergeOptionsWithCurrent(catalog.certificateTypes, certificateType).map((ct) => (
+                              <option key={ct} value={ct}>
+                                {ct}
+                              </option>
+                            ))}
                           </select>
                         </div>
 
@@ -1568,10 +1599,11 @@ export function Companies({ currentView, onNavigate, currentUser, onLogout }: Co
                         onChange={(e) => setNfAccessType(e.target.value)}
                       >
                         <option value="">Selecione o tipo...</option>
-                        <option value="Senha GOV">Senha GOV</option>
-                        <option value="Senha Própria">Senha Própria</option>
-                        <option value="Certificado A1">Certificado A1</option>
-                        <option value="Outro">Outro</option>
+                        {mergeOptionsWithCurrent(catalog.nfAccessTypes, nfAccessType).map((nat) => (
+                          <option key={nat} value={nat}>
+                            {nat}
+                          </option>
+                        ))}
                       </select>
                     </div>
 

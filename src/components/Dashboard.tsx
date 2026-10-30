@@ -577,7 +577,7 @@ export function Dashboard({ currentView, onNavigate, currentUser, onLogout }: Da
                         </div>
                         <div className="progress-meta">
                           {isFields ? (
-                            <>{sector.completedFields} de {sector.totalFields} campos</>
+                            <>{sector.completedFields} de {sector.totalFields} {sector.type === 'PARCELAMENTO' ? 'parcelas' : 'campos'}</>
                           ) : (
                             <>{sector.completed}/{sector.total} concluídos · {sector.inProgress} em andamento</>
                           )}

@@ -29,11 +29,19 @@ import {
   GripVertical,
   ChevronUp,
   ChevronDown,
+  BarChart3,
+  Activity,
+  AlertTriangle,
+  Scale,
+  ListChecks,
+  CalendarClock,
 } from 'lucide-react';
 import { Sidebar } from './Sidebar';
 import { ChangePasswordModal } from './ChangePasswordModal';
 import { UserOffboardModal } from './UserOffboardModal';
 import { SettingsSkeleton, ButtonSpinner } from './LoadingSkeleton';
+import { InstallmentSettingsPanel } from './InstallmentSettings';
+import { FiscalRegimeRulesPanel, SystemCatalogsPanel } from './SystemConfigPanels';
 import type { CurrentUser } from '../types/auth';
 import './Dashboard.css';
 import './Settings.css';
@@ -43,6 +51,7 @@ import { defaultVisibility, effectiveVisibility, validateVisibility, visibilityS
 import './SettingsSelectors.css';
 import { PopupConfigEditor } from './PopupConfigEditor';
 import { resolveFiscalKey, effectivePopup, defaultPopup, validatePopup, type PopupConfig } from '../config/fiscalPopups';
+import { installmentHeaders } from '../config/installments';
 
 interface SettingsProps {
   currentView: string;
@@ -83,11 +92,28 @@ const ROLES = [
 
 const SCREENS = [
   { id: 'dashboard', label: 'Visão Geral (Dashboard)', icon: LayoutDashboard },
+  { id: 'analytics', label: 'Gráficos e Indicadores', icon: BarChart3 },
   { id: 'closings', label: 'Fechamentos Mensais', icon: FileCheck },
   { id: 'companies', label: 'Empresas', icon: Building2 },
+  { id: 'certificates', label: 'Certificados e Procurações', icon: ShieldCheck },
   { id: 'installments-create', label: 'Criar parcelamentos no Fiscal (exige Parcelamento: Editar)', icon: FileCheck },
+  { id: 'settings-data-quality', label: 'Avisos de Cadastro', icon: AlertTriangle },
+  { id: 'logs', label: 'Logs de Auditoria do Sistema', icon: Activity },
   { id: 'settings-permissions', label: 'Configurações: Permissões de Usuários', icon: ShieldCheck },
-  { id: 'settings-columns', label: 'Configurações: Colunas dos Setores', icon: Columns3 },
+  { id: 'settings-columns', label: 'Configurações: Colunas, Regras Fiscais e Listas de Cadastro', icon: Columns3 },
+];
+
+const SCREEN_FALLBACK: Record<string, string> = {
+  analytics: 'dashboard',
+  certificates: 'companies',
+  'settings-data-quality': 'companies',
+};
+
+const SETTINGS_SECTIONS = [
+  { id: 'settings-permissions', label: 'Permissões', icon: ShieldCheck },
+  { id: 'settings-columns', label: 'Colunas & Setores', icon: Columns3 },
+  { id: 'settings-fiscal-rules', label: 'Regras Fiscais', icon: Scale },
+  { id: 'settings-catalogs', label: 'Listas de Cadastro', icon: ListChecks },
 ];
 
 export function Settings({ currentView, onNavigate, currentUser, onLogout }: SettingsProps) {
@@ -120,6 +146,7 @@ export function Settings({ currentView, onNavigate, currentUser, onLogout }: Set
   const [userRole, setUserRole] = useState('CADASTRO');
   const [userActive, setUserActive] = useState(true);
   const [userCompanyScope, setUserCompanyScope] = useState<'ALL' | 'RESPONSIBLE' | 'CUSTOM'>('ALL');
+  const [userEditOnlyResponsible, setUserEditOnlyResponsible] = useState(false);
   const [userSelectedCompanies, setUserSelectedCompanies] = useState<string[]>([]);
   const [userSectorAccess, setUserSectorAccess] = useState<Record<string, 'NONE' | 'VIEW' | 'EDIT'>>({});
   const [userScreenAccess, setUserScreenAccess] = useState<Record<string, boolean>>({});
@@ -142,6 +169,8 @@ export function Settings({ currentView, onNavigate, currentUser, onLogout }: Set
   const [isReordering, setIsReordering] = useState(false);
 
   const isPermissions = currentView === 'settings-permissions';
+  const isFiscalRules = currentView === 'settings-fiscal-rules';
+  const isCatalogs = currentView === 'settings-catalogs';
   const isActorSocio = currentUser?.role === 'SOCIO';
 
   const showToast = (message: string, type: 'success' | 'error' = 'success') => {
@@ -192,6 +221,7 @@ export function Settings({ currentView, onNavigate, currentUser, onLogout }: Set
     setUserRole(isActorSocio ? 'FISCAL' : 'CADASTRO');
     setUserActive(true);
     setUserCompanyScope('ALL');
+    setUserEditOnlyResponsible(false);
     setUserSelectedCompanies([]);
 
     // Default sector access
@@ -202,8 +232,13 @@ export function Settings({ currentView, onNavigate, currentUser, onLogout }: Set
     // Default screens access
     const defaultScreens: Record<string, boolean> = {
       dashboard: true,
+      analytics: true,
       closings: true,
       companies: false,
+      certificates: false,
+      'installments-create': false,
+      'settings-data-quality': false,
+      logs: false,
       'settings-permissions': false,
       'settings-columns': false,
     };
@@ -227,6 +262,7 @@ export function Settings({ currentView, onNavigate, currentUser, onLogout }: Set
     setUserRole(user.role);
     setUserActive(user.active ?? true);
     setUserCompanyScope(user.companyScope || (user.canViewAllCompanies === false ? 'CUSTOM' : 'ALL'));
+    setUserEditOnlyResponsible(Boolean(user.editOnlyResponsible));
 
     const compIds = Array.isArray(user.companyAccess)
       ? user.companyAccess.map((ca: any) => ca.companyId || ca.company?.id)
@@ -241,9 +277,16 @@ export function Settings({ currentView, onNavigate, currentUser, onLogout }: Set
     setUserSectorAccess(sectorsMap);
 
     const screensMap: Record<string, boolean> = {};
+    const isSuperUser = user.role === 'ADMIN' || user.role === 'SOCIO';
     SCREENS.forEach((sc) => {
       const found = user.screenPermissions?.find((p: any) => p.screen === sc.id);
-      screensMap[sc.id] = found ? found.allowed : user.role === 'ADMIN' || user.role === 'SOCIO';
+      if (found) {
+        screensMap[sc.id] = Boolean(found.allowed);
+        return;
+      }
+      const fallbackId = SCREEN_FALLBACK[sc.id];
+      const fallback = fallbackId ? user.screenPermissions?.find((p: any) => p.screen === fallbackId) : null;
+      screensMap[sc.id] = fallback ? Boolean(fallback.allowed) : isSuperUser;
     });
     setUserScreenAccess(screensMap);
 
@@ -282,6 +325,7 @@ export function Settings({ currentView, onNavigate, currentUser, onLogout }: Set
       active: userActive,
       companyScope: userCompanyScope,
       canViewAllCompanies: userCompanyScope === 'ALL',
+      editOnlyResponsible: userCompanyScope === 'RESPONSIBLE' ? true : userEditOnlyResponsible,
       companyAccessIds: userCompanyScope === 'CUSTOM' ? userSelectedCompanies : [],
       sectorPermissions: sectorPermissionsArray,
       screenPermissions: screenPermissionsArray,
@@ -297,7 +341,7 @@ export function Settings({ currentView, onNavigate, currentUser, onLogout }: Set
 
       const res = await fetch(url, {
         method,
-        headers: { 'Content-Type': 'application/json' },
+        headers: installmentHeaders(currentUser),
         body: JSON.stringify(payload),
       });
 
@@ -305,6 +349,24 @@ export function Settings({ currentView, onNavigate, currentUser, onLogout }: Set
       if (!res.ok) {
         showToast(data.error || 'Erro ao salvar usuário', 'error');
         return;
+      }
+
+      // Se o admin editou a si mesmo, aplica imediatamente na sessão local
+      if (editingUser && currentUser && editingUser.id === currentUser.id) {
+        try {
+          const saved = JSON.parse(localStorage.getItem('fechamento_user') || '{}');
+          localStorage.setItem(
+            'fechamento_user',
+            JSON.stringify({
+              ...saved,
+              companyScope: payload.companyScope,
+              canViewAllCompanies: payload.canViewAllCompanies,
+              editOnlyResponsible: payload.editOnlyResponsible,
+            })
+          );
+        } catch {
+          // ignora
+        }
       }
 
       showToast(editingUser ? 'Usuário e permissões atualizados com sucesso!' : 'Novo usuário criado com sucesso!');
@@ -498,7 +560,7 @@ export function Settings({ currentView, onNavigate, currentUser, onLogout }: Set
     };
     const fieldError = validateFieldConfig(cleanedFieldConfig);
     if (fieldError) { showToast(fieldError, 'error'); return; }
-    if (colInputType === 'SELECT' && !cleanedFieldConfig.options.length) { showToast('Informe as opções da lista.', 'error'); return; }
+    if ((colInputType === 'SELECT' || (colInputType === 'MULTISELECT' && colDepartment === 'FISCAL' && !editingColumn)) && !cleanedFieldConfig.options.length) { showToast('Informe as opções da lista.', 'error'); return; }
     const visibilityError = validateVisibility(colVisibility);
     if (visibilityError) { showToast(visibilityError, 'error'); return; }
     if (['FISCAL','CUSHMAN'].includes(colDepartment) && colInputType === 'POPUP') {
@@ -607,12 +669,22 @@ export function Settings({ currentView, onNavigate, currentUser, onLogout }: Set
         <header className="crm-header">
           <div className="page-header">
             <h1>
-              {isPermissions ? <ShieldCheck size={24} /> : <Columns3 size={24} />}
-              {isPermissions ? 'Permissões e Acessos da Equipe' : 'Configuração Dinâmica de Colunas'}
+              {isPermissions ? <ShieldCheck size={24} /> : isFiscalRules ? <Scale size={24} /> : isCatalogs ? <ListChecks size={24} /> : <Columns3 size={24} />}
+              {isPermissions
+                ? 'Permissões e Acessos da Equipe'
+                : isFiscalRules
+                ? 'Regras Fiscais por Regime Tributário'
+                : isCatalogs
+                ? 'Listas e Opções de Cadastro'
+                : 'Configuração Dinâmica de Colunas'}
             </h1>
             <p className="page-subtitle">
               {isPermissions
                 ? 'Configure quem pode visualizar ou editar cada setor, quais telas estão liberadas e o acesso a empresas.'
+                : isFiscalRules
+                ? 'Defina quais obrigações fiscais são dispensadas automaticamente (N/A) para cada regime tributário.'
+                : isCatalogs
+                ? 'Edite e crie as opções usadas nos formulários de empresas e certificados.'
                 : 'Crie e configure as colunas de fechamento para cada setor diretamente no banco.'}
             </p>
           </div>
@@ -630,11 +702,33 @@ export function Settings({ currentView, onNavigate, currentUser, onLogout }: Set
         <div className="dashboard-content settings-content">
           <div className="settings-breadcrumb">
             <SettingsIcon size={14} /> Configurações <span>/</span>
-            <strong>{isPermissions ? 'Permissões' : 'Colunas por Setor'}</strong>
+            <strong>{SETTINGS_SECTIONS.find((s) => s.id === currentView)?.label || 'Colunas & Setores'}</strong>
           </div>
+
+          <nav className="settings-section-switcher" aria-label="Seções de configurações">
+            {SETTINGS_SECTIONS.map((sec) => {
+              const Icon = sec.icon;
+              const active = currentView === sec.id || (sec.id === 'settings-columns' && !SETTINGS_SECTIONS.some((s) => s.id === currentView));
+              return (
+                <button
+                  key={sec.id}
+                  type="button"
+                  className={`settings-section-btn ${active ? 'active' : ''}`}
+                  onClick={() => onNavigate(sec.id)}
+                >
+                  <Icon size={15} />
+                  <span>{sec.label}</span>
+                </button>
+              );
+            })}
+          </nav>
 
           {loading ? (
             <SettingsSkeleton />
+          ) : isFiscalRules ? (
+            <FiscalRegimeRulesPanel currentUser={currentUser} columns={columns} onSaved={loadData} />
+          ) : isCatalogs ? (
+            <SystemCatalogsPanel currentUser={currentUser} />
           ) : isPermissions ? (
             /* ========================================================
                1. TELA DE PERMISSÕES
@@ -755,8 +849,12 @@ export function Settings({ currentView, onNavigate, currentUser, onLogout }: Set
                                 👤 Responsável ({user.responsibleAssignments?.length || 0})
                               </span>
                             ) : user.companyScope === 'CUSTOM' || user.canViewAllCompanies === false ? (
-                              <span className="company-badge-restricted" title="Empresas manuais específicas">
-                                🏢 {user.companyAccess?.length || 0} manual
+                              <span className="company-badge-restricted" title={user.editOnlyResponsible ? 'Empresas manuais · edita só onde é responsável' : 'Empresas manuais específicas'}>
+                                🏢 {user.companyAccess?.length || 0} manual{user.editOnlyResponsible ? ' (Edita Resp.)' : ''}
+                              </span>
+                            ) : user.editOnlyResponsible ? (
+                              <span className="company-badge-resp" title="Vê todas as empresas, mas só edita onde é responsável">
+                                👁️ Todas (Edita Resp.)
                               </span>
                             ) : (
                               <span className="company-badge-all">🌐 Todas</span>
@@ -834,12 +932,29 @@ export function Settings({ currentView, onNavigate, currentUser, onLogout }: Set
                     >
                       <span className="sector-dot" />
                       {s.label}
-                      <span className="sector-count">{count}</span>
+                      <span className="sector-count">{s.key === 'PARCELAMENTO' ? 'Config' : count}</span>
                     </button>
                   );
                 })}
               </div>
 
+              {activeSector === 'PARCELAMENTO' ? (
+                <div className="settings-panel" style={{ ['--sector-color' as any]: sector.color }}>
+                  <div className="panel-toolbar">
+                    <div>
+                      <h2>
+                        <CalendarClock size={20} /> Parcelamentos: Regras de Vencimento e Tipos
+                      </h2>
+                      <p>
+                        O progresso do Parcelamento no Dashboard é calculado pelas parcelas pagas no mês. Configure aqui os prazos de atraso e os tipos de parcelamento.
+                      </p>
+                    </div>
+                  </div>
+                  <div style={{ padding: '20px 24px' }}>
+                    <InstallmentSettingsPanel currentUser={currentUser} />
+                  </div>
+                </div>
+              ) : (
               <div className="settings-panel" style={{ ['--sector-color' as any]: sector.color }}>
                 <div className="panel-toolbar">
                   <div>
@@ -980,6 +1095,7 @@ export function Settings({ currentView, onNavigate, currentUser, onLogout }: Set
                   )}
                 </div>
               </div>
+              )}
             </>
           )}
         </div>
@@ -1182,20 +1298,33 @@ export function Settings({ currentView, onNavigate, currentUser, onLogout }: Set
                 {modalTab === 'companies' && (
                   <div className="tab-pane">
                     <p className="tab-explanation">
-                      Controle se o usuário pode visualizar todas as empresas ativas ou apenas uma lista restrita:
+                      Defina quais empresas o usuário pode <strong>visualizar</strong> e em quais ele pode <strong>editar</strong>:
                     </p>
 
-                    <div className="companies-access-toggle three-cols">
-                      <label className={`access-card-option ${userCompanyScope === 'ALL' ? 'selected' : ''}`}>
+                    <div className="companies-access-toggle four-cols">
+                      <label className={`access-card-option ${userCompanyScope === 'ALL' && !userEditOnlyResponsible ? 'selected' : ''}`}>
                         <input
                           type="radio"
                           name="companyScope"
-                          checked={userCompanyScope === 'ALL'}
-                          onChange={() => setUserCompanyScope('ALL')}
+                          checked={userCompanyScope === 'ALL' && !userEditOnlyResponsible}
+                          onChange={() => { setUserCompanyScope('ALL'); setUserEditOnlyResponsible(false); }}
                         />
                         <div>
-                          <strong>🌐 Todas as Empresas</strong>
-                          <p>Acesso global a todas as empresas ativas no sistema.</p>
+                          <strong>🌐 Ver e Editar Todas</strong>
+                          <p>Vê e edita todas as empresas ativas (respeitando a permissão de cada setor).</p>
+                        </div>
+                      </label>
+
+                      <label className={`access-card-option ${userCompanyScope === 'ALL' && userEditOnlyResponsible ? 'selected' : ''}`}>
+                        <input
+                          type="radio"
+                          name="companyScope"
+                          checked={userCompanyScope === 'ALL' && userEditOnlyResponsible}
+                          onChange={() => { setUserCompanyScope('ALL'); setUserEditOnlyResponsible(true); }}
+                        />
+                        <div>
+                          <strong>👁️ Ver Todas · Editar Só as Suas</strong>
+                          <p>Visualiza todas as empresas, mas só pode alterar aquelas em que é responsável.</p>
                         </div>
                       </label>
 
@@ -1204,11 +1333,11 @@ export function Settings({ currentView, onNavigate, currentUser, onLogout }: Set
                           type="radio"
                           name="companyScope"
                           checked={userCompanyScope === 'RESPONSIBLE'}
-                          onChange={() => setUserCompanyScope('RESPONSIBLE')}
+                          onChange={() => { setUserCompanyScope('RESPONSIBLE'); setUserEditOnlyResponsible(true); }}
                         />
                         <div>
-                          <strong>👤 Apenas Onde é Responsável</strong>
-                          <p>O usuário só verá as empresas em que for atribuído como funcionário responsável.</p>
+                          <strong>👤 Só Onde é Responsável</strong>
+                          <p>Vê e edita apenas as empresas em que for atribuído como responsável.</p>
                         </div>
                       </label>
 
@@ -1225,6 +1354,20 @@ export function Settings({ currentView, onNavigate, currentUser, onLogout }: Set
                         </div>
                       </label>
                     </div>
+
+                    {userCompanyScope === 'CUSTOM' && (
+                      <label className={`checkbox-label ${userEditOnlyResponsible ? 'highlight-checked' : ''}`} style={{ marginBottom: 14 }}>
+                        <input
+                          type="checkbox"
+                          checked={userEditOnlyResponsible}
+                          onChange={(e) => setUserEditOnlyResponsible(e.target.checked)}
+                        />
+                        <div className="checkbox-info">
+                          <strong>Editar apenas onde também é responsável</strong>
+                          <span>Nas empresas selecionadas abaixo, o usuário só altera dados das que for responsável; as demais ficam somente leitura.</span>
+                        </div>
+                      </label>
+                    )}
 
                     {userCompanyScope === 'CUSTOM' && (
                       <div className="company-selection-box">
@@ -1357,7 +1500,7 @@ export function Settings({ currentView, onNavigate, currentUser, onLogout }: Set
                 <div className="form-group full-width">
                   <label>Setor</label>
                   <select disabled={!!editingColumn} value={colDepartment} onChange={(e) => setColDepartment(e.target.value)}>
-                    {SECTORS.map((s) => (
+                    {SECTORS.filter((s) => s.key !== 'PARCELAMENTO' || colDepartment === 'PARCELAMENTO').map((s) => (
                       <option key={s.key} value={s.key}>
                         {s.label}
                       </option>
@@ -1386,7 +1529,7 @@ export function Settings({ currentView, onNavigate, currentUser, onLogout }: Set
                 <div className="form-group full-width">
                   <label>Tipo de Entrada de Dados</label>
                   <div className="column-type-options">
-                    {Object.entries(INPUT_TYPES).filter(([type]) => ['DP','CONTABIL'].includes(colDepartment) ? ['TEXT','CHECKBOX','SELECT','NUMBER','TEXTAREA','PASSWORD'].includes(type) || (type === 'READONLY' && editingColumn?.inputType === 'READONLY') : ['TEXT','CHECKBOX','POPUP','TEXTAREA','MULTISELECT'].includes(type)).map(([type, item]) => <button type="button" key={type} aria-pressed={colInputType === type} className={colInputType === type ? 'selected' : ''} disabled={!!editingColumn && ((['FISCAL','CUSHMAN'].includes(colDepartment) && editingColumn.inputType==='POPUP' && !!resolveColumnKey(editingColumn) && type !== 'POPUP') || (colDepartment==='CONTABIL'&&String(resolveColumnKey(editingColumn)||'').startsWith('cont_')&&type!==editingColumn.inputType) || (['dp_reinf_fiscal','dp_qtde_funcionarios','dp_sd_senha'].includes(resolveColumnKey(editingColumn) || '') && type !== editingColumn.inputType))} onClick={() => {
+                    {Object.entries(INPUT_TYPES).filter(([type]) => ['DP','CONTABIL'].includes(colDepartment) ? ['TEXT','CHECKBOX','SELECT','NUMBER','TEXTAREA','PASSWORD'].includes(type) || (type === 'READONLY' && editingColumn?.inputType === 'READONLY') : colDepartment === 'FISCAL' ? ['POPUP','SELECT','MULTISELECT','TEXT','NUMBER','CHECKBOX','TEXTAREA','PASSWORD'].includes(type) : ['TEXT','CHECKBOX','POPUP','TEXTAREA','MULTISELECT'].includes(type)).map(([type, item]) => <button type="button" key={type} aria-pressed={colInputType === type} className={colInputType === type ? 'selected' : ''} disabled={!!editingColumn && ((['FISCAL','CUSHMAN'].includes(colDepartment) && editingColumn.inputType==='POPUP' && !!resolveColumnKey(editingColumn) && type !== 'POPUP') || (colDepartment==='CONTABIL'&&String(resolveColumnKey(editingColumn)||'').startsWith('cont_')&&type!==editingColumn.inputType) || (['dp_reinf_fiscal','dp_qtde_funcionarios','dp_sd_senha'].includes(resolveColumnKey(editingColumn) || '') && type !== editingColumn.inputType))} onClick={() => {
                       setColInputType(type);
                       if (!editingColumn && type === 'POPUP') setColPopupConfig(defaultPopup(resolveFiscalKey({ department: colDepartment, name: colName }) || '', colName));
                     }}><item.Icon size={20} /><strong>{type === 'POPUP' ? 'Popup com detalhes' : item.label}</strong><small>{type === 'POPUP' ? 'Campos e botões configuráveis' : type === 'CHECKBOX' ? 'Marcar ou desmarcar' : type === 'READONLY' ? 'Consulta dados do Fiscal' : type === 'SELECT' ? 'Escolher uma opção configurada' : 'Preencher um valor ou texto'}</small></button>)}
@@ -1432,7 +1575,7 @@ export function Settings({ currentView, onNavigate, currentUser, onLogout }: Set
                   </label>
                 </div>
                 <div className="form-group full-width"><label className="checkbox-label"><input type="checkbox" checked={colActive} onChange={e=>setColActive(e.target.checked)}/><span>Coluna ativa (desmarque para ocultar sem apagar dados)</span></label></div>
-                {['DP','CONTABIL'].includes(colDepartment) && colInputType !== 'READONLY' && <div className="dp-field-config"><h3>Detalhes do campo</h3><label>Texto de exemplo<input type="text" value={colFieldConfig.placeholder} onChange={e=>setColFieldConfig({...colFieldConfig,placeholder:e.target.value})}/></label>{colInputType === 'SELECT' && <><label>Opções disponíveis (uma por linha)<textarea rows={5} value={colFieldConfig.options.join('\n')} onChange={e=>setColFieldConfig({...colFieldConfig,options:e.target.value.split('\n')})}/></label><label>Opções que <strong>NÃO</strong> contabilizam progresso (ex: Pendente)<textarea rows={3} placeholder="Deixe em branco para que todas as opções (exceto vazias) contem como concluído" value={(colFieldConfig.pendingOptions || []).join('\n')} onChange={e=>setColFieldConfig({...colFieldConfig,pendingOptions:e.target.value.split('\n').filter(Boolean)})}/></label></>}</div>}
+                {(['DP','CONTABIL'].includes(colDepartment) || (colDepartment === 'FISCAL' && ['SELECT','MULTISELECT','TEXT','NUMBER','TEXTAREA','PASSWORD'].includes(colInputType))) && colInputType !== 'READONLY' && <div className="dp-field-config"><h3>Detalhes do campo</h3><label>Texto de exemplo<input type="text" value={colFieldConfig.placeholder} onChange={e=>setColFieldConfig({...colFieldConfig,placeholder:e.target.value})}/></label>{(colInputType === 'SELECT' || colInputType === 'MULTISELECT') && <><label>Opções disponíveis (uma por linha)<textarea rows={5} value={colFieldConfig.options.join('\n')} onChange={e=>setColFieldConfig({...colFieldConfig,options:e.target.value.split('\n')})}/></label>{colInputType === 'SELECT' && <label>Opções que <strong>NÃO</strong> contabilizam progresso (ex: Pendente)<textarea rows={3} placeholder="Deixe em branco para que todas as opções (exceto vazias) contem como concluído" value={(colFieldConfig.pendingOptions || []).join('\n')} onChange={e=>setColFieldConfig({...colFieldConfig,pendingOptions:e.target.value.split('\n').filter(Boolean)})}/></label>}</>}</div>}
                 {colInputType === 'READONLY' && <p>Esta REINF vem do Fiscal da mesma empresa e competência. Nenhum campo pode ser alterado pelo DP.</p>}
                 <ColumnVisibilityEditor value={colVisibility} onChange={setColVisibility} />
                 {['FISCAL','CUSHMAN'].includes(colDepartment) && colInputType === 'POPUP' && <PopupConfigEditor value={colPopupConfig} onChange={setColPopupConfig} columnKey={resolveColumnKey(editingColumn || { department: colDepartment, name: colName }) || ''} name={colName} />}

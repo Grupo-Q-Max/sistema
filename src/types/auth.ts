@@ -34,6 +34,7 @@ export interface CurrentUser {
   exitReason?: string | null;
   companyScope: 'ALL' | 'RESPONSIBLE' | 'CUSTOM';
   canViewAllCompanies?: boolean;
+  editOnlyResponsible?: boolean;
   sectorPermissions?: UserSectorPermission[];
   screenPermissions?: UserScreenPermission[];
   companyAccess?: UserCompanyAccess[];

@@ -1,6 +1,8 @@
 import {externalCompaniesExcluded} from '../src/config/installmentCompanies';
 import {companyExitAllowsPeriod} from '../src/config/companyExit';
 import {latestOpenPeriod} from '../src/config/competenceCalendar';
+import {computeInstallmentsProgress} from '../src/config/installments';
+import {buildUserCompanyPrismaFilter} from '../src/config/companyPermissions';
 
 // Painel analítico: séries mensais e distribuições calculadas a partir do cadastro e dos fechamentos.
 const SECTORS = ['FISCAL', 'DP', 'CONTABIL', 'CUSHMAN'];
@@ -67,16 +69,8 @@ export function registerAnalytics(app: any, prisma: any) {
       let userFilter: any = {};
       if (userId) {
         const user = await prisma.user.findUnique({ where: { id: userId }, include: { companyAccess: true } });
-        if (user && user.role !== 'ADMIN' && user.role !== 'SOCIO') {
-          if (['FISCAL', 'DP', 'CONTABIL'].includes(user.role)) {
-            userFilter = { responsibles: { some: { userId } } };
-          } else if (user.companyScope === 'CUSTOM') {
-            userFilter = { id: { in: user.companyAccess.map((a: any) => a.companyId) } };
-          } else if (user.companyScope === 'ALL') {
-            userFilter = {};
-          } else {
-            userFilter = { responsibles: { some: { userId } } };
-          }
+        if (user) {
+          userFilter = buildUserCompanyPrismaFilter(user);
         }
       }
 
@@ -85,7 +79,7 @@ export function registerAnalytics(app: any, prisma: any) {
         whereClause.AND.push(userFilter);
       }
 
-      const [companies, closings, plans, activeUsersCount, formerUsersCount] = await Promise.all([
+      const [companies, closings, plans, installmentSetting, activeUsersCount, formerUsersCount] = await Promise.all([
         prisma.company.findMany({
           where: whereClause,
           select: {
@@ -96,10 +90,13 @@ export function registerAnalytics(app: any, prisma: any) {
           },
         }),
         prisma.closing.findMany({
-          where: {type: {in: CLOSING_SECTORS}, referencePeriod: {gte: rangeStart, lt: rangeEnd}},
+          where: {type: {in: ['FISCAL', 'DP', 'CUSHMAN']}, referencePeriod: {gte: rangeStart, lt: rangeEnd}},
           select: {companyId: true, type: true, status: true, referencePeriod: true, dashboardMetrics: true},
         }),
-        prisma.installmentPlan.findMany({select: {status: true, totalAmount: true, typeName: true}}).catch(() => []),
+        prisma.installmentPlan.findMany({
+          include: { payments: true },
+        }).catch(() => []),
+        prisma.installmentSetting.findUnique({ where: { id: 'global' } }).catch(() => null),
         prisma.user.count({ where: { active: true } }),
         prisma.user.count({ where: { leftAt: { not: null } } }),
       ]);
@@ -134,8 +131,21 @@ export function registerAnalytics(app: any, prisma: any) {
             regimes[c.taxRegime] = (regimes[c.taxRegime] || 0) + 1;
           }
         }
+        const hasScopeFilter = Object.keys(userFilter).length > 0;
+        const allowedPlanCompanies = hasScopeFilter ? new Set<string>(companies.map((c: any) => c.id)) : null;
         const sectors: Record<string, {completed: number; inProgress: number; pending: number; total: number; percent: number}> = {};
         for (const type of CLOSING_SECTORS) {
+          if (type === 'PARCELAMENTO') {
+            const instProg = computeInstallmentsProgress(plans, installmentSetting, start, allowedPlanCompanies);
+            sectors[type] = {
+              completed: instProg.completed,
+              inProgress: instProg.inProgress,
+              pending: instProg.pending,
+              total: instProg.total,
+              percent: instProg.percent,
+            };
+            continue;
+          }
           const list = monthClosings.filter((c: any) => c.type === type && c.status !== 'NOT_APPLICABLE' && companyById.has(c.companyId));
           const completed = list.filter((c: any) => c.status === 'COMPLETED').length;
           const inProgress = list.filter((c: any) => c.status === 'IN_PROGRESS').length;

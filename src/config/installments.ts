@@ -1,9 +1,38 @@
 import {latestOpenPeriod} from './competenceCalendar';
+import {canUserEditCompany, canUserViewCompany} from './companyPermissions';
+
 export type InstallmentRules={lateMode:'MONTH_TURN'|'DUE_DATE';lateMonthOffset:number;dueDay:number;dueMonthOffset:number};
 export const DEFAULT_INSTALLMENT_RULES:InstallmentRules={lateMode:'MONTH_TURN',lateMonthOffset:2,dueDay:20,dueMonthOffset:1};
-export function installmentAccess(user:any,edit=false):boolean {if(!user)return false;if(['ADMIN','SOCIO'].includes(user.role))return true;const permission=user.sectorPermissions?.find((item:any)=>item.sector==='PARCELAMENTO');return edit?permission?.access==='EDIT':['EDIT','VIEW'].includes(permission?.access);}
-export function canCreateInstallment(user:any):boolean {return installmentAccess(user,true)&&(['ADMIN','SOCIO'].includes(user.role)||user.screenPermissions?.some((permission:any)=>permission.screen==='installments-create'&&permission.allowed));}
-export function canConfigureInstallments(user:any):boolean {return installmentAccess(user,true)&&(['ADMIN','SOCIO'].includes(user.role)||user.screenPermissions?.some((permission:any)=>permission.screen==='settings-columns'&&permission.allowed));}
+
+export function installmentAccess(user:any,edit=false):boolean {
+  if(!user)return false;
+  if(['ADMIN','SOCIO'].includes(user.role))return true;
+  const permission=user.sectorPermissions?.find((item:any)=>item.sector==='PARCELAMENTO');
+  return edit?permission?.access==='EDIT':['EDIT','VIEW'].includes(permission?.access);
+}
+
+export function canEditCompanyInstallment(user:any,company:any,plans:any[]=[]):boolean {
+  if(!installmentAccess(user,true))return false;
+  if(['ADMIN','SOCIO'].includes(user?.role))return true;
+  const extraRespIds=plans.map((p:any)=>p?.responsibleId).filter(Boolean);
+  return canUserEditCompany(user,company,'PARCELAMENTO',extraRespIds);
+}
+
+export function canViewCompanyInstallment(user:any,company:any,plans:any[]=[]):boolean {
+  if(!installmentAccess(user,false))return false;
+  if(['ADMIN','SOCIO'].includes(user?.role))return true;
+  const extraRespIds=plans.map((p:any)=>p?.responsibleId).filter(Boolean);
+  return canUserViewCompany(user,company,'PARCELAMENTO',extraRespIds);
+}
+
+export function canCreateInstallment(user:any):boolean {
+  return installmentAccess(user,true)&&(['ADMIN','SOCIO'].includes(user.role)||user.screenPermissions?.some((permission:any)=>permission.screen==='installments-create'&&permission.allowed));
+}
+
+export function canConfigureInstallments(user:any):boolean {
+  return ['ADMIN','SOCIO'].includes(user?.role)||(installmentAccess(user,true)&&Boolean(user?.screenPermissions?.some((permission:any)=>permission.screen==='settings-columns'&&permission.allowed)));
+}
+
 export function installmentHeaders(user:any):Record<string,string> {
   return {
     'Content-Type':'application/json',
@@ -25,14 +54,14 @@ export function scheduleItem(plan:any,number:number,rules:InstallmentRules,now=n
   const actual={...rules,lateMode:plan.lateMode||rules.lateMode,dueDay:plan.dueDay??rules.dueDay,dueMonthOffset:plan.dueMonthOffset??rules.dueMonthOffset,lateMonthOffset:plan.lateMonthOffset??rules.lateMonthOffset};
   const dueMonth=period.getUTCMonth()+actual.dueMonthOffset;const last=new Date(Date.UTC(period.getUTCFullYear(),dueMonth+1,0)).getUTCDate();const due=new Date(Date.UTC(period.getUTCFullYear(),dueMonth,Math.min(actual.dueDay,last)));
   const lateFrom=new Date(Date.UTC(period.getUTCFullYear(),period.getUTCMonth()+actual.lateMonthOffset,1));
-  const cents=moneyCents(String(plan.totalAmount))!;const base=Math.floor(cents/plan.installmentCount);const amount=base+(number===plan.installmentCount?cents-base*plan.installmentCount:0);
+  const cents=moneyCents(String(plan.totalAmount))||plan.installmentCount;const base=Math.floor(cents/plan.installmentCount);const amount=base+(number===plan.installmentCount?cents-base*plan.installmentCount:0);
   const overdue=actual.lateMode==='DUE_DATE'?dayInBrasilia(now)>due.toISOString().slice(0,10):dayInBrasilia(now)>=lateFrom.toISOString().slice(0,10);
   const paid=payment?.status==='PAID'||plan.status==='QUITADO';
   const status=paid?'PAID':payment?.status==='OVERDUE'||overdue?'OVERDUE':'PENDING';
   return {number,period:period.toISOString(),amount:decimalMoney(amount),dueDate:due.toISOString().slice(0,10),status,paidOn:payment?.paidOn?new Date(payment.paidOn).toISOString().slice(0,10):null,paidAmount:payment?.paidAmount===null||payment?.paidAmount===undefined?null:String(payment.paidAmount),note:payment?.note||'',updatedBy:payment?.updatedBy||null,editable:period.getTime()<=latestOpenPeriod(now).getTime(),settledInPlan:plan.status==='QUITADO'&&!payment?.paidOn};
 }
 export function planOverview(plan:any,payments:any[],rules:InstallmentRules,now=new Date()){
-  const mapped=new Map<number,any>(payments.map(item=>[item.installmentNumber,item]));
+  const mapped=new Map<number,any>((payments||[]).map(item=>[item.installmentNumber,item]));
   const schedule=Array.from({length:plan.installmentCount},(_,index)=>scheduleItem(plan,index+1,rules,now,mapped.get(index+1)));
   const paid=schedule.filter(item=>item.status==='PAID').length;const overdue=schedule.filter(item=>item.status==='OVERDUE').length;
   const effectiveStatus=plan.status==='QUITADO'||paid===plan.installmentCount?'QUITADO':plan.status==='ATRASADO'||overdue?'ATRASADO':'ATIVO';
@@ -52,4 +81,93 @@ export function companySituation(plans:any[],period:Date):{status:string;label:s
   const pending=current.filter((item:any)=>item.status==='PENDING').length;
   if(pending)return {status:'PENDING',label:`Pendente${pending>1?` (${pending})`:''}`,count:current.length};
   return {status:'PAID',label:'Entregue',count:current.length};
+}
+
+/**
+ * Calcula o progresso real do setor PARCELAMENTO para Dashboard (Visão Geral) e Analytics (Gráficos)
+ * a partir dos planos e pagamentos reais da competência selecionada.
+ */
+export function computeInstallmentsProgress(
+  rawPlans: any[],
+  rawSetting: Partial<InstallmentRules> | null | undefined,
+  monthStart: Date,
+  allowedCompanyIds?: Set<string> | null
+) {
+  const rules: InstallmentRules = {
+    ...DEFAULT_INSTALLMENT_RULES,
+    ...(rawSetting?.lateMode ? { lateMode: rawSetting.lateMode } : {}),
+    ...(typeof rawSetting?.lateMonthOffset === 'number' ? { lateMonthOffset: rawSetting.lateMonthOffset } : {}),
+    ...(typeof rawSetting?.dueDay === 'number' ? { dueDay: rawSetting.dueDay } : {}),
+    ...(typeof rawSetting?.dueMonthOffset === 'number' ? { dueMonthOffset: rawSetting.dueMonthOffset } : {}),
+  };
+
+  const y = monthStart.getUTCFullYear();
+  const m = monthStart.getUTCMonth();
+
+  const byCompany = new Map<string, any[]>();
+  let totalFields = 0;
+  let completedFields = 0;
+
+  for (const rawPlan of rawPlans || []) {
+    if (allowedCompanyIds && !allowedCompanyIds.has(rawPlan.companyId)) continue;
+    if (!rawPlan.installmentCount || rawPlan.installmentCount < 1) continue;
+    const overview = planOverview(rawPlan, rawPlan.payments || [], rules);
+    const enriched = { ...rawPlan, ...overview };
+
+    const list = byCompany.get(rawPlan.companyId);
+    if (list) list.push(enriched);
+    else byCompany.set(rawPlan.companyId, [enriched]);
+
+    for (const item of overview.schedule) {
+      const d = new Date(item.dueDate);
+      if (d.getUTCFullYear() === y && d.getUTCMonth() === m) {
+        totalFields++;
+        if (item.status === 'PAID') completedFields++;
+      }
+    }
+  }
+
+  let total = 0;
+  let completed = 0;
+  let inProgress = 0;
+
+  for (const [, companyPlans] of byCompany.entries()) {
+    const sit = companySituation(companyPlans, monthStart);
+    if (sit.status === 'NA' || sit.status === 'NO_INSTALLMENT') continue;
+    total++;
+
+    const monthItems = companyPlans.flatMap((p: any) =>
+      p.schedule.filter((item: any) => {
+        const d = new Date(item.dueDate);
+        return d.getUTCFullYear() === y && d.getUTCMonth() === m;
+      })
+    );
+
+    if (sit.status === 'PAID') {
+      completed++;
+    } else if (monthItems.some((item: any) => item.status === 'PAID')) {
+      inProgress++;
+    } else if (monthItems.length === 0 && sit.status === 'OVERDUE') {
+      // Empresa sem parcela vencendo neste mês mas com parcela anterior atrasada pendente
+      totalFields++;
+    }
+  }
+
+  const pending = Math.max(0, total - completed - inProgress);
+  const percent = totalFields > 0
+    ? Math.round((completedFields / totalFields) * 100)
+    : total > 0
+    ? Math.round((completed / total) * 100)
+    : 0;
+
+  return {
+    type: 'PARCELAMENTO' as const,
+    total,
+    completed,
+    inProgress,
+    pending,
+    percent,
+    totalFields,
+    completedFields,
+  };
 }

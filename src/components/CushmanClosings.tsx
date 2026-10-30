@@ -7,7 +7,7 @@ import { CushmanCompanyModal } from './CushmanCompanyModal';
 import { formatCnpj, getCertificateStatus } from './CompanyDetailsModal';
 import { TableSkeleton, ButtonSpinner } from './LoadingSkeleton';
 import { useCompetenceCalendar } from './useCompetenceCalendar';
-import { CUSHMAN_API_VERSION, cushmanAccess, resolveCushmanKey } from '../config/cushmanColumns';
+import { CUSHMAN_API_VERSION, cushmanAccess, resolveCushmanKey, cushmanCompanyEditable } from '../config/cushmanColumns';
 import { buildClosingProgress, summarizeClosingProgress } from '../config/closingProgress';
 import { exportToCsv } from '../utils/exportCsv';
 import { compareCodes, formatCompanyCode } from '../utils/codeSort';
@@ -128,6 +128,7 @@ export function CushmanClosings({ currentView, onNavigate, currentUser, onLogout
   const headers = installmentHeaders(currentUser);
   const canView = cushmanAccess(currentUser);
   const canEdit = cushmanAccess(currentUser, true);
+  const isRowEditable = (row: any) => canEdit && row.editable !== false && cushmanCompanyEditable(currentUser, row.company);
 
   async function load() {
     const request = ++sequence.current;
@@ -198,7 +199,7 @@ export function CushmanClosings({ currentView, onNavigate, currentUser, onLogout
   const notesColumn = columns.find(column => resolveCushmanKey(column) === 'cush_observacao');
 
   async function saveColumn(row: any, key: string, value: any) {
-    if (!canEdit) throw new Error('Permissão somente de leitura.');
+    if (!isRowEditable(row)) throw new Error('Você só pode editar empresas sob sua responsabilidade.');
     const captured = currentPeriod.current;
     setPending(count => count + 1);
     try {
@@ -218,7 +219,7 @@ export function CushmanClosings({ currentView, onNavigate, currentUser, onLogout
   }
 
   async function saveCompany(row: any, body: any) {
-    if (!canEdit) throw new Error('Permissão somente de leitura.');
+    if (!isRowEditable(row)) throw new Error('Você só pode editar empresas sob sua responsabilidade.');
     setPending(count => count + 1);
     try {
       const response = await fetch(`${API}/api/cushman-companies/${row.company.id}?userId=${currentUser?.id || ''}`, { method: 'PUT', headers, body: JSON.stringify({ ...body, userId: currentUser?.id }) });
@@ -519,18 +520,19 @@ export function CushmanClosings({ currentView, onNavigate, currentUser, onLogout
                           {filtered.map(row => {
                             const company = row.company;
                             const certificate = company.hasClientCertificate ? getCertificateStatus(company.certificateExpiration) : null;
+                            const rowEditable = isRowEditable(row);
                             return (
                               <tr key={company.id} className={!row.participates ? 'cushman-outside-row' : ''}>
                                 <td className="cushman-sticky-action">
                                   <button
                                     type="button"
                                     className="cushman-company-button"
-                                    aria-label={`${canEdit ? 'Editar' : 'Ver'} dados de ${company.name}`}
-                                    title={canEdit ? 'Editar dados da empresa, certificado e procuração' : 'Ver dados da empresa, certificado e procuração'}
+                                    aria-label={`${rowEditable ? 'Editar' : 'Ver'} dados de ${company.name}`}
+                                    title={rowEditable ? 'Editar dados da empresa, certificado e procuração' : 'Ver dados da empresa, certificado e procuração (somente leitura)'}
                                     disabled={pending > 0}
                                     onClick={() => setCompanyId(company.id)}
                                   >
-                                    {canEdit ? <Settings2 size={18} /> : <Eye size={18} />}
+                                    {rowEditable ? <Settings2 size={18} /> : <Eye size={18} />}
                                   </button>
                                 </td>
                                 <td className="cushman-sticky-code"><span style={{ fontWeight: 600, color: '#94a3b8' }}>{formatCompanyCode(company.code) || '—'}</span></td>
@@ -580,7 +582,7 @@ export function CushmanClosings({ currentView, onNavigate, currentUser, onLogout
                                   }
 
                                   const appearance = getCushmanStatusAppearance(value);
-                                  const disabled = !row.participates || !row.closingId || pending > 0 || !canEdit || column.isEditable === false;
+                                  const disabled = !row.participates || !row.closingId || pending > 0 || !rowEditable || column.isEditable === false;
 
                                   return (
                                     <td key={column.id}>
@@ -615,8 +617,8 @@ export function CushmanClosings({ currentView, onNavigate, currentUser, onLogout
 
               {companyRow && (
                 <CushmanCompanyModal
-                  row={{ ...companyRow, notesEditable: notesColumn?.isEditable !== false && !!notesColumn }}
-                  canEdit={canEdit}
+                  row={{ ...companyRow, notesEditable: notesColumn?.isEditable !== false && !!notesColumn && isRowEditable(companyRow) }}
+                  canEdit={isRowEditable(companyRow)}
                   onClose={() => setCompanyId('')}
                   onSave={body => saveCompany(companyRow, body)}
                   onSaveNotes={value => saveColumn(companyRow, 'cush_observacao', value)}
@@ -651,7 +653,7 @@ export function CushmanClosings({ currentView, onNavigate, currentUser, onLogout
                         }}
                         rows={6}
                         value={notesDraft}
-                        disabled={notesSaving || !canEdit || notesModal.column.isEditable === false}
+                        disabled={notesSaving || !isRowEditable(notesModal.row) || notesModal.column.isEditable === false}
                         onChange={e => setNotesDraft(e.target.value)}
                         placeholder="Observações Cushman para esta competência..."
                         autoFocus
@@ -661,7 +663,7 @@ export function CushmanClosings({ currentView, onNavigate, currentUser, onLogout
                         <button type="button" className="btn-secondary-light" disabled={notesSaving} onClick={() => setNotesModal(null)}>
                           Fechar
                         </button>
-                        {canEdit && notesModal.column.isEditable !== false && (
+                        {isRowEditable(notesModal.row) && notesModal.column.isEditable !== false && (
                           <button
                             type="button"
                             className="btn-primary-gradient"
