@@ -578,20 +578,33 @@ export function CushmanClosings({ currentView, onNavigate, currentUser, onLogout
                 <div className="closing-modal-backdrop" onClick={() => { if (!notesSaving) setNotesModal(null); }}>
                   <div className="closing-modal-content" style={{ maxWidth: 500 }} onClick={e => e.stopPropagation()}>
                     <div className="closing-modal-header">
-                      <div className="closing-modal-title">Observação Cushman</div>
+                      <div className="closing-modal-title">
+                        <FileText size={20} />
+                        Observação Cushman
+                      </div>
                       <button type="button" className="closing-modal-close-btn" aria-label="Fechar observação" disabled={notesSaving} onClick={() => setNotesModal(null)}>
                         <X size={20} />
                       </button>
                     </div>
                     <div className="closing-modal-body">
-                      <p><strong>{notesModal.row.company.name}</strong> · {label}</p>
+                      <p style={{ color: '#94a3b8', fontSize: '0.9rem', margin: '0 0 10px 0' }}>
+                        Empresa: <strong style={{ color: '#fff' }}>{notesModal.row.company.name}</strong> · {label}
+                      </p>
                       <textarea
-                        className="payroll-note-textarea"
+                        className="fiscal-column-text"
+                        style={{
+                          width: '100%',
+                          padding: '10px 12px',
+                          fontSize: '0.9rem',
+                          resize: 'vertical',
+                          minHeight: '130px',
+                        }}
                         rows={6}
                         value={notesDraft}
                         disabled={notesSaving || !canEdit || notesModal.column.isEditable === false}
                         onChange={e => setNotesDraft(e.target.value)}
-                        placeholder="Observações Cushman para esta competência"
+                        placeholder="Observações Cushman para esta competência..."
+                        autoFocus
                       />
                       {notesError && <p role="alert" className="cushman-error">{notesError}</p>}
                       <div className="sub-modal-actions" style={{ marginTop: 12 }}>
@@ -639,8 +652,8 @@ export function CushmanClosings({ currentView, onNavigate, currentUser, onLogout
                       </button>
                     </div>
                     <div className="closing-modal-body">
-                      <p style={{ color: '#475569', fontSize: '0.9rem', marginBottom: 16 }}>
-                        <strong>{actionModal.row.company.name}</strong> · {label}
+                      <p style={{ color: '#94a3b8', fontSize: '0.9rem', margin: '0 0 16px 0' }}>
+                        <strong style={{ color: '#fff' }}>{actionModal.row.company.name}</strong> · {label}
                       </p>
 
                       {modalMode === 'MAIN' && (
@@ -652,75 +665,68 @@ export function CushmanClosings({ currentView, onNavigate, currentUser, onLogout
                               onClick={() => setModalMode('DATE')}
                               style={{ background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)', color: '#fff' }}
                             >
-                              <Calendar size={18} />
-                              OK - Com Data ({inputDate || getTodayBr()})
+                              <Calendar size={16} />
+                              OK - DATA ({inputDate || getTodayBr()})
                             </button>
 
                             <button
                               type="button"
-                              className="btn-action-secondary"
+                              className="btn-action-blue-gradient"
                               onClick={handleActionSemMov}
-                              style={{ borderLeft: '4px solid #38bdf8' }}
+                              style={{ background: 'linear-gradient(135deg, #3b82f6 0%, #6366f1 100%)', color: '#fff' }}
                             >
-                              <Check size={18} color="#38bdf8" />
-                              OK - Sem Movimento
+                              <Check size={16} />
+                              OK - SEM MOVIMENTO
                             </button>
 
                             <button
                               type="button"
-                              className="btn-action-secondary"
+                              className="btn-action-blue-gradient"
                               onClick={() => setModalMode('PENDENCY')}
-                              style={{ borderLeft: '4px solid #ef4444' }}
+                              style={{ background: 'linear-gradient(135deg, #ef4444 0%, #f43f5e 100%)', color: '#fff' }}
                             >
-                              <AlertCircle size={18} color="#ef4444" />
-                              Registrar Pendência
+                              <AlertCircle size={16} />
+                              REGISTRAR PENDÊNCIA
                             </button>
 
                             <button
                               type="button"
-                              className="btn-action-secondary"
+                              className="btn-action-purple-gradient"
                               onClick={handleActionNA}
-                              style={{ borderLeft: '4px solid #94a3b8' }}
+                              style={{ background: '#475569', color: '#fff' }}
                             >
-                              <X size={18} color="#94a3b8" />
-                              Não se Aplica (N/A)
+                              <X size={16} />
+                              N/A (NÃO SE APLICA)
                             </button>
 
                             <button
                               type="button"
-                              className="btn-action-secondary"
+                              className="btn-secondary-light"
                               onClick={handleActionLimpar}
-                              style={{ borderLeft: '4px solid #64748b' }}
+                              style={{ marginTop: 6 }}
                             >
-                              <RefreshCw size={18} color="#64748b" />
-                              Limpar / Voltar para Pendente
+                              <RefreshCw size={15} />
+                              LIMPAR / VOLTAR PARA PENDENTE
                             </button>
                           </div>
 
                           <div style={{ marginTop: 20, paddingTop: 16, borderTop: '1px solid #334155' }}>
-                            <label style={{ fontSize: '0.85rem', color: '#94a3b8', display: 'block', marginBottom: 6, fontWeight: 500 }}>
-                              Ou digite um valor/código customizado:
+                            <label style={{ fontSize: '0.82rem', color: '#94a3b8', display: 'block', marginBottom: 6 }}>
+                              Ou digite uma anotação personalizada:
                             </label>
                             <div style={{ display: 'flex', gap: 8 }}>
                               <input
                                 type="text"
-                                style={{
-                                  flex: 1,
-                                  padding: '8px 12px',
-                                  borderRadius: 8,
-                                  border: '1px solid #475569',
-                                  background: '#171720',
-                                  color: '#f1f5f9',
-                                  fontSize: '0.9rem'
-                                }}
-                                placeholder="Ex: Protocolo 9923..."
+                                className="fiscal-column-text"
+                                style={{ flex: 1, width: 'auto' }}
+                                placeholder="Ex: Protocolo 9923, Aguardando, etc."
                                 value={customTextInput}
                                 onChange={e => setCustomTextInput(e.target.value)}
+                                onKeyDown={e => { if (e.key === 'Enter') handleActionCustomText(); }}
                               />
                               <button
                                 type="button"
                                 className="btn-primary-gradient"
-                                style={{ padding: '8px 16px', fontSize: '0.85rem' }}
                                 onClick={handleActionCustomText}
                               >
                                 Salvar
@@ -733,30 +739,24 @@ export function CushmanClosings({ currentView, onNavigate, currentUser, onLogout
                       {modalMode === 'DATE' && (
                         <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
                           <label style={{ fontSize: '0.9rem', color: '#cbd5e1', fontWeight: 500 }}>
-                            Informe a data de conclusão:
+                            Informe a data de conclusão (DD/MM/AAAA):
                           </label>
                           <div style={{ display: 'flex', gap: 8 }}>
                             <input
                               type="text"
-                              style={{
-                                flex: 1,
-                                padding: '10px 12px',
-                                borderRadius: 8,
-                                border: '1px solid #475569',
-                                background: '#171720',
-                                color: '#f1f5f9',
-                                fontSize: '0.95rem'
-                              }}
-                              placeholder="dd/mm/aaaa"
+                              className="fiscal-column-text"
+                              style={{ flex: 1, width: 'auto', fontSize: '1rem', padding: '10px 12px' }}
+                              placeholder="DD/MM/AAAA"
                               value={inputDate}
                               onChange={e => setInputDate(e.target.value)}
                               autoFocus
+                              onKeyDown={e => { if (e.key === 'Enter') handleActionOkData(); }}
                             />
                             <button
                               type="button"
                               className="btn-secondary-light"
                               onClick={() => setInputDate(getTodayBr())}
-                              style={{ padding: '0 12px', whiteSpace: 'nowrap' }}
+                              title="Usar data de hoje"
                             >
                               Hoje
                             </button>
@@ -783,13 +783,10 @@ export function CushmanClosings({ currentView, onNavigate, currentUser, onLogout
                           </label>
                           <textarea
                             rows={4}
+                            className="fiscal-column-text"
                             style={{
                               width: '100%',
                               padding: '10px 12px',
-                              borderRadius: 8,
-                              border: '1px solid #475569',
-                              background: '#171720',
-                              color: '#f1f5f9',
                               fontSize: '0.9rem',
                               resize: 'vertical'
                             }}
