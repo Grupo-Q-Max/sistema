@@ -9,17 +9,22 @@ on:
       - 'main'
   workflow_dispatch:
 
+concurrency:
+  group: azure-deploy-controledefechamento
+  cancel-in-progress: false
+
 jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout repository
+        uses: actions/checkout@v7
 
-      - name: Set up Node.js version
-        uses: actions/setup-node@v4
+      - name: Set up Node.js 24 LTS
+        uses: actions/setup-node@v7
         with:
-          node-version: '22.x'
+          node-version: '24.x'
           cache: 'npm'
 
       - name: Install dependencies, generate Prisma and build Vite
