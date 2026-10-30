@@ -450,6 +450,46 @@ export function Analytics({ currentView, onNavigate, currentUser, onLogout }: An
                     </BarChart>
                   </ResponsiveContainer>
                 )}
+
+                {/* Tabela de Detalhamento da Carga da Equipe */}
+                {workloadTop.length > 0 && (
+                  <div className="workload-summary-table-wrap" style={{ marginTop: '16px', overflowX: 'auto', borderTop: '1px solid rgba(255,255,255,0.08)', paddingTop: '12px' }}>
+                    <table className="workload-summary-table" style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
+                      <thead>
+                        <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.1)', color: '#94a3b8', textAlign: 'left' }}>
+                          <th style={{ padding: '8px 6px' }}>Colaborador</th>
+                          <th style={{ padding: '8px 6px', textAlign: 'center' }}>Fiscal</th>
+                          <th style={{ padding: '8px 6px', textAlign: 'center' }}>DP</th>
+                          <th style={{ padding: '8px 6px', textAlign: 'center' }}>Contábil</th>
+                          <th style={{ padding: '8px 6px', textAlign: 'center' }}>Cushman</th>
+                          <th style={{ padding: '8px 6px', textAlign: 'right' }}>Total Carteira</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {workloadTop.map((w, idx) => (
+                          <tr key={idx} style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
+                            <td style={{ padding: '8px 6px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                              <span style={{ width: '22px', height: '22px', borderRadius: '50%', background: 'linear-gradient(135deg, #d90f81, #8b5cf6)', color: '#fff', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: '10px', fontWeight: 700 }}>
+                                {w.name[0]?.toUpperCase() || 'U'}
+                              </span>
+                              <strong style={{ color: '#f1f5f9' }}>{w.name}</strong>
+                              {w.isFormer && <span style={{ fontSize: '10px', color: '#f87171', background: 'rgba(239,68,68,0.15)', padding: '1px 5px', borderRadius: '4px' }}>Inativo</span>}
+                            </td>
+                            <td style={{ padding: '8px 6px', textAlign: 'center', color: '#34d399' }}>{w.FISCAL || '—'}</td>
+                            <td style={{ padding: '8px 6px', textAlign: 'center', color: '#60a5fa' }}>{w.DP || '—'}</td>
+                            <td style={{ padding: '8px 6px', textAlign: 'center', color: '#a78bfa' }}>{w.CONTABIL || '—'}</td>
+                            <td style={{ padding: '8px 6px', textAlign: 'center', color: '#f87171' }}>{w.CUSHMAN || '—'}</td>
+                            <td style={{ padding: '8px 6px', textAlign: 'right', fontWeight: 700, color: '#f8fafc' }}>
+                              <span style={{ padding: '2px 8px', borderRadius: '6px', background: 'rgba(255,255,255,0.06)' }}>
+                                {w.total} empresas
+                              </span>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
               </Panel>
               <Panel title="Setores contratados" subtitle="Empresas ativas com cada setor" icon={Layers}>
                 <HBar data={data.distribution.sectors.map(s => ({ name: SECTOR_META[s.name]?.label || s.name, value: s.value }))} color="#8b5cf6" height={240} />

@@ -252,6 +252,22 @@ export function PayrollClosings({ currentView, onNavigate, currentUser, onLogout
   }, [loading, columns]);
 
   const [onlyMyCompanies, setOnlyMyCompanies] = useState(false);
+  const [tableDensity, setTableDensity] = useState<'standard' | 'compact'>(() => {
+    try {
+      return (localStorage.getItem('fechamento_density') as 'standard' | 'compact') || 'standard';
+    } catch {
+      return 'standard';
+    }
+  });
+
+  const toggleDensity = () => {
+    setTableDensity(prev => {
+      const next = prev === 'standard' ? 'compact' : 'standard';
+      try { localStorage.setItem('fechamento_density', next); } catch {}
+      return next;
+    });
+  };
+
   const [auditTarget, setAuditTarget] = useState<{
     companyId: string;
     companyName: string;
@@ -659,11 +675,58 @@ export function PayrollClosings({ currentView, onNavigate, currentUser, onLogout
                   <button className="payroll-refresh-btn" type="button" title="Atualizar fechamento DP" aria-label="Atualizar fechamento DP" disabled={pending > 0 || loading} onClick={() => { void load(); }}>
                     <RefreshCw size={16} className={loading ? 'payroll-spin' : ''} />
                   </button>
+                  <button
+                    type="button"
+                    className={`btn-density-toggle ${tableDensity === 'compact' ? 'active' : ''}`}
+                    onClick={toggleDensity}
+                    title={tableDensity === 'compact' ? 'Mudar para modo Espaçoso' : 'Mudar para modo Compacto'}
+                  >
+                    <span>{tableDensity === 'compact' ? 'Modo Compacto' : 'Modo Padrão'}</span>
+                  </button>
                   <button className="btn-secondary-light" onClick={handleExport} title="Exportar para Excel (CSV)">
                     <ExternalLink size={16} />
                     Exportar
                   </button>
                 </div>
+              </div>
+
+              {/* Chips de Filtro Rápido com Contadores em Tempo Real */}
+              <div className="quick-filter-chips">
+                <button
+                  type="button"
+                  className={`quick-chip ${statusFilter === 'ALL' ? 'active' : ''}`}
+                  onClick={() => setStatusFilter('ALL')}
+                >
+                  <span>🌐 Todas</span>
+                  <span className="chip-count">{summary.total}</span>
+                </button>
+
+                <button
+                  type="button"
+                  className={`quick-chip chip-pending ${statusFilter === 'PENDING' ? 'active' : ''}`}
+                  onClick={() => setStatusFilter('PENDING')}
+                >
+                  <span>🔥 Só Pendentes</span>
+                  <span className="chip-count">{summary.pending}</span>
+                </button>
+
+                <button
+                  type="button"
+                  className={`quick-chip chip-progress ${statusFilter === 'IN_PROGRESS' ? 'active' : ''}`}
+                  onClick={() => setStatusFilter('IN_PROGRESS')}
+                >
+                  <span>⏳ Em Andamento</span>
+                  <span className="chip-count">{summary.inProgress}</span>
+                </button>
+
+                <button
+                  type="button"
+                  className={`quick-chip chip-completed ${statusFilter === 'COMPLETED' ? 'active' : ''}`}
+                  onClick={() => setStatusFilter('COMPLETED')}
+                >
+                  <span>✅ Concluídas</span>
+                  <span className="chip-count">{summary.completed}</span>
+                </button>
               </div>
 
               <div className="payroll-table-meta">
@@ -690,7 +753,7 @@ export function PayrollClosings({ currentView, onNavigate, currentUser, onLogout
                       <div style={{ width: scrollWidth || 1080 + columns.length * 170, height: 1 }} />
                     </div>
                     <div
-                      className="closings-table-wrapper payroll-table-scroll"
+                      className={`closings-table-wrapper payroll-table-scroll ${tableDensity === 'compact' ? 'table-compact' : ''}`}
                       ref={tableScroll}
                       onScroll={e => {
                         if (syncingScroll.current || !upperScroll.current) return;

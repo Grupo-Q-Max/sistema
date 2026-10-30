@@ -16,7 +16,9 @@ import {
   Calendar,
   CalendarPlus,
   CheckCircle2,
-  AlertCircle
+  AlertCircle,
+  Bell,
+  FileSpreadsheet,
 } from 'lucide-react';
 import './Dashboard.css';
 import './Progress.css';
@@ -24,6 +26,8 @@ import './Closings.css';
 import { Sidebar } from './Sidebar';
 import { ManualCompetenceModal } from './ManualCompetenceModal';
 import { DashboardSkeleton, LoadingSpinner } from './LoadingSkeleton';
+import { SmartAlertDrawer } from './SmartAlertDrawer';
+import { ExecutiveReportModal } from './ExecutiveReportModal';
 import type { CurrentUser } from '../types/auth';
 import { API } from '../api';
 
@@ -189,6 +193,20 @@ export function Dashboard({ currentView, onNavigate, currentUser, onLogout }: Da
   const [loading, setLoading] = useState(true);
   const [selectedRegime, setSelectedRegime] = useState<string | null>(null);
   const [searchFilter, setSearchFilter] = useState('');
+
+  // Alertas e Relatório Executivo
+  const [isAlertDrawerOpen, setIsAlertDrawerOpen] = useState(false);
+  const [isReportOpen, setIsReportOpen] = useState(false);
+  const [alertCount, setAlertCount] = useState(0);
+
+  useEffect(() => {
+    fetch(`${API}/api/alerts/summary`)
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (data?.totalCount !== undefined) setAlertCount(data.totalCount);
+      })
+      .catch(() => {});
+  }, []);
   const [isMonthPickerOpen, setIsMonthPickerOpen] = useState(false);
   const [isManualModalOpen, setIsManualModalOpen] = useState(false);
   const [progressMode, setProgressMode] = useState<'COMPANIES' | 'FIELDS'>('FIELDS');
@@ -359,15 +377,37 @@ export function Dashboard({ currentView, onNavigate, currentUser, onLogout }: Da
             </div>
           </div>
 
-          {currentUser && (
-            <div className="crm-user">
-              <div className="avatar">{(currentUser.name || currentUser.email)[0].toUpperCase()}</div>
-              <div className="crm-user-details">
-                <span className="user-name">{currentUser.name || currentUser.email.split('@')[0]}</span>
-                <span className="user-role-tag">{ROLE_LABEL_MAP[currentUser.role] || currentUser.role}</span>
+          <div className="crm-header-right" style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <button
+              type="button"
+              className="btn-executive-report"
+              title="Gerar Relatório Executivo da Competência"
+              onClick={() => setIsReportOpen(true)}
+            >
+              <FileSpreadsheet size={16} />
+              <span>Relatório Executivo</span>
+            </button>
+
+            <button
+              type="button"
+              className="smart-alert-bell-btn"
+              title={alertCount > 0 ? `${alertCount} alertas no sistema` : 'Central de Alertas'}
+              onClick={() => setIsAlertDrawerOpen(true)}
+            >
+              <Bell size={18} />
+              {alertCount > 0 && <span className="bell-badge-count">{alertCount}</span>}
+            </button>
+
+            {currentUser && (
+              <div className="crm-user">
+                <div className="avatar">{(currentUser.name || currentUser.email)[0].toUpperCase()}</div>
+                <div className="crm-user-details">
+                  <span className="user-name">{currentUser.name || currentUser.email.split('@')[0]}</span>
+                  <span className="user-role-tag">{ROLE_LABEL_MAP[currentUser.role] || currentUser.role}</span>
+                </div>
               </div>
-            </div>
-          )}
+            )}
+          </div>
         </header>
 
 
@@ -638,6 +678,22 @@ export function Dashboard({ currentView, onNavigate, currentUser, onLogout }: Da
             setSelectedMonth(newMonth - 1);
             fetchStats(newYear, newMonth - 1);
           }}
+        />
+
+        {/* Central de Alertas Pró-Ativos */}
+        <SmartAlertDrawer
+          isOpen={isAlertDrawerOpen}
+          onClose={() => setIsAlertDrawerOpen(false)}
+          onNavigateToCompany={() => onNavigate('companies')}
+          onNavigateToInstallments={() => onNavigate('settings-installments')}
+        />
+
+        {/* Relatório Executivo da Competência */}
+        <ExecutiveReportModal
+          isOpen={isReportOpen}
+          onClose={() => setIsReportOpen(false)}
+          year={selectedYear}
+          month={selectedMonth}
         />
       </main>
     </div>

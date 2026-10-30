@@ -184,6 +184,25 @@ export function Closings({ currentView, onNavigate, currentUser, onLogout }: Clo
 
   const [inputDateValue, setInputDateValue] = useState('');
   const [savingAction, setSavingAction] = useState(false);
+
+  // Densidade da tabela (Padrão vs Compacto)
+  const [tableDensity, setTableDensity] = useState<'standard' | 'compact'>(() => {
+    try {
+      return (localStorage.getItem('fechamento_density') as 'standard' | 'compact') || 'standard';
+    } catch {
+      return 'standard';
+    }
+  });
+
+  const toggleDensity = () => {
+    setTableDensity((prev) => {
+      const next = prev === 'standard' ? 'compact' : 'standard';
+      try {
+        localStorage.setItem('fechamento_density', next);
+      } catch {}
+      return next;
+    });
+  };
   const [multiSelectModal, setMultiSelectModal] = useState<{
     row: any;
     colKey: string;
@@ -1043,6 +1062,15 @@ export function Closings({ currentView, onNavigate, currentUser, onLogout }: Clo
                 Exportar
               </button>
 
+              <button
+                type="button"
+                className={`btn-density-toggle ${tableDensity === 'compact' ? 'active' : ''}`}
+                onClick={toggleDensity}
+                title={tableDensity === 'compact' ? 'Mudar para modo Espaçoso' : 'Mudar para modo Compacto'}
+              >
+                <span>{tableDensity === 'compact' ? 'Modo Compacto' : 'Modo Padrão'}</span>
+              </button>
+
               <select
                 className="closings-select"
                 value={statusFilter}
@@ -1091,6 +1119,45 @@ export function Closings({ currentView, onNavigate, currentUser, onLogout }: Clo
             </div>
           </div>
 
+          {/* Chips de Filtro Rápido com Contadores em Tempo Real */}
+          <div className="quick-filter-chips">
+            <button
+              type="button"
+              className={`quick-chip ${statusFilter === 'ALL' ? 'active' : ''}`}
+              onClick={() => setStatusFilter('ALL')}
+            >
+              <span>🌐 Todas</span>
+              <span className="chip-count">{summary.total}</span>
+            </button>
+
+            <button
+              type="button"
+              className={`quick-chip chip-pending ${statusFilter === 'PENDING' ? 'active' : ''}`}
+              onClick={() => setStatusFilter('PENDING')}
+            >
+              <span>🔥 Só Pendentes</span>
+              <span className="chip-count">{summary.pending}</span>
+            </button>
+
+            <button
+              type="button"
+              className={`quick-chip chip-progress ${statusFilter === 'IN_PROGRESS' ? 'active' : ''}`}
+              onClick={() => setStatusFilter('IN_PROGRESS')}
+            >
+              <span>⏳ Em Andamento</span>
+              <span className="chip-count">{summary.inProgress}</span>
+            </button>
+
+            <button
+              type="button"
+              className={`quick-chip chip-completed ${statusFilter === 'COMPLETED' ? 'active' : ''}`}
+              onClick={() => setStatusFilter('COMPLETED')}
+            >
+              <span>✅ Concluídas</span>
+              <span className="chip-count">{summary.completed}</span>
+            </button>
+          </div>
+
           {/* Tabela Limpa e Operacional do Fechamento Fiscal */}
           <div className="closings-table-card">
             {loading ? (
@@ -1107,7 +1174,7 @@ export function Closings({ currentView, onNavigate, currentUser, onLogout }: Clo
                   <div style={{ width: scrollWidth || 2200, height: 1 }} />
                 </div>
                 <div
-                  className="closings-table-wrapper"
+                  className={`closings-table-wrapper ${tableDensity === 'compact' ? 'table-compact' : ''}`}
                   ref={tableScroll}
                   onScroll={(e) => syncScroll(e.currentTarget, upperScroll.current)}
                 >

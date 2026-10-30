@@ -2203,6 +2203,142 @@ app.get('/api/audit/cell-history', async (req, res) => {
   }
 });
 
+// Central de Alertas Pró-Ativos (Smart Alert Summary)
+let alertsCache: { ts: number; data: any } | null = null;
+
+app.get('/api/alerts/summary', async (req, res) => {
+  try {
+    const now = Date.now();
+    if (alertsCache && now - alertsCache.ts < 30_000) {
+      return res.json(alertsCache.data);
+    }
+
+    const today = new Date();
+    const in30Days = new Date(today.getTime() + 30 * 24 * 60 * 60 * 1000);
+
+    const companies = await prisma.company.findMany({
+      where: {
+        OR: [
+          { exitDate: null },
+          { exitDate: { gt: today } },
+        ],
+      },
+      select: {
+        id: true,
+        code: true,
+        name: true,
+        tradeName: true,
+        cnpj: true,
+        certificateExpiration: true,
+        certificateType: true,
+        targetProxyDate: true,
+        fgtsProxyDate: true,
+        decProxyDate: true,
+        empregadorProxyDate: true,
+      },
+    });
+
+    const certAlerts: any[] = [];
+    const proxyAlerts: any[] = [];
+
+    for (const c of companies) {
+      // Certificado Digital
+      if (c.certificateExpiration) {
+        const exp = new Date(c.certificateExpiration);
+        if (!isNaN(exp.getTime()) && exp <= in30Days) {
+          const diffDays = Math.ceil((exp.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+          certAlerts.push({
+            companyId: c.id,
+            companyCode: formatCompanyCode(c.code),
+            companyName: c.name,
+            expiration: exp.toISOString().slice(0, 10),
+            daysRemaining: diffDays,
+            severity: diffDays < 0 ? 'EXPIRED' : diffDays <= 15 ? 'CRITICAL' : 'WARNING',
+            type: c.certificateType || 'A1',
+          });
+        }
+      }
+
+      // Procurações
+      const proxies = [
+        { label: 'RFB / e-CAC', date: c.targetProxyDate },
+        { label: 'FGTS / Conectividade', date: c.fgtsProxyDate },
+        { label: 'DEC (Prefeitura)', date: c.decProxyDate },
+        { label: 'Empregador Web', date: c.empregadorProxyDate },
+      ];
+
+      for (const p of proxies) {
+        if (p.date) {
+          const pExp = new Date(p.date);
+          if (!isNaN(pExp.getTime()) && pExp <= in30Days) {
+            const diffDays = Math.ceil((pExp.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+            proxyAlerts.push({
+              companyId: c.id,
+              companyCode: formatCompanyCode(c.code),
+              companyName: c.name,
+              proxyType: p.label,
+              expiration: pExp.toISOString().slice(0, 10),
+              daysRemaining: diffDays,
+              severity: diffDays < 0 ? 'EXPIRED' : diffDays <= 15 ? 'CRITICAL' : 'WARNING',
+            });
+          }
+        }
+      }
+    }
+
+    certAlerts.sort((a, b) => a.daysRemaining - b.daysRemaining);
+    proxyAlerts.sort((a, b) => a.daysRemaining - b.daysRemaining);
+
+    // Parcelamentos com pendências no mês
+    const curYear = today.getFullYear();
+    const curMonth = today.getMonth() + 1;
+    let pendingInstallments: any[] = [];
+    try {
+      const activePlans = await prisma.installmentPlan.findMany({
+        where: { status: 'ATIVO' },
+        include: {
+          company: { select: { id: true, code: true, name: true } },
+          payments: {
+            where: {
+              installmentNumber: { gte: 1 },
+              status: { not: 'PAID' },
+            },
+            take: 1,
+          },
+        },
+        take: 50,
+      });
+
+      pendingInstallments = activePlans
+        .filter((plan: any) => plan.payments && plan.payments.length > 0)
+        .map((plan: any) => ({
+          planId: plan.id,
+          companyId: plan.company?.id,
+          companyCode: formatCompanyCode(plan.company?.code),
+          companyName: plan.company?.name,
+          typeName: plan.typeName,
+          dueDay: plan.dueDay || 20,
+        }));
+    } catch {
+      // Ignora erro se plans estiver vazio
+    }
+
+    const payload = {
+      certificates: certAlerts,
+      proxies: proxyAlerts,
+      installments: pendingInstallments,
+      totalCount: certAlerts.length + proxyAlerts.length + pendingInstallments.length,
+      timestamp: Date.now(),
+    };
+
+    alertsCache = { ts: now, data: payload };
+    res.json(payload);
+  } catch (error) {
+    console.error('Erro ao buscar alertas:', error);
+    res.status(500).json({ error: 'Erro ao consolidar alertas' });
+  }
+});
+
 // ========================
 // 4. USUÁRIOS E PERMISSÕES
 // ========================
