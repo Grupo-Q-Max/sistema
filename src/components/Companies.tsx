@@ -134,7 +134,12 @@ const DELIVERY_METHOD_OPTIONS = [
 ];
 
 // Setores disponíveis
-const SECTOR_OPTIONS = ['Fiscal', 'DP', 'Contábil', 'Cushman'];
+const SECTOR_OPTIONS = [
+  { key: 'FISCAL', label: 'Fiscal' },
+  { key: 'DP', label: 'DP' },
+  { key: 'CONTABIL', label: 'Contábil' },
+  { key: 'CUSHMAN', label: 'Cushman' },
+];
 
 function formatCnpjMask(value: string): string {
   const digits = value.replace(/\D/g, '').slice(0, 14);
@@ -373,10 +378,16 @@ export function Companies({ currentView, onNavigate, currentUser, onLogout }: Co
     setCompanyType(company.companyType || 'Serviço');
     setDeliveryMethod(company.deliveryMethod || 'E-mail');
 
-    const sectors = company.activeSectors
-      ? (company.activeSectors === 'TODOS' ? ['Todos'] : company.activeSectors.split(','))
-      : ['Todos'];
-    setSelectedSectors(sectors);
+    const rawSectors = company.activeSectors;
+    let sectors: string[] = ['TODOS'];
+    if (rawSectors && rawSectors !== 'TODOS') {
+      sectors = rawSectors.split(',').map((s: string) => {
+        const upper = s.trim().toUpperCase();
+        if (upper === 'CONTÁBIL') return 'CONTABIL';
+        return upper;
+      });
+    }
+    setSelectedSectors(sectors.length ? sectors : ['TODOS']);
 
     setCityHallLogin(company.cityHallLogin || '');
     setCityHallLink(company.cityHallLink || '');
@@ -438,19 +449,19 @@ export function Companies({ currentView, onNavigate, currentUser, onLogout }: Co
     }
   };
 
-  const handleToggleSector = (sector: string) => {
-    if (sector === 'Todos') {
-      setSelectedSectors(['Todos']);
+  const handleToggleSector = (sectorKey: string) => {
+    if (sectorKey === 'TODOS' || sectorKey === 'Todos') {
+      setSelectedSectors(['TODOS']);
       return;
     }
-    let updated = selectedSectors.filter((s) => s !== 'Todos');
-    if (updated.includes(sector)) {
-      updated = updated.filter((s) => s !== sector);
-      if (updated.length === 0) updated = ['Todos'];
+    let updated = selectedSectors.filter((s) => s !== 'TODOS' && s !== 'Todos');
+    if (updated.includes(sectorKey)) {
+      updated = updated.filter((s) => s !== sectorKey);
+      if (updated.length === 0) updated = ['TODOS'];
     } else {
-      updated.push(sector);
+      updated.push(sectorKey);
       if (updated.length === SECTOR_OPTIONS.length) {
-        updated = ['Todos'];
+        updated = ['TODOS'];
       }
     }
     setSelectedSectors(updated);
@@ -491,7 +502,7 @@ export function Companies({ currentView, onNavigate, currentUser, onLogout }: Co
       certificateExpiration: hasClientCertificate ? certificateExpiration.trim() : null,
       companyType,
       deliveryMethod,
-      activeSectors: selectedSectors.includes('Todos') ? 'TODOS' : selectedSectors.join(','),
+      activeSectors: (selectedSectors.includes('TODOS') || selectedSectors.includes('Todos')) ? 'TODOS' : selectedSectors.join(','),
       cityHallLogin: cityHallLogin.trim() || null,
       cityHallLink: cityHallLink.trim() || null,
       ginfessPassword: ginfessPassword.trim() || null,
@@ -1355,21 +1366,21 @@ export function Companies({ currentView, onNavigate, currentUser, onLogout }: Co
                     <div className="sectors-wrap">
                       <button
                         type="button"
-                        className={`sector-btn ${selectedSectors.includes('Todos') ? 'selected' : ''}`}
-                        onClick={() => handleToggleSector('Todos')}
+                        className={`sector-btn ${(selectedSectors.includes('TODOS') || selectedSectors.includes('Todos')) ? 'selected' : ''}`}
+                        onClick={() => handleToggleSector('TODOS')}
                       >
                         ✓ Todos os Setores
                       </button>
-                      {SECTOR_OPTIONS.map((s) => {
-                        const isSel = selectedSectors.includes(s) && !selectedSectors.includes('Todos');
+                      {SECTOR_OPTIONS.map((opt) => {
+                        const isSel = (selectedSectors.includes(opt.key) || selectedSectors.includes(opt.label)) && !selectedSectors.includes('TODOS') && !selectedSectors.includes('Todos');
                         return (
                           <button
-                            key={s}
+                            key={opt.key}
                             type="button"
                             className={`sector-btn ${isSel ? 'selected' : ''}`}
-                            onClick={() => handleToggleSector(s)}
+                            onClick={() => handleToggleSector(opt.key)}
                           >
-                            {s}
+                            {opt.label}
                           </button>
                         );
                       })}

@@ -536,19 +536,33 @@ app.get('/api/closings', async (req, res) => {
     void rolloverEngine.ensureAutomatic();
     void accountingEngine.ensureAutomatic();
 
-    const activeWhere = {
-      AND: [externalCompaniesExcluded, companyExitWhere(monthStart)],
+    const sectorCondition = {
       OR: [
-        { AND: [{ OR: [{ activeSectors: null }, { activeSectors: 'TODOS' }, { activeSectors: '' }, { activeSectors: { contains: sector } }] }, { obligationStartDate: { lt: nextMonthStart }, OR: [{ exitDate: null }, { exitDate: { gte: monthStart } }] }] },
-        { closings: { some: { type: sector, referencePeriod: monthStart } } },
+        { activeSectors: null },
+        { activeSectors: 'TODOS' },
+        { activeSectors: '' },
+        { activeSectors: { contains: sector } },
       ],
     };
 
-    const [companies, closings, fiscalUsers, distinctPeriods] = await Promise.all([
+    const activeWhere = {
+      AND: [
+        externalCompaniesExcluded,
+        companyExitWhere(monthStart),
+        sectorCondition,
+      ],
+      OR: [
+        { obligationStartDate: { lt: nextMonthStart }, OR: [{ exitDate: null }, { exitDate: { gte: monthStart } }] },
+        { closings: { some: { type: sector as any, referencePeriod: monthStart } } },
+      ],
+    };
+
+    const [companies, closings, baseSectorUsers, distinctPeriods] = await Promise.all([
       prisma.company.findMany({
         where: activeWhere,
         include: {
           responsibles: {
+            where: { sector: sector as any },
             include: {
               user: { select: { id: true, name: true, email: true, role: true } },
             },
@@ -563,7 +577,10 @@ app.get('/api/closings', async (req, res) => {
         },
       }),
       prisma.user.findMany({
-        where: { active: true },
+        where: {
+          active: true,
+          ...(sector === 'FISCAL' ? { role: 'FISCAL' } : sector === 'DP' ? { role: 'DP' } : {}),
+        },
         select: { id: true, name: true, email: true, role: true },
         orderBy: { name: 'asc' },
       }),
@@ -573,6 +590,18 @@ app.get('/api/closings', async (req, res) => {
         orderBy: { referencePeriod: 'asc' },
       }),
     ]);
+
+    // Reúne usuários do setor + quaisquer usuários já atribuídos às empresas listadas
+    const userMap = new Map<string, any>();
+    baseSectorUsers.forEach((u: any) => userMap.set(u.id, u));
+    companies.forEach((c: any) => {
+      (c.responsibles || []).forEach((r: any) => {
+        if (r.user && !userMap.has(r.user.id)) {
+          userMap.set(r.user.id, r.user);
+        }
+      });
+    });
+    const fiscalUsers = Array.from(userMap.values()).sort((a, b) => (a.name || '').localeCompare(b.name || ''));
 
     const closingMap = new Map<string, any>(closings.map((c: any) => [c.companyId, c]));
 
@@ -920,6 +949,7 @@ app.get('/api/dashboard', async (req, res) => {
           contractDate: true,
           obligationStartDate: true,
           exitDate: true,
+          activeSectors: true,
           responsibles: {
             select: {
               id: true,
@@ -979,7 +1009,14 @@ app.get('/api/dashboard', async (req, res) => {
 
 
     const progress = ALL_SECTORS.map((type) => {
-      const list = closings.filter((c: any) => c.type === type && c.status !== 'NOT_APPLICABLE');
+      const list = closings.filter((c: any) => {
+        if (c.type !== type || c.status === 'NOT_APPLICABLE') return false;
+        const comp = companies.find((comp: any) => comp.id === c.companyId);
+        if (!comp) return false;
+        const s = comp.activeSectors;
+        if (!s || s === 'TODOS' || s === '') return true;
+        return s.split(',').map((x: string) => x.trim().toUpperCase()).includes(type);
+      });
       const sectorCols = allColumns.filter((c: any) => c.department === type);
 
       let completed = 0;

@@ -47,11 +47,14 @@ import { applyFiscalRegimeRules, isFiscalObligationNA } from '../config/fiscalRe
 
 export function getFiscalResponsible(company: any) {
   if (!company || !Array.isArray(company.responsibles)) return null;
-  return (
-    company.responsibles.find((r: any) => r.sector === 'FISCAL') ||
-    company.responsibles.find((r: any) => !r.sector) ||
-    null
-  );
+  return company.responsibles.find((r: any) => r.sector === 'FISCAL') || null;
+}
+
+export function companyBelongsToFiscal(company: any): boolean {
+  if (!company) return false;
+  const s = company.activeSectors;
+  if (!s || s === 'TODOS' || s.trim() === '') return true;
+  return s.split(',').map((x: string) => x.trim().toUpperCase()).includes('FISCAL');
 }
 
 interface ClosingsProps {
@@ -557,11 +560,12 @@ export function Closings({ currentView, onNavigate, currentUser, onLogout }: Clo
   const deferredSearchTerm = useDeferredValue(searchTerm);
 
   const scopedRows = useMemo(() => rows.filter(row => {
+    if (!companyBelongsToFiscal(row.company)) return false;
     if (!currentUser || ['ADMIN', 'SOCIO'].includes(currentUser.role)) return true;
-    if (['FISCAL', 'DP', 'CONTABIL'].includes(currentUser.role)) return row.company.responsibles?.some((r: any) => r.userId === currentUser.id && (r.sector === 'FISCAL' || r.sector === null));
+    if (['FISCAL', 'DP', 'CONTABIL'].includes(currentUser.role)) return row.company.responsibles?.some((r: any) => r.userId === currentUser.id && r.sector === 'FISCAL');
     if (currentUser.companyScope === 'CUSTOM') return currentUser.companyAccess?.some(a => a.companyId === row.company.id);
     if (currentUser.companyScope === 'ALL') return true;
-    return row.company.responsibles?.some((r: any) => r.userId === currentUser.id && (r.sector === 'FISCAL' || r.sector === null));
+    return row.company.responsibles?.some((r: any) => r.userId === currentUser.id && r.sector === 'FISCAL');
   }), [rows, currentUser]);
 
   const summary = useMemo(() => {
