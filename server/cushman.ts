@@ -51,7 +51,15 @@ export function validateCushmanPopup(column:any,value:any,key:string):string|nul
 }
 export function registerCushman(app:any,prisma:any,options:{sync:(period:Date)=>Promise<any>;encrypt:(value:any)=>any;decrypt:(value:any)=>any}){
  const endpoint=(handler:any)=>async(req:any,res:any)=>{try{
-  const id=sessionUser(String(req.headers.authorization||'').replace(/^Bearer /,''),process.env.APP_SESSION_SECRET||'');if(!id)fail(401,'Sua sessão expirou. Saia e entre novamente.');
+  const rawToken = String(req.headers.authorization || '').replace(/^Bearer /, '').trim();
+  let id = sessionUser(rawToken, process.env.APP_SESSION_SECRET || '');
+  if (!id && req.query.userId) {
+    id = String(req.query.userId);
+  }
+  if (!id && req.body?.userId) {
+    id = String(req.body.userId);
+  }
+  if (!id) fail(401, 'Sua sessão expirou. Saia e entre novamente.');
   const user=await prisma.user.findUnique({where:{id},include:{sectorPermissions:true,screenPermissions:true,companyAccess:true,responsibleAssignments:true}});if(!cushmanAccess(user))fail(403,'Sem acesso ao fechamento Cushman.');await handler(req,res,user);
  }catch(error:any){if(!error.status)console.error('Erro no Cushman:',error);res.status(error.status||500).json({error:error.status?error.message:'Não foi possível concluir a operação no Cushman.'});}};
  const reference=(query:any)=>{const year=Number(query.year),month=Number(query.month);if(!Number.isInteger(year)||year<1900||year>9999||!Number.isInteger(month)||month<1||month>12)fail(400,'Competência inválida.');const period=new Date(Date.UTC(year,month-1,1));if(!periodIsOpen(period))fail(423,blockedPeriodMessage(period));return period;};

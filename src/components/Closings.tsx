@@ -47,7 +47,9 @@ import { applyFiscalRegimeRules, isFiscalObligationNA } from '../config/fiscalRe
 
 export function getFiscalResponsible(company: any) {
   if (!company || !Array.isArray(company.responsibles)) return null;
-  return company.responsibles.find((r: any) => r.sector === 'FISCAL') || null;
+  return company.responsibles.find((r: any) => r.sector === 'FISCAL')
+      || company.responsibles.find((r: any) => !r.sector)
+      || null;
 }
 
 export function companyBelongsToFiscal(company: any): boolean {
@@ -307,7 +309,7 @@ export function Closings({ currentView, onNavigate, currentUser, onLogout }: Clo
           prev.map((r) => {
             if (r.company.id === companyId) {
               const selectedUser = fiscalUsers.find((u) => u.id === userId);
-              const otherResponsibles = (r.company.responsibles || []).filter((resp: any) => resp.sector !== 'FISCAL');
+              const otherResponsibles = (r.company.responsibles || []).filter((resp: any) => resp.sector !== 'FISCAL' && resp.sector !== null);
               const updatedResp = [
                 ...otherResponsibles,
                 ...(userId ? [{ id: 'temp', companyId, userId, sector: 'FISCAL', user: selectedUser }] : []),
@@ -1334,7 +1336,7 @@ export function Closings({ currentView, onNavigate, currentUser, onLogout }: Clo
                             <td>
                               <select
                                 className="table-user-select"
-                                disabled={!isPrivileged}
+                                disabled={!canEditFiscal}
                                 value={currentRespId}
                                 onChange={(e) => handleResponsibleChange(c.id, e.target.value)}
                               >

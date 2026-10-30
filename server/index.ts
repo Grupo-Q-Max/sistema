@@ -113,9 +113,11 @@ const KNOWN_API_PREFIXES = [
   '/logout',
 ];
 
-// Normaliza requisições vindas com prefixo legado /sistema ou sem /api
+// Normaliza requisições vindas com prefixo legado /sistema ou sem /api ou com /api duplicado
 app.use((req, res, next) => {
-  if (req.url.startsWith('/sistema/api')) {
+  if (req.url.startsWith('/api/api/')) {
+    req.url = req.url.substring('/api'.length);
+  } else if (req.url.startsWith('/sistema/api')) {
     req.url = req.url.substring('/sistema'.length);
   } else if (req.url.startsWith('/sistema/')) {
     req.url = req.url.substring('/sistema'.length);
@@ -562,7 +564,7 @@ app.get('/api/closings', async (req, res) => {
         where: activeWhere,
         include: {
           responsibles: {
-            where: { sector: sector as any },
+            where: { OR: [{ sector: sector as any }, { sector: null }] },
             include: {
               user: { select: { id: true, name: true, email: true, role: true } },
             },
@@ -579,7 +581,11 @@ app.get('/api/closings', async (req, res) => {
       prisma.user.findMany({
         where: {
           active: true,
-          ...(sector === 'FISCAL' ? { role: 'FISCAL' } : sector === 'DP' ? { role: 'DP' } : {}),
+          OR: [
+            { role: sector as any },
+            { role: { in: ['ADMIN', 'SOCIO'] } },
+            { sectorPermissions: { some: { sector: sector as any, access: { in: ['VIEW', 'EDIT'] } } } },
+          ],
         },
         select: { id: true, name: true, email: true, role: true },
         orderBy: { name: 'asc' },
@@ -652,7 +658,7 @@ app.get('/api/closings', async (req, res) => {
 
     const seenMonths = new Set<string>();
     const availableMonths: any[] = [];
-    for (const p of distinctPeriods) {
+    for (const p of (distinctPeriods || [])) {
       const d = new Date(p.referencePeriod);
       if (!periodIsOpen(d)) continue;
       const yr = d.getUTCFullYear();
@@ -874,7 +880,7 @@ function invalidateDashboardCache() {
   cachedColsList = null;
 }
 
-async function cachedDistinctPeriods() {
+async function cachedDistinctPeriods(): Promise<any[]> {
   const now = Date.now();
   if (cachedPeriodsList && now - cachedPeriodsTimestamp < 10 * 60 * 1000) {
     return cachedPeriodsList;
@@ -885,17 +891,17 @@ async function cachedDistinctPeriods() {
     orderBy: { referencePeriod: 'asc' },
   });
   cachedPeriodsTimestamp = now;
-  return cachedPeriodsList;
+  return cachedPeriodsList || [];
 }
 
-async function cachedDepartmentColumns() {
+async function cachedDepartmentColumns(): Promise<any[]> {
   const now = Date.now();
   if (cachedColsList && now - cachedColsTimestamp < 5 * 60 * 1000) {
     return cachedColsList;
   }
   cachedColsList = await prisma.departmentColumn.findMany();
   cachedColsTimestamp = now;
-  return cachedColsList;
+  return cachedColsList || [];
 }
 
 app.get('/api/dashboard', async (req, res) => {
@@ -1054,7 +1060,7 @@ app.get('/api/dashboard', async (req, res) => {
         if (!s || s === 'TODOS' || s === '') return true;
         return s.split(',').map((x: string) => x.trim().toUpperCase()).includes(type);
       });
-      const sectorCols = allColumns.filter((c: any) => c.department === type);
+      const sectorCols = (allColumns || []).filter((c: any) => c.department === type);
 
       let completed = 0;
       let inProgress = 0;
@@ -1113,7 +1119,7 @@ app.get('/api/dashboard', async (req, res) => {
 
     const seenMonths = new Set<string>();
     const availableMonths: any[] = [];
-    for (const p of distinctPeriods) {
+    for (const p of (distinctPeriods || [])) {
       const d = new Date(p.referencePeriod);
       if (!periodIsOpen(d)) continue;
       const year = d.getUTCFullYear();

@@ -131,6 +131,16 @@ const REGIME_LABEL: Record<string, string> = {
   PESSOA_FISICA: 'Pessoa Física',
 };
 
+const ROLE_LABEL_MAP: Record<string, string> = {
+  ADMIN: 'Administrador',
+  SOCIO: 'Sócio',
+  FISCAL: 'Fiscal',
+  DP: 'DP',
+  CONTABIL: 'Contábil',
+  FINANCEIRO: 'Financeiro',
+  CADASTRO: 'Cadastro',
+};
+
 const formatDate = (iso: string) => {
   if (!iso) return '-';
   const clean = String(iso).trim();
@@ -352,9 +362,9 @@ export function Dashboard({ currentView, onNavigate, currentUser, onLogout }: Da
           {currentUser && (
             <div className="crm-user">
               <div className="avatar">{(currentUser.name || currentUser.email)[0].toUpperCase()}</div>
-              <div>
-                <strong>{currentUser.name || currentUser.email.split('@')[0]}</strong>
-                <span className="user-role-tag">{currentUser.role}</span>
+              <div className="crm-user-details">
+                <span className="user-name">{currentUser.name || currentUser.email.split('@')[0]}</span>
+                <span className="user-role-tag">{ROLE_LABEL_MAP[currentUser.role] || currentUser.role}</span>
               </div>
             </div>
           )}

@@ -7,7 +7,7 @@ import { Sidebar } from './Sidebar';
 import { ClosingSectorTabs, hasSectorAccess } from './ClosingSectorTabs';
 import { TableSkeleton, ButtonSpinner } from './LoadingSkeleton';
 import type { CurrentUser } from '../types/auth';
-import { API_URL as API } from '../api';
+import { API } from '../api';
 import { PAYROLL_API_VERSION, effectiveFieldConfig, resolveColumnKey } from '../config/payrollColumns';
 import { defaultPopup, type PopupConfig } from '../config/fiscalPopups';
 import { visibilitySummary } from '../config/columnVisibility';
@@ -608,7 +608,7 @@ export function PayrollClosings({ currentView, onNavigate, currentUser, onLogout
                                   </td>
                                   <td><span className={`tax-regime-pill ${c.taxRegime === 'SIMPLES_NACIONAL' ? 'simples' : c.taxRegime?.includes('PRESUMIDO') ? 'presumido' : c.taxRegime?.includes('REAL') ? 'real' : c.taxRegime === 'MEI' ? 'mei' : ''}`}>{formatRegimeLabel(c.taxRegime || '')}</span></td>
                                   <td title={`Progresso: ${row.progressPercent}%`}><span className={`status-badge ${row.calculatedStatus === 'COMPLETED' ? 'completed' : row.calculatedStatus === 'IN_PROGRESS' ? 'in-progress' : 'pending'}`}>{STATUS_LABELS[row.calculatedStatus] || row.calculatedStatus}</span></td>
-                                  <td><select className="table-user-select" aria-label={`Responsável DP de ${c.name}`} disabled={!isPrivileged || pending > 0} value={getResponsible(c)?.userId || ''} onChange={e => { void changeResponsible(row, e.target.value); }}><option value="">Não atribuído</option>{users.map(user => <option key={user.id} value={user.id}>{user.name || user.email}</option>)}</select></td>
+                                  <td><select className="table-user-select" aria-label={`Responsável DP de ${c.name}`} disabled={!canEdit || pending > 0} value={getResponsible(c)?.userId || ''} onChange={e => { void changeResponsible(row, e.target.value); }}><option value="">Não atribuído</option>{users.map(user => <option key={user.id} value={user.id}>{user.name || user.email}</option>)}</select></td>
                                   <td><button type="button" className="copy-badge-btn" title="Copiar CNPJ" onClick={() => { void navigator.clipboard.writeText(c.cnpj || '').then(() => setCopyMessage('CNPJ copiado!')).catch(() => setError('Não foi possível copiar o CNPJ.')); }}>{formatCnpj(c.cnpj || '')}<Copy size={12} /></button></td>
                                   {columns.map(column => {
                                     const key = resolveColumnKey(column) || column.id;

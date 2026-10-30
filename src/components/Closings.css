@@ -5,9 +5,9 @@
 .closings-container {
   display: flex;
   flex-direction: column;
-  gap: 20px;
+  gap: 16px;
   animation: fadeIn 0.3s ease-in-out;
-  padding: 24px 32px;
+  padding: 16px 20px;
   width: 100%;
   max-width: 100%;
   min-width: 0;
@@ -265,7 +265,8 @@
 .closings-table-wrapper {
   overflow-x: auto;
   overflow-y: auto;
-  max-height: calc(100vh - 360px);
+  max-height: calc(100vh - 210px);
+  min-height: 520px;
   position: relative;
   width: 100%;
   max-width: 100%;

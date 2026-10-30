@@ -123,7 +123,7 @@ export function CushmanClosings({ currentView, onNavigate, currentUser, onLogout
     setLoading(true);
     setError('');
     try {
-      const response = await fetch(`${API}/cushman-closings?year=${period.getUTCFullYear()}&month=${period.getUTCMonth() + 1}&companies=${mode}`, { headers });
+      const response = await fetch(`${API}/api/cushman-closings?year=${period.getUTCFullYear()}&month=${period.getUTCMonth() + 1}&companies=${mode}&userId=${currentUser?.id || ''}`, { headers });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || 'Não foi possível carregar o Cushman.');
       if (data.cushmanApiVersion !== CUSHMAN_API_VERSION) throw new Error('Reinicie a API para carregar o Cushman.');
@@ -191,10 +191,10 @@ export function CushmanClosings({ currentView, onNavigate, currentUser, onLogout
     const captured = currentPeriod.current;
     setPending(count => count + 1);
     try {
-      const response = await fetch(`${API}/cushman-closings/${row.closingId}/column`, {
+      const response = await fetch(`${API}/api/cushman-closings/${row.closingId}/column?userId=${currentUser?.id || ''}`, {
         method: 'PUT',
         headers,
-        body: JSON.stringify({ columnKey: key, columnValue: value, expectedUpdatedAt: row.updatedAt })
+        body: JSON.stringify({ columnKey: key, columnValue: value, expectedUpdatedAt: row.updatedAt, userId: currentUser?.id })
       });
       const result = await response.json();
       if (!response.ok) throw new Error(result.error || 'Não foi possível salvar.');
@@ -210,7 +210,7 @@ export function CushmanClosings({ currentView, onNavigate, currentUser, onLogout
     if (!canEdit) throw new Error('Permissão somente de leitura.');
     setPending(count => count + 1);
     try {
-      const response = await fetch(`${API}/cushman-companies/${row.company.id}`, { method: 'PUT', headers, body: JSON.stringify(body) });
+      const response = await fetch(`${API}/api/cushman-companies/${row.company.id}?userId=${currentUser?.id || ''}`, { method: 'PUT', headers, body: JSON.stringify({ ...body, userId: currentUser?.id }) });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || 'Não foi possível salvar o cadastro.');
       await load();
@@ -447,7 +447,7 @@ export function CushmanClosings({ currentView, onNavigate, currentUser, onLogout
                     <div className="payroll-scroll-top" ref={topScroll} onScroll={event => scroll(event.currentTarget, tableScroll.current)}>
                       <div style={{ width: scrollWidth, height: 1 }} />
                     </div>
-                    <div className="closings-table-scroll payroll-table-scroll" ref={tableScroll} onScroll={event => scroll(event.currentTarget, topScroll.current)}>
+                    <div className="closings-table-wrapper closings-table-scroll payroll-table-scroll" ref={tableScroll} onScroll={event => scroll(event.currentTarget, topScroll.current)}>
                       <table className="closings-table cushman-table" style={{ minWidth: `${900 + columns.length * 150}px` }}>
                         <thead>
                           <tr>

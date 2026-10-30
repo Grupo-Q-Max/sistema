@@ -8,6 +8,8 @@ import {
   Settings as SettingsIcon,
   ChevronDown,
   ChevronUp,
+  ChevronLeft,
+  ChevronRight,
   LogOut,
   ShieldCheck,
   Columns3,
@@ -36,6 +38,31 @@ interface SidebarProps {
 export function Sidebar({ currentView, onNavigate, currentUser, onLogout }: SidebarProps) {
   const [mobileOpen,setMobileOpen]=useState(false);
   const [isPasswordModalOpen, setIsPasswordModalOpen] = useState(false);
+  const [collapsed, setCollapsed] = useState(() => {
+    try {
+      return localStorage.getItem('fechamento_sidebar_collapsed') === 'true';
+    } catch {
+      return false;
+    }
+  });
+
+  const toggleCollapse = () => {
+    setCollapsed(prev => {
+      const next = !prev;
+      try {
+        localStorage.setItem('fechamento_sidebar_collapsed', String(next));
+      } catch {}
+      return next;
+    });
+  };
+
+  useEffect(() => {
+    if (collapsed) {
+      document.body.classList.add('sidebar-collapsed');
+    } else {
+      document.body.classList.remove('sidebar-collapsed');
+    }
+  }, [collapsed]);
   const menuButton=useRef<HTMLButtonElement>(null);
   const sidebar=useRef<HTMLElement>(null);
   const closeButton=useRef<HTMLButtonElement>(null);
@@ -120,10 +147,23 @@ export function Sidebar({ currentView, onNavigate, currentUser, onLogout }: Side
         <span>Fechamento <strong>Pro</strong></span>
       </header>
       {mobileOpen&&<button type="button" className="mobile-sidebar-backdrop" aria-label="Fechar menu de navegação" onClick={()=>setMobileOpen(false)}/>}
-      <aside ref={sidebar} id="main-sidebar" aria-label="Navegação principal" className={`crm-sidebar ${mobileOpen?'is-mobile-open':''}`}>
+      <aside ref={sidebar} id="main-sidebar" aria-label="Navegação principal" className={`crm-sidebar ${mobileOpen?'is-mobile-open':''} ${collapsed ? 'collapsed' : ''}`}>
       <button type="button" ref={closeButton} className="mobile-sidebar-close" aria-label="Fechar menu" onClick={()=>setMobileOpen(false)}><X size={22}/></button>
       <div className="crm-sidebar__brand">
-        Fechamento <span>Pro</span>
+        {!collapsed ? (
+          <span className="brand-text">Fechamento <strong>Pro</strong></span>
+        ) : (
+          <span className="brand-collapsed" title="Fechamento Pro">F<strong>P</strong></span>
+        )}
+        <button
+          type="button"
+          className="sidebar-toggle-btn"
+          title={collapsed ? "Expandir menu" : "Recolher menu"}
+          aria-label={collapsed ? "Expandir menu" : "Recolher menu"}
+          onClick={toggleCollapse}
+        >
+          {collapsed ? <ChevronRight size={16} /> : <ChevronLeft size={16} />}
+        </button>
       </div>
 
       <nav className="crm-sidebar__nav">
@@ -131,13 +171,14 @@ export function Sidebar({ currentView, onNavigate, currentUser, onLogout }: Side
           <a
             href="#"
             className={`nav-item ${currentView === 'dashboard' ? 'active' : ''}`}
+            title="Visão Geral"
             onClick={(e) => {
               e.preventDefault();
               navigate('dashboard');
             }}
           >
             <LayoutDashboard size={20} />
-            Visão Geral
+            <span className="nav-item-label">Visão Geral</span>
           </a>
         )}
 
@@ -146,25 +187,57 @@ export function Sidebar({ currentView, onNavigate, currentUser, onLogout }: Side
             href="#"
             id="nav-analytics"
             className={`nav-item ${currentView === 'analytics' ? 'active' : ''}`}
+            title="Gráficos"
             onClick={(e) => {
               e.preventDefault();
               navigate('analytics');
             }}
           >
             <BarChart3 size={20} />
-            Gráficos
+            <span className="nav-item-label">Gráficos</span>
           </a>
         )}
 
         {closingItems.length > 0 && (
           <div className="nav-item-group">
-            <button type="button" className={`nav-item sidebar-group-toggle ${isClosingsActive?'active':''}`} aria-expanded={isClosingsOpen} aria-controls="sidebar-closings-menu" onClick={()=>setIsClosingsOpen(open=>!open)}>
-              <span className="sidebar-group-label"><FileCheck size={20}/>Fechamentos</span>
-              {isClosingsOpen?<ChevronUp size={16}/>:<ChevronDown size={16}/>}
+            <button
+              type="button"
+              className={`nav-item sidebar-group-toggle ${isClosingsActive ? 'active' : ''}`}
+              title="Fechamentos"
+              aria-expanded={isClosingsOpen}
+              aria-controls="sidebar-closings-menu"
+              onClick={() => {
+                if (collapsed) {
+                  setCollapsed(false);
+                  setIsClosingsOpen(true);
+                } else {
+                  setIsClosingsOpen(open => !open);
+                }
+              }}
+            >
+              <span className="sidebar-group-label"><FileCheck size={20} /><span className="nav-item-label">Fechamentos</span></span>
+              {!collapsed && (isClosingsOpen ? <ChevronUp size={16} /> : <ChevronDown size={16} />)}
             </button>
-            {isClosingsOpen && <div className="nav-submenu" id="sidebar-closings-menu">
-              {closingItems.map(({view,label,Icon})=><a key={view} href="#" className={`nav-subitem ${currentView===view?'active':''}`} aria-current={currentView===view?'page':undefined} onClick={event=>{event.preventDefault();navigate(view);}}><Icon size={16}/>{label}</a>)}
-            </div>}
+            {isClosingsOpen && (
+              <div className="nav-submenu" id="sidebar-closings-menu">
+                {closingItems.map(({ view, label, Icon }) => (
+                  <a
+                    key={view}
+                    href="#"
+                    className={`nav-subitem ${currentView === view ? 'active' : ''}`}
+                    title={label}
+                    aria-current={currentView === view ? 'page' : undefined}
+                    onClick={event => {
+                      event.preventDefault();
+                      navigate(view);
+                    }}
+                  >
+                    <Icon size={16} />
+                    <span className="nav-item-label">{label}</span>
+                  </a>
+                ))}
+              </div>
+            )}
           </div>
         )}
 
@@ -172,13 +245,14 @@ export function Sidebar({ currentView, onNavigate, currentUser, onLogout }: Side
           <a
             href="#"
             className={`nav-item ${currentView === 'companies' ? 'active' : ''}`}
+            title="Empresas"
             onClick={(e) => {
               e.preventDefault();
               navigate('companies');
             }}
           >
             <Building2 size={20} />
-            Empresas
+            <span className="nav-item-label">Empresas</span>
           </a>
         )}
 
@@ -186,17 +260,32 @@ export function Sidebar({ currentView, onNavigate, currentUser, onLogout }: Side
           <a
             href="#"
             className={`nav-item ${currentView === 'certificates' ? 'active' : ''}`}
+            title="Certificados/Proc."
             onClick={(e) => {
               e.preventDefault();
               navigate('certificates');
             }}
           >
             <ShieldCheck size={20} />
-            Certificados/Proc.
+            <span className="nav-item-label">Certificados/Proc.</span>
           </a>
         )}
 
-        {isPrivileged&&<a href="#" className={`nav-item ${currentView==='settings-data-quality'?'active':''}`} onClick={event=>{event.preventDefault();navigate('settings-data-quality');}}><AlertTriangle size={20}/>Avisos de cadastro{qualityCount>0&&<span className="quality-nav-count">{qualityCount}</span>}</a>}
+        {isPrivileged && (
+          <a
+            href="#"
+            className={`nav-item ${currentView === 'settings-data-quality' ? 'active' : ''}`}
+            title="Avisos de cadastro"
+            onClick={(event) => {
+              event.preventDefault();
+              navigate('settings-data-quality');
+            }}
+          >
+            <AlertTriangle size={20} />
+            <span className="nav-item-label">Avisos de cadastro</span>
+            {qualityCount > 0 && <span className="quality-nav-count">{qualityCount}</span>}
+          </a>
+        )}
         {showSettingsGroup && (
           <>
             <div className="nav-divider"></div>
@@ -274,14 +363,16 @@ export function Sidebar({ currentView, onNavigate, currentUser, onLogout }: Side
       {/* User profile footer in sidebar */}
       {currentUser && (
         <div className="sidebar-footer">
-          <div className="user-profile-badge">
+          <div className="user-profile-badge" title={`${currentUser.name || currentUser.email} (${roleLabelMap[currentUser.role] || currentUser.role})`}>
             <div className="user-avatar-small">
               {(currentUser.name || currentUser.email)[0].toUpperCase()}
             </div>
-            <div className="user-profile-details">
-              <strong>{currentUser.name || currentUser.email.split('@')[0]}</strong>
-              <span>{roleLabelMap[currentUser.role] || currentUser.role}</span>
-            </div>
+            {!collapsed && (
+              <div className="user-profile-details">
+                <strong>{currentUser.name || currentUser.email.split('@')[0]}</strong>
+                <span>{roleLabelMap[currentUser.role] || currentUser.role}</span>
+              </div>
+            )}
           </div>
           <div className="sidebar-footer-actions">
             <button
@@ -295,7 +386,7 @@ export function Sidebar({ currentView, onNavigate, currentUser, onLogout }: Side
             </button>
             {onLogout && (
               <button type="button" className="logout-btn" title="Encerrar sessão" aria-label="Sair do sistema" onClick={onLogout}>
-                <LogOut size={16} /><span>Sair</span>
+                <LogOut size={16} />{!collapsed && <span>Sair</span>}
               </button>
             )}
           </div>
