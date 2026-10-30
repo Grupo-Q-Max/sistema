@@ -856,3 +856,96 @@ body {
 #root .password-reveal-badge { background:var(--ui-raised);color:var(--text-main);max-width:100%;overflow-wrap:anywhere;flex-wrap:wrap; }
 #root .password-reveal-badge button { color:var(--text-muted);min-width:28px;min-height:28px; }
 #root .password-reveal-badge button:hover { color:var(--text-main); }
+
+/* Card de Usuário do Topo e Sidebar Footer (Consistência Visual Perfeita) */
+#root .crm-user {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  background: rgba(30, 41, 59, 0.65);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  padding: 6px 14px 6px 8px;
+  border-radius: 9999px;
+  backdrop-filter: blur(8px);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.25);
+  margin-left: auto;
+  flex-shrink: 0;
+}
+
+#root .crm-user .avatar {
+  width: 36px;
+  height: 36px;
+  min-width: 36px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--accent, #d90f81), #8b5cf6);
+  color: #ffffff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 14px;
+  box-shadow: 0 2px 8px rgba(217, 15, 129, 0.35);
+  flex-shrink: 0;
+}
+
+#root .crm-user-details {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+#root .crm-user-details .user-name {
+  font-weight: 600;
+  font-size: 13px;
+  color: #f1f5f9;
+  letter-spacing: -0.01em;
+}
+
+#root .crm-user-details .user-role-tag {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 8px;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 600;
+  background: rgba(99, 102, 241, 0.18);
+  color: #a5b4fc;
+  border: 1px solid rgba(99, 102, 241, 0.35);
+  letter-spacing: 0.3px;
+}
+
+#root .crm-sidebar .sidebar-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-shrink: 0;
+  margin-top: auto;
+  padding: 12px 14px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(15, 23, 42, 0.75);
+}
+
+#root .crm-sidebar .user-profile-badge {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 1;
+  min-width: 0;
+}
+
+#root .crm-sidebar .user-avatar-small {
+  width: 34px;
+  height: 34px;
+  min-width: 34px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--accent, #d90f81), #8b5cf6);
+  color: #ffffff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 13px;
+  flex-shrink: 0;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
+}

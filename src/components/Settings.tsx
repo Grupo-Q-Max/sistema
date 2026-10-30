@@ -80,6 +80,16 @@ const INPUT_TYPES: Record<string, { label: string; Icon: any }> = {
   READONLY: { label: 'Fiscal · somente leitura', Icon: Eye },
 };
 
+const ROLE_LABEL_MAP: Record<string, string> = {
+  ADMIN: 'Administrador',
+  SOCIO: 'Sócio',
+  FISCAL: 'Fiscal',
+  DP: 'DP',
+  CONTABIL: 'Contábil',
+  FINANCEIRO: 'Financeiro',
+  CADASTRO: 'Cadastro',
+};
+
 const ROLES = [
   { value: 'ADMIN', label: 'Administrador (Acesso Total)' },
   { value: 'SOCIO', label: 'Sócio' },
@@ -691,9 +701,9 @@ export function Settings({ currentView, onNavigate, currentUser, onLogout }: Set
           {currentUser && (
             <div className="crm-user">
               <div className="avatar">{(currentUser.name || currentUser.email)[0].toUpperCase()}</div>
-              <div>
-                <strong>{currentUser.name || currentUser.email.split('@')[0]}</strong>
-                <span className="user-role-tag">{currentUser.role}</span>
+              <div className="crm-user-details">
+                <span className="user-name">{currentUser.name || currentUser.email.split('@')[0]}</span>
+                <span className="user-role-tag">{ROLE_LABEL_MAP[currentUser.role] || currentUser.role}</span>
               </div>
             </div>
           )}
