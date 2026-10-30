@@ -144,6 +144,8 @@ model CompanyResponsible {
   user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([companyId, userId, sector])
+  @@index([sector])
+  @@index([userId, sector])
 }
 
 model Company {
@@ -202,6 +204,9 @@ model Company {
   responsibles     CompanyResponsible[]
   automationTasks  AutomationTask[]
 
+  @@index([obligationStartDate, exitDate])
+  @@index([code])
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
@@ -226,6 +231,8 @@ model DepartmentColumn {
   countsProgress Boolean @default(false) // Se a conclusão desta coluna conta para a barra de progresso do fechamento
   isEditable     Boolean @default(true) // Editável ou apenas visualização
   orderIndex     Int     @default(0) // Ordem que aparece na tela
+
+  @@index([department, orderIndex])
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -265,6 +272,8 @@ model Closing {
 
   // Garante que não tenhamos dois fechamentos de DP para a mesma empresa no mesmo mês
   @@unique([companyId, type, referencePeriod])
+  @@index([type, referencePeriod])
+  @@index([referencePeriod])
 }
 
 // Parcelamentos são cadastros permanentes, com confirmações mensais próprias.
@@ -346,6 +355,9 @@ model SystemLog {
   entityId  String?
   details   Json?
   ipAddress String?
+
+  @@index([createdAt])
+  @@index([action, createdAt])
   createdAt DateTime @default(now())
 }
 

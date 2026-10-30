@@ -1,14 +1,15 @@
 import {companyExitWhere,companyExitAllowsPeriod,exitDecisionError,exitDecisionValue} from '../src/config/companyExit';
-import {registerCompanyQuality} from './companyQuality';
+import {registerCompanyQuality,invalidateCompanyQualityCache} from './companyQuality';
 import {registerCushman} from './cushman';
-import {registerAnalytics} from './analytics';
+import {registerAnalytics,invalidateAnalyticsCache} from './analytics';
 import {registerDeploy} from './deploy';
 import {registerAutomation} from './automation';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {externalCompaniesExcluded} from '../src/config/installmentCompanies';
 import { normalizeLoginEmail, verifyLoginPassword } from './authPassword';
-import { issueSession, registerInstallments } from './installments';
+import { issueSession, getSessionSecret, resolveAuthenticatedUser, invalidateAuthUserCache, registerInstallments } from './installments';
+import { queryClosingsBySectorAndRange, queryClosingsForDashboard, queryFiscalReinfMap, queryFallbackClosingsForPeriods } from './cleanClosingsSql';
 import { createAccountingYearEngine } from './accountingYear';
 import { ACCOUNTING_COLUMNS, ACCOUNTING_API_VERSION, accountingYear, accountingMonth, annualColumnActive, annualValues, accountingProgress } from '../src/config/accountingColumns';
 import { createRolloverEngine, replicatedData } from './monthRollover';
@@ -100,9 +101,13 @@ app.use(express.json());
 const KNOWN_API_PREFIXES = [
   '/closings',
   '/companies',
+  '/columns',
   '/accounting-closings',
   '/cushman-closings',
   '/cushman-companies',
+  '/installments',
+  '/admin',
+  '/session',
   '/plans',
   '/company',
   '/competences',
@@ -250,8 +255,8 @@ app.post('/api/login', async (req, res) => {
       return res.status(401).json({error:'Senha incorreta.'});
     }
 
-    // Sucesso no Login
-    await logAction(
+    // Sucesso no Login (grava log em background para não atrasar resposta)
+    void logAction(
       user.id,
       user.email,
       user.name || 'Usuário',
@@ -262,12 +267,42 @@ app.post('/api/login', async (req, res) => {
       clientIp
     );
 
-    // Formata retorno seguro
+    // Formata retorno seguro com sessionToken sempre emitido
     const { password: _, ...userSafe } = user;
-    res.json({...userSafe,sessionToken:process.env.APP_SESSION_SECRET?issueSession(user.id,process.env.APP_SESSION_SECRET):undefined});
+    res.json({ ...userSafe, sessionToken: issueSession(user.id, getSessionSecret()) });
   } catch (error) {
     console.error('Erro no login:', error);
     res.status(500).json({ error: 'Erro ao processar login' });
+  }
+});
+
+app.post('/api/session/refresh', async (req, res) => {
+  try {
+    const resolved = await resolveAuthenticatedUser(prisma, req);
+    if (!resolved) {
+      return res.status(401).json({ error: 'Sessão inválida.' });
+    }
+    if (!resolved.active) {
+      return res.status(403).json({ error: 'Usuário inativo.' });
+    }
+    const fullUser = await prisma.user.findUnique({
+      where: { id: resolved.id },
+      include: {
+        sectorPermissions: true,
+        screenPermissions: true,
+        companyAccess: {
+          include: { company: { select: { id: true, name: true, cnpj: true } } },
+        },
+      },
+    });
+    if (!fullUser || !fullUser.active) {
+      return res.status(401).json({ error: 'Usuário não disponível.' });
+    }
+    const { password: _, ...userSafe } = fullUser;
+    res.json({ ...userSafe, sessionToken: issueSession(fullUser.id, getSessionSecret()) });
+  } catch (error) {
+    console.error('Erro ao renovar sessão:', error);
+    res.status(500).json({ error: 'Erro ao renovar sessão' });
   }
 });
 
@@ -276,7 +311,7 @@ app.post('/api/logout', async (req, res) => {
   try {
     const { userId, userEmail, userName } = req.body;
     if (userId || userEmail) {
-      await logAction(
+      void logAction(
         userId || null,
         userEmail || null,
         userName || 'Usuário',
@@ -386,10 +421,18 @@ function getTargetReferencePeriod(query: any): Date {
   return latestOpenPeriod();
 }
 
-const rolloverEngine = createRolloverEngine(prisma);
-const accountingEngine = createAccountingYearEngine(prisma);
+const rolloverEngine = createRolloverEngine(prisma, undefined, pool);
+const accountingEngine = createAccountingYearEngine(prisma, undefined, pool);
 const syncMonthClosingsAndReplicate = rolloverEngine.sync;
-registerCushman(app,prisma,{sync:syncMonthClosingsAndReplicate,encrypt:encryptPassword,decrypt:decryptPassword});
+registerCushman(app,prisma,{
+  sync:syncMonthClosingsAndReplicate,
+  encrypt:encryptPassword,
+  decrypt:decryptPassword,
+  pool,
+  onCompanyUpdated: () => invalidateAllDataCaches(),
+  onClosingUpdated: () => invalidateDashboardCache(),
+});
+let lastCompetenceBgSync = 0;
 async function syncLatestCompetenceFromDb() {
   try {
     const maxClosing = await prisma.closing.findFirst({
@@ -404,6 +447,15 @@ async function syncLatestCompetenceFromDb() {
   }
 }
 
+function triggerBackgroundRolloverCheck() {
+  const now = Date.now();
+  if (now - lastCompetenceBgSync < 5 * 60 * 1000) return;
+  lastCompetenceBgSync = now;
+  void syncLatestCompetenceFromDb();
+  void rolloverEngine.ensureAutomatic();
+  void accountingEngine.ensureAutomatic();
+}
+
 function requireOpenPeriod(period: Date, res: any): boolean {
   if (periodIsOpen(period)) return true;
   res.status(423).json({error:blockedPeriodMessage(period),code:'COMPETENCE_NOT_RELEASED',latestOpenPeriod:latestOpenPeriod()});
@@ -412,10 +464,7 @@ function requireOpenPeriod(period: Date, res: any): boolean {
 app.get('/api/competences', async (_req, res) => {
   try {
     res.json({latestOpenPeriod:latestOpenPeriod(),timeZone:'America/Sao_Paulo',automatic:true});
-    // Executa em segundo plano sem travar a resposta imediata
-    void syncLatestCompetenceFromDb();
-    void rolloverEngine.ensureAutomatic();
-    void accountingEngine.ensureAutomatic();
+    triggerBackgroundRolloverCheck();
   } catch(error) { console.error('Erro no calendário automático:',error); res.status(500).json({error:'Não foi possível sincronizar as competências.'}); }
 });
 
@@ -428,7 +477,7 @@ app.get('/api/logs', async (req, res) => {
     if (entity && typeof entity === 'string') where.entity = entity;
     if (userId && typeof userId === 'string') where.userId = userId;
 
-    const take = limit ? Math.min(Number(limit) || 2000, 5000) : 2000;
+    const take = limit ? Math.min(Number(limit) || 500, 5000) : 500;
 
     const logs = await prisma.systemLog.findMany({
       where,
@@ -448,7 +497,15 @@ function sanitizeColumnsData(raw: any): Record<string, any> {
   return clean;
 }
 
-async function getSectorResponsibleUsers(sector: 'FISCAL' | 'DP' | 'CONTABIL', companies: any[] = []) {
+const sectorUsersCache = new Map<string, { ts: number; users: any[] }>();
+function invalidateSectorUsersCache() {
+  sectorUsersCache.clear();
+}
+
+async function getCachedBaseSectorUsers(sector: 'FISCAL' | 'DP' | 'CONTABIL'): Promise<any[]> {
+  const now = Date.now();
+  const hit = sectorUsersCache.get(sector);
+  if (hit && now - hit.ts < 120_000) return hit.users;
   const baseUsers = await prisma.user.findMany({
     where: {
       active: true,
@@ -466,6 +523,12 @@ async function getSectorResponsibleUsers(sector: 'FISCAL' | 'DP' | 'CONTABIL', c
     select: { id: true, name: true, email: true, role: true, active: true },
     orderBy: { name: 'asc' },
   });
+  sectorUsersCache.set(sector, { ts: now, users: baseUsers });
+  return baseUsers;
+}
+
+async function getSectorResponsibleUsers(sector: 'FISCAL' | 'DP' | 'CONTABIL', companies: any[] = [], preloadedBaseUsers?: any[]) {
+  const baseUsers = preloadedBaseUsers || await getCachedBaseSectorUsers(sector);
 
   const userMap = new Map<string, any>();
   for (const u of baseUsers) {
@@ -577,18 +640,10 @@ app.get('/api/closings', async (req, res) => {
     const y = monthStart.getUTCFullYear();
     const m = monthStart.getUTCMonth();
     const nextMonthStart = new Date(Date.UTC(y, m + 1, 1));
+    const prevMonthStart = new Date(Date.UTC(y, m - 1, 1));
+    const openLatest = latestOpenPeriod();
 
-    // Se ainda não existirem fechamentos gerados no mês, executa a sincronização inicial
-    const existingCount = await prisma.closing.count({
-      where: { type: sector as any, referencePeriod: { gte: monthStart, lt: nextMonthStart } }
-    });
-    if (existingCount === 0) {
-      await syncMonthClosingsAndReplicate(monthStart);
-    } else {
-      void syncMonthClosingsAndReplicate(monthStart);
-    }
-    void rolloverEngine.ensureAutomatic();
-    void accountingEngine.ensureAutomatic();
+    triggerBackgroundRolloverCheck();
 
     const sectorCondition = {
       OR: [
@@ -611,9 +666,10 @@ app.get('/api/closings', async (req, res) => {
       ],
     };
 
-    const [companies, closings, configuredColumns, distinctPeriods] = await Promise.all([
+    let [companies, closings, allColumns, distinctPeriods, baseSectorUsers, fiscalReinfMap] = await Promise.all([
       prisma.company.findMany({
         where: activeWhere,
+        omit: { legacyData: true },
         include: {
           responsibles: {
             where: { sector: sector as any },
@@ -624,28 +680,35 @@ app.get('/api/closings', async (req, res) => {
         },
         orderBy: [{ code: 'asc' }, { name: 'asc' }],
       }),
-      prisma.closing.findMany({
-        where: {
-          type: sector as any,
-          referencePeriod: { gte: monthStart, lt: nextMonthStart },
-        },
-      }),
-      prisma.departmentColumn.findMany({ where: { department: sector as any }, orderBy: { orderIndex: 'asc' } }),
+      queryClosingsBySectorAndRange(pool, prisma, sector, monthStart, nextMonthStart),
+      cachedDepartmentColumns(),
       cachedDistinctPeriods(),
+      getCachedBaseSectorUsers(sector as 'FISCAL' | 'DP'),
+      sector === 'DP' ? queryFiscalReinfMap(pool, prisma, monthStart, nextMonthStart) : Promise.resolve(new Map<string, any>()),
     ]);
 
-    const fiscalUsers = await getSectorResponsibleUsers(sector as 'FISCAL' | 'DP', companies);
+    if (closings.length === 0) {
+      await syncMonthClosingsAndReplicate(monthStart);
+      closings = await queryClosingsBySectorAndRange(pool, prisma, sector, monthStart, nextMonthStart);
+    } else {
+      void syncMonthClosingsAndReplicate(monthStart);
+    }
+
+    const configuredColumns = (allColumns || [])
+      .filter((col: any) => col.department === sector)
+      .sort((a: any, b: any) => (a.orderIndex ?? 0) - (b.orderIndex ?? 0));
+
+    const fiscalUsers = await getSectorResponsibleUsers(sector as 'FISCAL' | 'DP', companies, baseSectorUsers);
 
     const closingMap = new Map<string, any>(closings.map((c: any) => [c.companyId, c]));
     const activeColumns = configuredColumns.filter((col: any) => isColumnActive(col, monthStart));
     const progressColumns = configuredColumns.length ? activeColumns.filter((col: any) => col.countsProgress) : Object.keys(FISCAL_POPUPS).map(columnKey => ({ columnKey, inputType: 'POPUP' }));
     const replicatingCols = activeColumns.filter((col: any) => col.replicates);
 
-    // Garante que nenhuma empresa ativa fique sem registro de Closing em competências anteriores (ex: voltar para 09/2026 ou 08/2026)
-    // e retropreenche colunas permanentes de cadastro (replicates=true, como Mês Dissídio / Sindicato / Tipo Folha) quando ausentes no mês anterior
     const missingCompanies = companies.filter((c: any) => !closingMap.has(c.id));
     const companiesNeedingFallbackIds = new Set<string>(missingCompanies.map((c: any) => c.id));
-    if (replicatingCols.length > 0) {
+    // Só busca fallback de colunas permanentes em outras competências quando estiver visualizando mês anterior
+    if (replicatingCols.length > 0 && monthStart.getTime() < openLatest.getTime()) {
       for (const c of companies) {
         const cl = closingMap.get(c.id);
         if (!cl) continue;
@@ -662,14 +725,16 @@ app.get('/api/closings', async (req, res) => {
 
     const latestByCompany = new Map<string, Record<string, any>>();
     if (companiesNeedingFallbackIds.size > 0) {
-      const refClosings = await prisma.closing.findMany({
-        where: {
-          type: sector as any,
-          companyId: { in: Array.from(companiesNeedingFallbackIds) },
-        },
-        select: { companyId: true, referencePeriod: true, columnsData: true },
-        orderBy: { referencePeriod: 'desc' },
-      });
+      const refPeriods = monthStart.getTime() < openLatest.getTime()
+        ? [openLatest, prevMonthStart]
+        : [prevMonthStart];
+      const refClosings = await queryFallbackClosingsForPeriods(
+        pool,
+        prisma,
+        sector,
+        refPeriods,
+        Array.from(companiesNeedingFallbackIds)
+      );
       for (const rc of refClosings) {
         if (!rc.columnsData || typeof rc.columnsData !== 'object') continue;
         const prev = latestByCompany.get(rc.companyId) || {};
@@ -702,19 +767,20 @@ app.get('/api/closings', async (req, res) => {
         };
       });
       await prisma.closing.createMany({ data: toCreate, skipDuplicates: true });
-      const createdClosings = await prisma.closing.findMany({
-        where: {
-          type: sector as any,
-          companyId: { in: missingCompanies.map((c: any) => c.id) },
-          referencePeriod: { gte: monthStart, lt: nextMonthStart },
-        },
-      });
+      const createdClosings = await queryClosingsBySectorAndRange(
+        pool,
+        prisma,
+        sector,
+        monthStart,
+        nextMonthStart,
+        { companyIds: missingCompanies.map((c: any) => c.id) }
+      );
       for (const cl of createdClosings) closingMap.set(cl.companyId, cl);
     }
 
-    const fiscalReinfClosings = sector === 'DP' ? await prisma.closing.findMany({ where: { type: 'FISCAL', referencePeriod: { gte: monthStart, lt: nextMonthStart } }, select: { companyId: true, columnsData: true } }) : [];
-    const fiscalReinfMap = new Map<string, any>(fiscalReinfClosings.map((c: any) => [c.companyId, c.columnsData?.reinf || null]));
-    const reinfColumn = sector === 'DP' ? await prisma.departmentColumn.findFirst({ where: { department: 'FISCAL', OR: [{ columnKey: 'reinf' }, { name: 'Reinf' }, { name: 'REINF' }] } }) : null;
+    const reinfColumn = sector === 'DP'
+      ? (allColumns || []).find((col: any) => col.department === 'FISCAL' && (col.columnKey === 'reinf' || /^reinf$/i.test(col.name || ''))) || null
+      : null;
     const rows = companies.map((c: any) => {
       const closing = closingMap.get(c.id) || null;
       let columnsData = sanitizeColumnsData(closing?.columnsData);
@@ -834,10 +900,16 @@ app.put('/api/closings/:id/column', async (req, res) => {
     if(existing.type==='CUSHMAN')return res.status(400).json({error:'Use a edição autenticada da tela Cushman.'});
     if(existing.type==='CONTABIL')return await saveAccountingColumn(existing,columnKey,columnValue,res);
     if (!requireOpenPeriod(new Date(existing.referencePeriod), res)) return;
-    const closingCompany = await prisma.company.findUnique({where:{id:existing.companyId}});
+    const [closingCompany, allCols] = await Promise.all([
+      prisma.company.findUnique({ where: { id: existing.companyId } }),
+      cachedDepartmentColumns(),
+    ]);
     if (!closingCompany || !companyExitAllowsPeriod(closingCompany, new Date(existing.referencePeriod))) return res.status(403).json({error:'A empresa não tem obrigações nesta competência conforme sua saída.'});
 
-    const sectorColumns = await prisma.departmentColumn.findMany({ where: { department: existing.type } });
+    const configuredColumns = (allCols || [])
+      .filter((col: any) => col.department === existing.type)
+      .sort((a: any, b: any) => (a.orderIndex ?? 0) - (b.orderIndex ?? 0));
+    const sectorColumns = configuredColumns;
     const popupColumn = sectorColumns.find((col: any) => (resolveColumnKey(col) || col.id) === columnKey);
     if (existing.type === 'DP') {
       if (!popupColumn) return res.status(400).json({ error: 'Coluna DP não configurada.' });
@@ -856,7 +928,6 @@ app.put('/api/closings/:id/column', async (req, res) => {
       [columnKey]: existing.type === 'DP' && popupColumn?.inputType === 'PASSWORD' ? (encryptPassword(columnValue) || '') : columnValue,
     };
 
-    const configuredColumns = await prisma.departmentColumn.findMany({ where: { department: existing.type }, orderBy: { orderIndex: 'asc' } });
     const activeColumns = configuredColumns.filter((col: any) => isColumnActive(col, new Date(existing.referencePeriod)));
     const progressColumns = configuredColumns.length ? activeColumns.filter((col: any) => col.countsProgress) : Object.keys(FISCAL_POPUPS).map(columnKey => ({ columnKey, inputType: 'POPUP' }));
     const progress = calculateColumnProgress(progressColumns, updatedData, col => resolveColumnKey(col) || col.columnKey || col.id);
@@ -872,11 +943,7 @@ app.put('/api/closings/:id/column', async (req, res) => {
     });
 
     if (req.body.userId) {
-      const company = await prisma.company.findUnique({
-        where: { id: existing.companyId },
-        select: { code: true, name: true }
-      });
-      await logAction(
+      void logAction(
         req.body.userId,
         req.body.userEmail || '',
         req.body.userName || 'Sistema',
@@ -884,8 +951,8 @@ app.put('/api/closings/:id/column', async (req, res) => {
         existing.type,
         existing.companyId,
         {
-          companyCode: company?.code || null,
-          companyName: company?.name || null,
+          companyCode: closingCompany?.code || null,
+          companyName: closingCompany?.name || null,
           columnKey,
           oldValue: currentData[columnKey],
           newValue: columnValue,
@@ -902,7 +969,8 @@ app.put('/api/closings/:id/column', async (req, res) => {
         if (column.inputType === 'PASSWORD' && responseColumnsData[key]) responseColumnsData[key] = decryptPassword(responseColumnsData[key]);
       }
       if (popupColumn && /dissidio/i.test(popupColumn.name || '') && typeof columnValue === 'string') {
-        await prisma.company.update({
+        invalidateCompaniesCache();
+        void prisma.company.update({
           where: { id: existing.companyId },
           data: { dissidioMonthYear: columnValue.trim() || null },
         }).catch(() => {});
@@ -940,8 +1008,8 @@ app.put('/api/companies/:id/responsible', async (req, res) => {
       if (userId) await tx.companyResponsible.create({ data: { companyId: id, userId, sector: sector as any } });
     });
 
-    // Registra no Log de Auditoria
-    await logAction(
+    // Registra no Log de Auditoria em background
+    void logAction(
       actorId || req.body.userId || null,
       actorEmail || req.body.userEmail || null,
       actorName || req.body.userName || 'Sistema',
@@ -958,7 +1026,7 @@ app.put('/api/companies/:id/responsible', async (req, res) => {
       req.ip
     );
 
-    invalidateDashboardCache();
+    invalidateAllDataCaches();
     res.json({ success: true, message: 'Responsável atualizado com sucesso' });
   } catch (error) {
     console.error('Erro ao atualizar responsável:', error);
@@ -980,6 +1048,7 @@ app.put('/api/companies/:id/notes', async (req, res) => {
       },
     });
 
+    invalidateCompaniesCache();
     res.json({ success: true, company: updated });
   } catch (error) {
     console.error('Erro ao salvar observações:', error);
@@ -988,15 +1057,30 @@ app.put('/api/companies/:id/notes', async (req, res) => {
 });
 
 const dashboardCache = new Map<string, { timestamp: number; payload: any }>();
+const dashboardInFlight = new Map<string, Promise<any>>();
+let companiesCache: { ts: number; data: any[] } | null = null;
 let cachedPeriodsList: any[] | null = null;
 let cachedPeriodsTimestamp = 0;
 let cachedColsList: any[] | null = null;
 let cachedColsTimestamp = 0;
 
+function invalidateCompaniesCache() {
+  companiesCache = null;
+  invalidateCompanyQualityCache();
+}
+
 function invalidateDashboardCache() {
   dashboardCache.clear();
   cachedPeriodsList = null;
   cachedColsList = null;
+  invalidateAnalyticsCache();
+}
+
+function invalidateAllDataCaches() {
+  invalidateCompaniesCache();
+  invalidateDashboardCache();
+  invalidateSectorUsersCache();
+  invalidateAuthUserCache();
 }
 
 async function cachedDistinctPeriods(): Promise<any[]> {
@@ -1023,34 +1107,17 @@ async function cachedDepartmentColumns(): Promise<any[]> {
   return cachedColsList || [];
 }
 
-app.get('/api/dashboard', async (req, res) => {
-  try {
-    const monthStart = getTargetReferencePeriod(req.query);
-    if (!requireOpenPeriod(monthStart, res)) return;
+async function computeDashboardPayload(monthStart: Date, userId?: string): Promise<any> {
+  const cacheKey = `${monthStart.toISOString().slice(0, 7)}:${userId || 'all'}`;
+  const existingFlight = dashboardInFlight.get(cacheKey);
+  if (existingFlight) return existingFlight;
 
-    const rawUserId = req.query.userId;
-    const userId = Array.isArray(rawUserId) ? rawUserId[0] : rawUserId;
-    const cacheKey = `${monthStart.toISOString().slice(0, 7)}:${userId || 'all'}`;
-    const cached = dashboardCache.get(cacheKey);
-    const nowMs = Date.now();
-    if (cached && nowMs - cached.timestamp < 15_000) {
-      return res.json(cached.payload);
-    }
-
-    // Executa rotinas de sincronização em segundo plano para NÃO bloquear a resposta HTTP
-    void rolloverEngine.ensureAutomatic();
-    void accountingEngine.ensureAutomatic();
-    void syncMonthClosingsAndReplicate(monthStart);
-
+  const task = (async () => {
     const y = monthStart.getUTCFullYear();
     const m = monthStart.getUTCMonth();
     const nextMonthStart = new Date(Date.UTC(y, m + 1, 1));
-    const now = new Date();
+    const annualStart = new Date(Date.UTC(y, 0, 1));
 
-    // Inclui cadastros que ja possuem fechamento mensal nesta competencia,
-    // mesmo quando o legado nao informou a data de inicio da obrigacao.
-    // O mes da saida participa somente quando a empresa tem obrigacoes nele.
-    // O fechamento CONTABIL anual nao comprova participacao em todos os meses.
     let userFilter: any = {};
     if (userId) {
       const user = await prisma.user.findUnique({
@@ -1092,7 +1159,7 @@ app.get('/api/dashboard', async (req, res) => {
       activeWhere.AND.push(userFilter);
     }
 
-    const [companies, allColumns, distinctPeriods] = await Promise.all([
+    const [companies, allColumns, distinctPeriods, rawClosings] = await Promise.all([
       prisma.company.findMany({
         where: activeWhere,
         select: {
@@ -1117,21 +1184,12 @@ app.get('/api/dashboard', async (req, res) => {
       }),
       cachedDepartmentColumns(),
       cachedDistinctPeriods(),
+      queryClosingsForDashboard(pool, prisma, monthStart, nextMonthStart, annualStart),
     ]);
 
-    const companyIds = companies.map((c: any) => c.id);
+    const companyMap = new Map<string, any>(companies.map((c: any) => [c.id, c]));
     const totalCompanies = companies.length;
-
-    const closings = companyIds.length > 0 ? await prisma.closing.findMany({
-      where: {
-        companyId: { in: companyIds },
-        OR: [
-          { type: { not: 'CONTABIL' }, referencePeriod: { gte: monthStart, lt: nextMonthStart } },
-          { type: 'CONTABIL', referencePeriod: new Date(Date.UTC(y, 0, 1)) },
-        ],
-      },
-      select: { type: true, status: true, dashboardMetrics: true, columnsData: true, companyId: true, referencePeriod: true },
-    }) : [];
+    const closings = rawClosings.filter((c: any) => companyMap.has(c.companyId));
 
     const regimesMap: Record<string, number> = {};
     for (const c of companies) {
@@ -1140,11 +1198,9 @@ app.get('/api/dashboard', async (req, res) => {
       }
     }
 
-    // Movimentações no mês de competência selecionado
     const toItem = (c: any, date: Date) => ({ id: c.id, name: c.name, taxRegime: c.taxRegime, date });
     const byDate = (a: any, b: any) => new Date(a.date).getTime() - new Date(b.date).getTime();
 
-    // Movimentações baseadas no mês atual real, independente da competência visualizada
     const actualNow = new Date();
     const movementMonthStart = new Date(Date.UTC(actualNow.getUTCFullYear(), actualNow.getUTCMonth(), 1));
     const movementNextMonthStart = new Date(Date.UTC(actualNow.getUTCFullYear(), actualNow.getUTCMonth() + 1, 1));
@@ -1167,19 +1223,20 @@ app.get('/api/dashboard', async (req, res) => {
         .map((c: any) => toItem(c, c.exitDate)).sort(byDate),
     };
 
-    // Progresso por setor na competência
-
-
+    const openLatest = latestOpenPeriod();
     const progress = ALL_SECTORS.map((type) => {
       const list = closings.filter((c: any) => {
         if (c.type !== type || c.status === 'NOT_APPLICABLE') return false;
-        const comp = companies.find((comp: any) => comp.id === c.companyId);
+        const comp = companyMap.get(c.companyId);
         if (!comp) return false;
         const s = comp.activeSectors;
         if (!s || s === 'TODOS' || s === '') return true;
         return s.split(',').map((x: string) => x.trim().toUpperCase()).includes(type);
       });
       const sectorCols = (allColumns || []).filter((c: any) => c.department === type);
+      const progressColsForMonth = type === 'CONTABIL'
+        ? []
+        : sectorCols.filter((col: any) => col.countsProgress && isColumnActive(col, monthStart));
 
       let completed = 0;
       let inProgress = 0;
@@ -1187,37 +1244,27 @@ app.get('/api/dashboard', async (req, res) => {
       let completedFields = 0;
       let notApplicableCount = 0;
 
-      list.forEach((c: any) => {
+      for (const c of list) {
+        const comp = companyMap.get(c.companyId);
+        if (!comp) continue;
         const data = c.columnsData || {};
-        
-        // Calcular progresso de campos
+
         if (type === 'CONTABIL') {
-          // Use a engine oficial do Contábil que avalia todos os meses liberados e anuais
-          const comp = companies.find((comp: any) => comp.id === c.companyId);
-          if (!comp) return; // Se a empresa não existe na lista ativa, ignora
-          
-          const result = accountingProgress(comp, y, sectorCols, data, latestOpenPeriod());
+          const result = accountingProgress(comp, y, sectorCols, data, openLatest);
           totalFields += result.progressTotal;
           completedFields += result.progressDone;
-          
           if (result.calculatedStatus === 'COMPLETED') completed++;
           else if (result.calculatedStatus === 'IN_PROGRESS') inProgress++;
         } else {
-          const comp = companies.find((comp: any) => comp.id === c.companyId);
-          const effectiveData = type === 'FISCAL' ? applyFiscalRegimeRules(comp?.taxRegime, data) : data;
-          const activeCols = sectorCols.filter((col: any) => isColumnActive(col, new Date(c.referencePeriod)));
-          const progressCols = activeCols.filter((col: any) => col.countsProgress);
-          
-          const result = calculateColumnProgress(progressCols, effectiveData, (col: any) => resolveColumnKey(col) || col.columnKey || col.id);
-          
+          const effectiveData = type === 'FISCAL' ? applyFiscalRegimeRules(comp.taxRegime, data) : data;
+          const result = calculateColumnProgress(progressColsForMonth, effectiveData, (col: any) => resolveColumnKey(col) || col.columnKey || col.id);
           totalFields += result.progressTotal;
           completedFields += result.progressDone;
-
           if (result.calculatedStatus === 'COMPLETED') completed++;
           else if (result.calculatedStatus === 'IN_PROGRESS') inProgress++;
           else if (result.calculatedStatus === 'NOT_APPLICABLE') notApplicableCount++;
         }
-      });
+      }
 
       const total = list.length - notApplicableCount;
       return {
@@ -1279,6 +1326,38 @@ app.get('/api/dashboard', async (req, res) => {
     };
 
     dashboardCache.set(cacheKey, { timestamp: Date.now(), payload });
+    return payload;
+  })().finally(() => {
+    dashboardInFlight.delete(cacheKey);
+  });
+
+  dashboardInFlight.set(cacheKey, task);
+  return task;
+}
+
+app.get('/api/dashboard', async (req, res) => {
+  try {
+    const monthStart = getTargetReferencePeriod(req.query);
+    if (!requireOpenPeriod(monthStart, res)) return;
+
+    const rawUserId = req.query.userId;
+    const userId = Array.isArray(rawUserId) ? rawUserId[0] : rawUserId;
+    const cacheKey = `${monthStart.toISOString().slice(0, 7)}:${userId || 'all'}`;
+    const cached = dashboardCache.get(cacheKey);
+    const nowMs = Date.now();
+    if (cached && nowMs - cached.timestamp < 120_000) {
+      return res.json(cached.payload);
+    }
+    if (cached && nowMs - cached.timestamp < 600_000) {
+      // Stale-while-revalidate: retorna imediatamente e atualiza em segundo plano
+      void computeDashboardPayload(monthStart, userId as string | undefined).catch(() => {});
+      return res.json(cached.payload);
+    }
+
+    triggerBackgroundRolloverCheck();
+    void syncMonthClosingsAndReplicate(monthStart);
+
+    const payload = await computeDashboardPayload(monthStart, userId as string | undefined);
     res.json(payload);
   } catch (error) {
     console.error('Erro no dashboard:', error);
@@ -1431,33 +1510,43 @@ app.get('/api/cnpj/:cnpj', async (req, res) => {
   }
 });
 
-// Lista todas as empresas com dados completos e senhas descriptografadas para visualização segura
-app.get('/api/companies', async (req, res) => {
-  try {
-    const companies = await prisma.company.findMany({
-      include: {
-        responsibles: {
-          select: {
-            id: true,
-            sector: true,
-            userId: true,
-            user: { select: { id: true, name: true, email: true, role: true } },
-          },
+async function fetchFormattedCompanies(): Promise<any[]> {
+  const now = Date.now();
+  if (companiesCache && now - companiesCache.ts < 120_000) {
+    return companiesCache.data;
+  }
+  const companies = await prisma.company.findMany({
+    omit: { legacyData: true },
+    include: {
+      responsibles: {
+        select: {
+          id: true,
+          sector: true,
+          userId: true,
+          user: { select: { id: true, name: true, email: true, role: true } },
         },
       },
-      orderBy: [{ code: 'asc' }, { name: 'asc' }],
-    });
+    },
+    orderBy: [{ code: 'asc' }, { name: 'asc' }],
+  });
 
-    const formatted = companies.map((c: any) => ({
-      ...c,
-      code: formatCompanyCode(c.code) || null,
-      certificatePasswordDecrypted: decryptPassword(c.certificatePassword),
-      ginfessPasswordDecrypted: decryptPassword(c.ginfessPassword),
-      gissOnlinePasswordDecrypted: decryptPassword(c.gissOnlinePassword),
-      sdPasswordDecrypted: decryptPassword(c.sdPassword),
-      nfPasswordDecrypted: decryptPassword(c.nfPassword),
-    }));
+  const formatted = companies.map((c: any) => ({
+    ...c,
+    code: formatCompanyCode(c.code) || null,
+    certificatePasswordDecrypted: decryptPassword(c.certificatePassword),
+    ginfessPasswordDecrypted: decryptPassword(c.ginfessPassword),
+    gissOnlinePasswordDecrypted: decryptPassword(c.gissOnlinePassword),
+    sdPasswordDecrypted: decryptPassword(c.sdPassword),
+    nfPasswordDecrypted: decryptPassword(c.nfPassword),
+  }));
+  companiesCache = { ts: Date.now(), data: formatted };
+  return formatted;
+}
 
+// Lista todas as empresas com dados completos e senhas descriptografadas para visualização segura
+app.get('/api/companies', async (_req, res) => {
+  try {
+    const formatted = await fetchFormattedCompanies();
     res.json(formatted);
   } catch (error) {
     console.error('Erro ao buscar empresas:', error);
@@ -1590,6 +1679,7 @@ app.post('/api/companies', async (req, res) => {
       },
     });
 
+    invalidateAllDataCaches();
     res.status(201).json({
       ...newCompany,
       certificatePasswordDecrypted: certificatePassword || null,
@@ -1775,7 +1865,7 @@ app.put('/api/companies/:id', async (req, res) => {
     });
 
     if (req.body.userId) {
-      await logAction(
+      void logAction(
         req.body.userId,
         req.body.userEmail || '',
         req.body.userName || 'Sistema',
@@ -1791,6 +1881,7 @@ app.put('/api/companies/:id', async (req, res) => {
       );
     }
 
+    invalidateAllDataCaches();
     res.json({
       ...updated,
       certificatePasswordDecrypted: decryptPassword(updated.certificatePassword),
@@ -1810,6 +1901,7 @@ app.delete('/api/companies/:id', async (req, res) => {
   try {
     const { id } = req.params;
     await prisma.company.delete({ where: { id } });
+    invalidateAllDataCaches();
     res.json({ success: true, message: 'Empresa excluída com sucesso' });
   } catch (error) {
     console.error('Erro ao excluir empresa:', error);
@@ -1843,6 +1935,7 @@ app.post('/api/companies/:id/responsibles', async (req, res) => {
       },
     });
 
+    invalidateAllDataCaches();
     res.status(201).json(assigned);
   } catch (error) {
     console.error(error);
@@ -1972,6 +2065,7 @@ app.post('/api/users', async (req, res) => {
       },
     });
 
+    invalidateAllDataCaches();
     const { password: _, ...userSafe } = user;
     res.status(201).json(userSafe);
   } catch (error) {
@@ -2082,6 +2176,7 @@ app.put('/api/users/:id', async (req, res) => {
       },
     });
 
+    invalidateAllDataCaches();
     const { password: _, ...userSafe } = updatedUser;
     res.json(userSafe);
   } catch (error) {
@@ -2290,6 +2385,7 @@ app.post('/api/users/:id/offboard', async (req, res) => {
       clientIp
     );
 
+    invalidateAllDataCaches();
     res.json({
       success: true,
       message: 'Colaborador marcado como desligado e empresas reatribuídas com sucesso.',
@@ -2321,7 +2417,7 @@ app.post('/api/users/:id/rehire', async (req, res) => {
     });
 
     const actorUser = actorId ? await prisma.user.findUnique({ where: { id: actorId } }) : null;
-    await logAction(
+    void logAction(
       actorId || null,
       actorUser?.email || '',
       actorUser?.name || 'Administrador',
@@ -2335,6 +2431,7 @@ app.post('/api/users/:id/rehire', async (req, res) => {
       clientIp
     );
 
+    invalidateAllDataCaches();
     res.json({ success: true, message: 'Usuário reativado com sucesso.' });
   } catch (error) {
     console.error('Erro ao reativar usuário:', error);
@@ -2358,6 +2455,7 @@ app.delete('/api/users/:id', async (req, res) => {
     }
 
     await prisma.user.delete({ where: { id } });
+    invalidateAllDataCaches();
     res.json({ success: true, message: 'Usuário excluído com sucesso' });
   } catch (error) {
     console.error('Erro ao excluir usuário:', error);
@@ -2515,15 +2613,16 @@ app.post('/api/columns/reorder', async (req, res) => {
       return res.status(400).json({ error: 'columnIds deve ser um array' });
     }
 
-    for (let idx = 0; idx < columnIds.length; idx++) {
-      const id = columnIds[idx];
-      if (typeof id === 'string' && id) {
-        await prisma.departmentColumn.update({
-          where: { id },
-          data: { orderIndex: idx + 1 },
-        }).catch((e: any) => console.warn(`Falha ao reordenar coluna ${id}:`, e.message));
-      }
-    }
+    await Promise.all(
+      columnIds.map((id: any, idx: number) =>
+        typeof id === 'string' && id
+          ? prisma.departmentColumn.update({
+              where: { id },
+              data: { orderIndex: idx + 1 },
+            }).catch((e: any) => console.warn(`Falha ao reordenar coluna ${id}:`, e.message))
+          : Promise.resolve()
+      )
+    );
 
     invalidateDashboardCache();
     res.json({ success: true });
@@ -2536,10 +2635,27 @@ app.post('/api/columns/reorder', async (req, res) => {
 async function runAutomaticRollover() {
   try {
     await syncLatestCompetenceFromDb();
+    lastCompetenceBgSync = Date.now();
     const result = await rolloverEngine.ensureAutomatic();
     await accountingEngine.ensureAutomatic();
     if (result.createdCount || result.replicatedColsCount) console.log('[Competências automáticas]', result);
   } catch(error) { console.error('Falha na abertura automática; será tentada novamente:', error); }
+}
+
+async function warmServerCaches() {
+  try {
+    await syncLatestCompetenceFromDb();
+    lastCompetenceBgSync = Date.now();
+    const openPeriod = latestOpenPeriod();
+    await Promise.all([
+      cachedDepartmentColumns(),
+      cachedDistinctPeriods(),
+      fetchFormattedCompanies(),
+      computeDashboardPayload(openPeriod),
+    ]);
+  } catch (err) {
+    console.warn('Warmup inicial de cache ignorado:', err);
+  }
 }
 
 const distPath = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'dist');
@@ -2581,7 +2697,7 @@ app.use(['/api', '/sistema/api'], (req, res) => {
 const rawPort = process.env.WEBSITES_PORT || process.env.PORT || process.env.API_PORT;
 const apiPort = Number(rawPort && Number(rawPort) !== 33306 ? rawPort : 8080);
 app.listen(apiPort, '0.0.0.0', () => {
-  void runAutomaticRollover();
-  setInterval(() => { void runAutomaticRollover(); }, 60_000).unref();
+  void warmServerCaches().then(() => runAutomaticRollover());
+  setInterval(() => { void runAutomaticRollover(); }, 10 * 60_000).unref();
   console.log(`API Server running on port ${apiPort}`);
 });

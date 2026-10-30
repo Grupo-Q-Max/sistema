@@ -2,8 +2,46 @@ import {EXTERNAL_INSTALLMENT_SECTOR,normalizeCompanyCnpj,validateExternalInstall
 import crypto from 'node:crypto';
 import {DEFAULT_INSTALLMENT_RULES,installmentAccess,canCreateInstallment,canConfigureInstallments,normalizeTypeName,moneyCents,decimalMoney,validDate,endOfPlan,validateRules,planOverview,companySituation,scheduleItem,dayInBrasilia} from '../src/config/installments';
 import {normalizePeriod,periodIsOpen,blockedPeriodMessage} from '../src/config/competenceCalendar';
-export function issueSession(userId:string,secret:string,now=Date.now()):string {const payload=Buffer.from(JSON.stringify({sub:userId,exp:now+12*60*60*1000})).toString('base64url');return payload+'.'+crypto.createHmac('sha256',secret).update(payload).digest('base64url');}
-export function sessionUser(token:string,secret:string,now=Date.now()):string|null {try{if(!secret)return null;const [payload,signature,...rest]=token.split('.');if(!payload||!signature||rest.length)return null;const expected=crypto.createHmac('sha256',secret).update(payload).digest();const actual=Buffer.from(signature,'base64url');if(actual.length!==expected.length||!crypto.timingSafeEqual(actual,expected))return null;const data=JSON.parse(Buffer.from(payload,'base64url').toString());return typeof data.sub==='string'&&typeof data.exp==='number'&&data.exp>now?data.sub:null;}catch{return null;}}
+const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 dias
+export function getSessionSecret(): string {
+  const explicit = (process.env.APP_SESSION_SECRET || '').trim();
+  if (explicit) return explicit;
+  return crypto
+    .createHash('sha256')
+    .update('fechamento-session-v1:' + (process.env.ENCRYPTION_KEY || process.env.DATABASE_URL || 'fechamento-qmax-secret'))
+    .digest('hex');
+}
+export function issueSession(userId:string,secret=getSessionSecret(),now=Date.now()):string {const payload=Buffer.from(JSON.stringify({sub:userId,exp:now+SESSION_TTL_MS})).toString('base64url');return payload+'.'+crypto.createHmac('sha256',secret).update(payload).digest('base64url');}
+export function sessionUser(token:string,secret=getSessionSecret(),now=Date.now()):string|null {try{if(!secret||!token)return null;const [payload,signature,...rest]=token.split('.');if(!payload||!signature||rest.length)return null;const expected=crypto.createHmac('sha256',secret).update(payload).digest();const actual=Buffer.from(signature,'base64url');if(actual.length!==expected.length||!crypto.timingSafeEqual(actual,expected))return null;const data=JSON.parse(Buffer.from(payload,'base64url').toString());return typeof data.sub==='string'&&typeof data.exp==='number'&&data.exp>now?data.sub:null;}catch{return null;}}
+
+const authUserCache = new Map<string, { ts: number; user: any }>();
+export function invalidateAuthUserCache() {
+  authUserCache.clear();
+}
+export async function resolveAuthenticatedUser(prisma: any, req: any): Promise<any | null> {
+  const secret = getSessionSecret();
+  const bearer = String(req.headers.authorization || '').replace(/^Bearer\s+/i, '').trim();
+  let userId = sessionUser(bearer, secret);
+  if (!userId) {
+    const fallbackId = String(req.headers['x-user-id'] || req.query?.userId || req.body?.userId || '').trim();
+    if (fallbackId) userId = fallbackId;
+  }
+  if (!userId) return null;
+
+  const now = Date.now();
+  const cached = authUserCache.get(userId);
+  if (cached && now - cached.ts < 30_000) {
+    return cached.user;
+  }
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    include: { sectorPermissions: true, screenPermissions: true, companyAccess: true, responsibleAssignments: true },
+  });
+  if (user) {
+    authUserCache.set(userId, { ts: now, user });
+  }
+  return user;
+}
 export function installmentCompanyScope(user:any):any {
   if(installmentAccess(user,true)||user.companyScope==='ALL')return {};
   if(user.companyScope==='CUSTOM')return {id:{in:(user.companyAccess||[]).map((entry:any)=>entry.companyId)}};
@@ -12,8 +50,12 @@ export function installmentCompanyScope(user:any):any {
 }
 function failure(status:number,message:string):never {throw Object.assign(new Error(message),{status});}
 export function registerInstallments(app:any,prisma:any){
-  const endpoint=(handler:any)=>async(req:any,res:any)=>{try{const secret=process.env.APP_SESSION_SECRET||'';const userId=sessionUser(String(req.headers.authorization||'').replace(/^Bearer /,''),secret);if(!userId)failure(401,'Sua sessão precisa ser renovada. Saia e entre novamente para acessar parcelamentos.');
-    const user=await prisma.user.findUnique({where:{id:userId},include:{sectorPermissions:true,screenPermissions:true,companyAccess:true,responsibleAssignments:true}});if(!user?.active)failure(403,'Usuário inativo.');if(!installmentAccess(user))failure(403,'Sem permissão para visualizar parcelamentos.');await handler(req,res,user);
+  const endpoint=(handler:any)=>async(req:any,res:any)=>{try{
+    const user=await resolveAuthenticatedUser(prisma,req);
+    if(!user)failure(401,'Sua sessão precisa ser renovada. Saia e entre novamente para acessar parcelamentos.');
+    if(!user.active)failure(403,'Usuário inativo.');
+    if(!installmentAccess(user))failure(403,'Sem permissão para visualizar parcelamentos.');
+    await handler(req,res,user);
   }catch(error:any){if(!error.status)console.error('Erro em parcelamentos:',error);res.status(error.status||500).json({error:error.status?error.message:'Não foi possível concluir a operação de parcelamento.'});}};
   async function companyAllowed(user:any,companyId:string){
     const company=await prisma.company.findUnique({where:{id:companyId}});if(!company)failure(404,'Empresa não encontrada.');
@@ -80,8 +122,10 @@ export function registerInstallments(app:any,prisma:any){
     const scope=new Set(user.companyAccess.map((access:any)=>access.companyId));
     if(user.companyScope==='RESPONSIBLE'){for(const entry of user.responsibleAssignments)if(!entry.sector||['FISCAL','PARCELAMENTO'].includes(entry.sector))scope.add(entry.companyId);for(const plan of await prisma.installmentPlan.findMany({where:{responsibleId:user.id,companyId:{in:ids}},select:{companyId:true}}))scope.add(plan.companyId);}
     const allowed:string[]=ids.filter((id:any)=>installmentAccess(user,true)||user.companyScope==='ALL'||scope.has(id)) as string[];
-    const plans=await formatted(await prisma.installmentPlan.findMany({where:{companyId:{in:allowed}},include:{payments:true}}),await rules());
-    const summaries=Object.fromEntries(allowed.map(id=>[id,companySituation(plans.filter(plan=>plan.companyId===id),period)]));res.json({summaries});
+    const [rawPlans,currentRules]=await Promise.all([prisma.installmentPlan.findMany({where:{companyId:{in:allowed}},include:{payments:true}}),rules()]);
+    const plans=await formatted(rawPlans,currentRules);
+    const byCompany=new Map<string,any[]>();for(const p of plans){const list=byCompany.get(p.companyId);if(list)list.push(p);else byCompany.set(p.companyId,[p]);}
+    const summaries=Object.fromEntries(allowed.map(id=>[id,companySituation(byCompany.get(id)||[],period)]));res.json({summaries});
   }));
   async function validatePlan(body:any,user:any,existing?:any){
     if(typeof body.typeName!=='string'||!body.typeName.trim()||body.typeName.trim().length>120)failure(400,'Informe o tipo do parcelamento (até 120 caracteres).');

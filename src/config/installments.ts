@@ -4,7 +4,13 @@ export const DEFAULT_INSTALLMENT_RULES:InstallmentRules={lateMode:'MONTH_TURN',l
 export function installmentAccess(user:any,edit=false):boolean {if(!user)return false;if(['ADMIN','SOCIO'].includes(user.role))return true;const permission=user.sectorPermissions?.find((item:any)=>item.sector==='PARCELAMENTO');return edit?permission?.access==='EDIT':['EDIT','VIEW'].includes(permission?.access);}
 export function canCreateInstallment(user:any):boolean {return installmentAccess(user,true)&&(['ADMIN','SOCIO'].includes(user.role)||user.screenPermissions?.some((permission:any)=>permission.screen==='installments-create'&&permission.allowed));}
 export function canConfigureInstallments(user:any):boolean {return installmentAccess(user,true)&&(['ADMIN','SOCIO'].includes(user.role)||user.screenPermissions?.some((permission:any)=>permission.screen==='settings-columns'&&permission.allowed));}
-export function installmentHeaders(user:any):Record<string,string> {return {'Content-Type':'application/json',...(user?.sessionToken?{Authorization:`Bearer ${user.sessionToken}`}:{})};}
+export function installmentHeaders(user:any):Record<string,string> {
+  return {
+    'Content-Type':'application/json',
+    ...(user?.sessionToken ? { Authorization:`Bearer ${user.sessionToken}` } : {}),
+    ...(user?.id ? { 'X-User-Id': String(user.id) } : {}),
+  };
+}
 export function normalizeTypeName(name:string):string{return name.trim().replace(/\s+/g,' ').toLocaleLowerCase('pt-BR');}
 export function moneyCents(value:any):number|null {const text=String(value??'').trim();if(!/^\d+(?:\.\d{1,2})?$/.test(text))return null;const [whole,fraction='']=text.split('.');const cents=Number(whole)*100+Number(fraction.padEnd(2,'0'));return Number.isSafeInteger(cents)&&cents>0&&cents<=99999999999999?cents:null;}
 export function decimalMoney(cents:number):string{return (cents/100).toFixed(2);}

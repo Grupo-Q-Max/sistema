@@ -5,6 +5,7 @@ import { isColumnActive, isColumnComplete } from '../src/config/columnVisibility
 import { resolveColumnKey } from '../src/config/payrollColumns';
 import { FISCAL_POPUPS } from '../src/config/fiscalPopups';
 import { applyFiscalRegimeRules } from '../src/config/fiscalRegimeRules';
+import { queryClosingsByRangeAllSectors } from './cleanClosingsSql';
 
 const SECTORS = ['FISCAL', 'PARCELAMENTO', 'DP', 'CUSHMAN'];
 const owns = (object: Record<string, any>, key: string) => Object.prototype.hasOwnProperty.call(object, key);
@@ -32,7 +33,7 @@ function closingStatus(columns: any[], data: Record<string, any>, period: Date):
   if (tracked.length && done === tracked.length) return 'COMPLETED';
   return done || tracked.some(column => ['PENDENCIA','PENDÊNCIA'].includes(data[resolveColumnKey(column) || column.id]?.status)) ? 'IN_PROGRESS' : 'PENDING';
 }
-export function createRolloverEngine(prisma: any, now: () => Date = () => new Date()) {
+export function createRolloverEngine(prisma: any, now: () => Date = () => new Date(), pool?: any) {
   let queue: Promise<any> = Promise.resolve();
   let automaticRun: Promise<any> | null = null;
   const syncedCache = new Map<string, number>();
@@ -51,17 +52,17 @@ export function createRolloverEngine(prisma: any, now: () => Date = () => new Da
     if (!force && !periodIsOpen(monthStart, now())) throw new Error('Competência ainda não liberada.');
     const nextMonthStart = new Date(Date.UTC(monthStart.getUTCFullYear(), monthStart.getUTCMonth() + 1, 1));
     const prevMonthStart = new Date(Date.UTC(monthStart.getUTCFullYear(), monthStart.getUTCMonth() - 1, 1));
-    const companies = await prisma.company.findMany({ where: { AND:[externalCompaniesExcluded,companyExitWhere(monthStart)], obligationStartDate: { lt: nextMonthStart } }, select: {id:true,activeSectors:true,taxRegime:true} });
-    if (!companies.length) return {createdCount:0,replicatedColsCount:0};
-    const companyIds = companies.map((company:any)=>company.id);
-    const [definitions, existing, previous] = await Promise.all([
+    const [companies, definitions, existing, previous] = await Promise.all([
+      prisma.company.findMany({ where: { AND:[externalCompaniesExcluded,companyExitWhere(monthStart)], obligationStartDate: { lt: nextMonthStart } }, select: {id:true,activeSectors:true,taxRegime:true} }),
       prisma.departmentColumn.findMany(),
-      prisma.closing.findMany({where:{companyId:{in:companyIds},referencePeriod:{gte:monthStart,lt:nextMonthStart}}}),
-      prisma.closing.findMany({where:{companyId:{in:companyIds},referencePeriod:{gte:prevMonthStart,lt:monthStart}}}),
+      queryClosingsByRangeAllSectors(pool, prisma, monthStart, nextMonthStart),
+      queryClosingsByRangeAllSectors(pool, prisma, prevMonthStart, monthStart),
     ]);
+    if (!companies.length) return {createdCount:0,replicatedColsCount:0};
     const current = new Map<string, any>(existing.map((row:any)=>[`${row.companyId}:${row.type}`,row]));
     const sources = new Map<string, any>(previous.map((row:any)=>[`${row.companyId}:${row.type}`,row]));
     const create: any[] = [];
+    const pendingUpdates: Array<{ destination: any; copy: Record<string, any>; copiedKeysCount: number; sector: string; taxRegime: any; columns: any[] }> = [];
     let replicatedColsCount = 0;
     for (const company of companies) for (const sector of SECTORS) {
       const enabled = !company.activeSectors || company.activeSectors === 'TODOS' || company.activeSectors.split(',').map((item:string)=>item.trim()).includes(sector);
@@ -75,22 +76,40 @@ export function createRolloverEngine(prisma: any, now: () => Date = () => new Da
       const copy = replicatedData(columns, source?.columnsData || {}, destination?.columnsData || {}, monthStart);
       const copiedKeys = Object.keys(copy);
       if (destination && !copiedKeys.length) continue;
-      let data = {...(destination?.columnsData || {}),...copy};
-      if (sector === 'FISCAL') {
-        data = applyFiscalRegimeRules(company.taxRegime, data);
-      }
-      const dashboardMetrics = {...(destination?.dashboardMetrics || {})};
-      if (sector === 'DP' && owns(copy,'dp_qtde_funcionarios')) dashboardMetrics.employees = Number(copy.dp_qtde_funcionarios) || 0;
-      const update = {columnsData:data,status:closingStatus(columns,data,monthStart),dashboardMetrics};
       if (destination) {
-        // Apenas atualiza se realmente houve dados copiados novos
         if (copiedKeys.length > 0) {
-          const result = await prisma.closing.updateMany({where:{id:destination.id,updatedAt:destination.updatedAt},data:update});
-          if (result.count) replicatedColsCount += copiedKeys.length;
+          pendingUpdates.push({ destination, copy, copiedKeysCount: copiedKeys.length, sector, taxRegime: company.taxRegime, columns });
         }
       } else {
-        create.push({companyId:company.id,type:sector,referencePeriod:monthStart,...update});
+        let data = { ...copy };
+        if (sector === 'FISCAL') data = applyFiscalRegimeRules(company.taxRegime, data);
+        const dashboardMetrics: Record<string, any> = {};
+        if (sector === 'DP' && owns(copy,'dp_qtde_funcionarios')) dashboardMetrics.employees = Number(copy.dp_qtde_funcionarios) || 0;
+        create.push({companyId:company.id,type:sector,referencePeriod:monthStart,columnsData:data,status:closingStatus(columns,data,monthStart),dashboardMetrics});
         replicatedColsCount += copiedKeys.length;
+      }
+    }
+    if (pendingUpdates.length > 0) {
+      const fullRows = await prisma.closing.findMany({
+        where: { id: { in: pendingUpdates.map(u => u.destination.id) } },
+        select: { id: true, columnsData: true, dashboardMetrics: true, updatedAt: true },
+      });
+      const fullById = new Map<string, any>(fullRows.map((r: any) => [r.id, r]));
+      const BATCH = 10;
+      for (let i = 0; i < pendingUpdates.length; i += BATCH) {
+        const slice = pendingUpdates.slice(i, i + BATCH);
+        await Promise.all(slice.map(async (u) => {
+          const full = fullById.get(u.destination.id) || u.destination;
+          let data = { ...((full.columnsData as Record<string, any>) || {}), ...u.copy };
+          if (u.sector === 'FISCAL') data = applyFiscalRegimeRules(u.taxRegime, data);
+          const dashboardMetrics = { ...(full.dashboardMetrics || {}) };
+          if (u.sector === 'DP' && owns(u.copy, 'dp_qtde_funcionarios')) dashboardMetrics.employees = Number(u.copy.dp_qtde_funcionarios) || 0;
+          const upd = await prisma.closing.updateMany({
+            where: { id: u.destination.id, updatedAt: full.updatedAt },
+            data: { columnsData: data, status: closingStatus(u.columns, data, monthStart), dashboardMetrics },
+          });
+          if (upd.count) replicatedColsCount += u.copiedKeysCount;
+        }));
       }
     }
     const result = create.length ? await prisma.closing.createMany({data:create,skipDuplicates:true}) : {count:0};

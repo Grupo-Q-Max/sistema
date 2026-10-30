@@ -40,10 +40,23 @@ const bump = (map: Map<string, number>, key: string | null | undefined, fallback
   map.set(k, (map.get(k) || 0) + 1);
 };
 
+const analyticsCache = new Map<string, { ts: number; payload: any }>();
+export function invalidateAnalyticsCache() {
+  analyticsCache.clear();
+}
+
 export function registerAnalytics(app: any, prisma: any) {
   app.get('/api/analytics', async (req: any, res: any) => {
     try {
       const monthsBack = Math.min(Math.max(Number(req.query.months) || 12, 3), 36);
+      const rawUserId = req.query.userId;
+      const userId = Array.isArray(rawUserId) ? rawUserId[0] : rawUserId;
+      const cacheKey = `${monthsBack}:${userId || 'all'}`;
+      const cached = analyticsCache.get(cacheKey);
+      if (cached && Date.now() - cached.ts < 60_000) {
+        return res.json(cached.payload);
+      }
+
       const last = latestOpenPeriod();
       const lastY = last.getUTCFullYear();
       const lastM = last.getUTCMonth();
@@ -51,8 +64,6 @@ export function registerAnalytics(app: any, prisma: any) {
       const rangeStart = periods[0];
       const rangeEnd = monthStartUTC(lastY, lastM + 1);
 
-      const rawUserId = req.query.userId;
-      const userId = Array.isArray(rawUserId) ? rawUserId[0] : rawUserId;
       let userFilter: any = {};
       if (userId) {
         const user = await prisma.user.findUnique({ where: { id: userId }, include: { companyAccess: true } });
@@ -225,7 +236,7 @@ export function registerAnalytics(app: any, prisma: any) {
       const prevPoint = timeline[timeline.length - 2] || lastPoint;
       const yearAgo = timeline.length >= 13 ? timeline[timeline.length - 13] : first;
 
-      res.json({
+      const payload = {
         generatedAt: now.toISOString(),
         referencePeriod: label(last),
         months: monthsBack,
@@ -257,7 +268,10 @@ export function registerAnalytics(app: any, prisma: any) {
         certificates: {...cert, types: topEntries(certTypes, 6), expirations: expirationSeries},
         proxies: proxy,
         installments: [...planStatus.entries()].map(([status, v]) => ({status, ...v})),
-      });
+      };
+
+      analyticsCache.set(cacheKey, { ts: Date.now(), payload });
+      res.json(payload);
     } catch (error) {
       console.error('Erro ao gerar analytics:', error);
       res.status(500).json({error: 'Erro ao gerar os gráficos'});

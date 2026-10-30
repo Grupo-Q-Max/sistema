@@ -1,4 +1,4 @@
-import { canConfigureInstallments } from '../config/installments';
+import { canConfigureInstallments, installmentHeaders } from '../config/installments';
 import { useState, useEffect, useRef } from 'react';
 import {
   LayoutDashboard,
@@ -27,6 +27,8 @@ import './Sidebar.css';
 import './CompanyQuality.css';
 import { hasSectorAccess } from './ClosingSectorTabs';
 import { API } from '../api';
+
+let cachedQualitySummary: { count: number; ts: number } | null = null;
 
 interface SidebarProps {
   currentView: string;
@@ -109,14 +111,21 @@ export function Sidebar({ currentView, onNavigate, currentUser, onLogout }: Side
     return perm ? perm.allowed : false;
   };
 
-  const [qualityCount,setQualityCount]=useState(0);
+  const [qualityCount,setQualityCount]=useState(()=>cachedQualitySummary?.count||0);
   useEffect(()=>{
-    if(!isPrivileged||!currentUser?.sessionToken)return;
+    if(!isPrivileged||(!currentUser?.sessionToken&&!currentUser?.id))return;
     const controller=new AbortController();
-    const refresh=()=>fetch(`${API}/api/admin/company-quality?summary=1`,{headers:{Authorization:`Bearer ${currentUser.sessionToken}`},signal:controller.signal}).then(async response=>{if(response.ok){const data=await response.json();setQualityCount(data.summary?.affected||0);}}).catch(()=>{});
-    void refresh();const timer=window.setInterval(()=>void refresh(),60000);
+    const refresh=(force=false)=>{
+      if(!force&&cachedQualitySummary&&Date.now()-cachedQualitySummary.ts<60_000){
+        setQualityCount(cachedQualitySummary.count);
+        return;
+      }
+      fetch(`${API}/api/admin/company-quality?summary=1`,{headers:installmentHeaders(currentUser),signal:controller.signal}).then(async response=>{if(response.ok){const data=await response.json();const next=data.summary?.affected||0;cachedQualitySummary={count:next,ts:Date.now()};setQualityCount(next);}}).catch(()=>{});
+    };
+    refresh(currentView==='company-quality');
+    const timer=window.setInterval(()=>refresh(true),60000);
     return()=>{controller.abort();window.clearInterval(timer);};
-  },[isPrivileged,currentUser?.sessionToken,currentView]);
+  },[isPrivileged,currentUser?.sessionToken,currentUser?.id,currentView]);
   const showDashboard = true; // Exibe para todos, pois os dados são filtrados no backend
   const showClosings = canAccessScreen('closings');
   const closingItems = [

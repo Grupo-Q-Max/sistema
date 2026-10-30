@@ -74,7 +74,24 @@ function App() {
     setCurrentView(target);
   };
 
-  // Restaura sessão se existir
+  // Pré-carrega os módulos principais em segundo plano logo após autenticar (transição instantânea de telas)
+  const preloadMainViews = () => {
+    const schedule = typeof window !== 'undefined' && 'requestIdleCallback' in window
+      ? (cb: () => void) => (window as any).requestIdleCallback(cb, { timeout: 1500 })
+      : (cb: () => void) => window.setTimeout(cb, 250);
+    schedule(() => {
+      void import('./components/Dashboard');
+      void import('./components/Closings');
+      void import('./components/PayrollClosings');
+      void import('./components/AccountingClosings');
+      void import('./components/CushmanClosings');
+      void import('./components/Companies');
+      void import('./components/Certificates');
+      void import('./components/Analytics');
+    });
+  };
+
+  // Restaura sessão se existir e renova token silenciosamente em segundo plano
   useEffect(() => {
     const saved = localStorage.getItem('fechamento_user');
     if (saved) {
@@ -82,6 +99,34 @@ function App() {
         const user = JSON.parse(saved);
         setCurrentUser(user);
         setCurrentView(getDefaultView(user));
+        preloadMainViews();
+        if (user?.id) {
+          fetch(`${API}/api/session/refresh`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              ...(user.sessionToken ? { Authorization: `Bearer ${user.sessionToken}` } : {}),
+              'X-User-Id': String(user.id),
+            },
+            body: JSON.stringify({ userId: user.id }),
+          })
+            .then(async (res) => {
+              if (res.status === 403 || res.status === 404) {
+                localStorage.removeItem('fechamento_user');
+                setCurrentUser(null);
+                setCurrentView('login');
+                return;
+              }
+              if (res.ok) {
+                const refreshed = await res.json();
+                setCurrentUser(refreshed);
+                localStorage.setItem('fechamento_user', JSON.stringify(refreshed));
+              }
+            })
+            .catch(() => {
+              // Mantém sessão local se estiver momentaneamente offline
+            });
+        }
       } catch {
         localStorage.removeItem('fechamento_user');
       }
@@ -112,6 +157,7 @@ function App() {
       setCurrentUser(data);
       localStorage.setItem('fechamento_user', JSON.stringify(data));
       setCurrentView(getDefaultView(data));
+      preloadMainViews();
     } catch (err) {
       console.error(err);
       setErrorMsg('Servidor offline ou inacessível');
