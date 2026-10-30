@@ -4,6 +4,7 @@ import { latestOpenPeriod, normalizePeriod, periodIsOpen } from '../src/config/c
 import { isColumnActive, isColumnComplete } from '../src/config/columnVisibility';
 import { resolveColumnKey } from '../src/config/payrollColumns';
 import { FISCAL_POPUPS } from '../src/config/fiscalPopups';
+import { applyFiscalRegimeRules } from '../src/config/fiscalRegimeRules';
 
 const SECTORS = ['FISCAL', 'PARCELAMENTO', 'DP', 'CUSHMAN'];
 const owns = (object: Record<string, any>, key: string) => Object.prototype.hasOwnProperty.call(object, key);
@@ -50,7 +51,7 @@ export function createRolloverEngine(prisma: any, now: () => Date = () => new Da
     if (!force && !periodIsOpen(monthStart, now())) throw new Error('Competência ainda não liberada.');
     const nextMonthStart = new Date(Date.UTC(monthStart.getUTCFullYear(), monthStart.getUTCMonth() + 1, 1));
     const prevMonthStart = new Date(Date.UTC(monthStart.getUTCFullYear(), monthStart.getUTCMonth() - 1, 1));
-    const companies = await prisma.company.findMany({ where: { AND:[externalCompaniesExcluded,companyExitWhere(monthStart)], obligationStartDate: { lt: nextMonthStart } }, select: {id:true,activeSectors:true} });
+    const companies = await prisma.company.findMany({ where: { AND:[externalCompaniesExcluded,companyExitWhere(monthStart)], obligationStartDate: { lt: nextMonthStart } }, select: {id:true,activeSectors:true,taxRegime:true} });
     if (!companies.length) return {createdCount:0,replicatedColsCount:0};
     const companyIds = companies.map((company:any)=>company.id);
     const [definitions, existing, previous] = await Promise.all([
@@ -74,7 +75,10 @@ export function createRolloverEngine(prisma: any, now: () => Date = () => new Da
       const copy = replicatedData(columns, source?.columnsData || {}, destination?.columnsData || {}, monthStart);
       const copiedKeys = Object.keys(copy);
       if (destination && !copiedKeys.length) continue;
-      const data = {...(destination?.columnsData || {}),...copy};
+      let data = {...(destination?.columnsData || {}),...copy};
+      if (sector === 'FISCAL') {
+        data = applyFiscalRegimeRules(company.taxRegime, data);
+      }
       const dashboardMetrics = {...(destination?.dashboardMetrics || {})};
       if (sector === 'DP' && owns(copy,'dp_qtde_funcionarios')) dashboardMetrics.employees = Number(copy.dp_qtde_funcionarios) || 0;
       const update = {columnsData:data,status:closingStatus(columns,data,monthStart),dashboardMetrics};

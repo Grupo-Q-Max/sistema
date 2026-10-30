@@ -35,6 +35,73 @@ interface SystemLog {
   createdAt: string;
 }
 
+const COLUMN_NAMES: Record<string, string> = {
+  carne_leao: 'Carnê Leão',
+  reinf: 'Reinf',
+  impostos: 'Impostos',
+  iss: 'ISS',
+  mit: 'MIT',
+  sped_fiscal: 'SPED Fiscal',
+  sped_contribuicao: 'SPED Contribuições',
+  destda: 'DESTDA',
+  dp_folha_calculada: 'Folha Calculada',
+  dp_recibo_adiantamento: 'Recibo Adiantamento',
+  dp_recibo_folha: 'Recibo Folha',
+  dp_folha_ponto: 'Folha Ponto',
+  dp_fgts: 'FGTS',
+  dp_inss: 'INSS',
+  dp_irrf: 'IRRF',
+  dp_dae: 'DAE',
+  dp_esocial: 'eSocial',
+  dp_dctfweb: 'DCTFWeb',
+  dp_beneficios: 'Benefícios',
+  dp_movimento: 'Movimento',
+  dp_qtde_funcionarios: 'Qtde Funcionários',
+  dp_observacao: 'Observação DP',
+  notes: 'Observações Gerais',
+};
+
+function formatObligationValue(val: any) {
+  if (val === null || val === undefined || val === '') {
+    return <span className="mini-status mini-status-empty">Pendente</span>;
+  }
+  if (typeof val === 'string') {
+    const upper = val.toUpperCase().trim();
+    if (upper === 'OK' || upper.startsWith('OK')) {
+      return <span className="mini-status mini-status-ok">{val}</span>;
+    }
+    if (upper === 'SEM_MOVIMENTO' || upper.includes('SEM MOVIMENTO') || upper.includes('S/ MOV')) {
+      return <span className="mini-status mini-status-sm">Sem Movimento</span>;
+    }
+    if (upper === 'N/A' || upper === 'NA' || upper === 'ISENTO' || upper === 'DISPENSADO') {
+      return <span className="mini-status mini-status-na">N/A</span>;
+    }
+    if (upper.includes('PEND')) {
+      return <span className="mini-status mini-status-pendente">{val}</span>;
+    }
+    return <span className="mini-status mini-status-default">{val}</span>;
+  }
+  if (typeof val === 'object') {
+    const status = val.status || '';
+    const date = val.date ? new Date(val.date).toLocaleDateString('pt-BR') : '';
+    const note = val.note || val.observacao || '';
+    if (status === 'OK') {
+      return <span className="mini-status mini-status-ok">{date ? `OK (${date})` : 'OK'}</span>;
+    }
+    if (status === 'SEM_MOVIMENTO') {
+      return <span className="mini-status mini-status-sm">Sem Movimento</span>;
+    }
+    if (status === 'N/A' || status === 'NA') {
+      return <span className="mini-status mini-status-na">N/A</span>;
+    }
+    if (status === 'PENDENCIA' || status === 'PENDENTE' || note) {
+      return <span className="mini-status mini-status-pendente">Pendência {note ? `(${note})` : ''}</span>;
+    }
+    return <span className="mini-status mini-status-default">{JSON.stringify(val)}</span>;
+  }
+  return <span className="mini-status mini-status-default">{String(val)}</span>;
+}
+
 export function SystemLogs() {
   const [logs, setLogs] = useState<SystemLog[]>([]);
   const [loading, setLoading] = useState(true);
@@ -249,6 +316,18 @@ export function SystemLogs() {
             <FileCheck size={13} /> Obrigação
           </span>
         );
+      case 'OBRIGACAO_CONCLUIDA':
+        return (
+          <span className="log-badge badge-obligation-done">
+            <FileCheck size={13} /> Concluída
+          </span>
+        );
+      case 'ATUALIZOU_RESPONSAVEL':
+        return (
+          <span className="log-badge badge-responsible">
+            <UserCheck size={13} /> Responsável
+          </span>
+        );
       case 'DESLIGOU_USUARIO':
         return (
           <span className="log-badge badge-offboard">
@@ -277,10 +356,43 @@ export function SystemLogs() {
     const d = log.details;
     if (!d) return <span className="text-muted">-</span>;
 
+    const companyTag = (d.companyCode || d.companyName) ? (
+      <span className="log-company-tag" title={d.companyName || ''}>
+        {d.companyCode ? `[${d.companyCode}] ` : ''}{d.companyName || ''}
+      </span>
+    ) : null;
+
+    if (log.action === 'ATUALIZOU_RESPONSAVEL') {
+      return (
+        <div className="log-details-visual">
+          {companyTag}
+          <span className="log-field-label">Responsável {d.sector ? `(${d.sector})` : ''}:</span>
+          <strong className="log-resp-highlight">{d.responsibleName || 'Nenhum (Removido)'}</strong>
+        </div>
+      );
+    }
+
+    if (log.action === 'ATUALIZOU_OBRIGACAO' || log.action === 'OBRIGACAO_CONCLUIDA') {
+      const colName = COLUMN_NAMES[d.columnKey] || d.columnKey || 'Obrigação';
+      return (
+        <div className="log-details-visual">
+          {companyTag}
+          <span className="log-field-label">{colName}:</span>
+          {d.oldValue !== undefined && d.oldValue !== null && d.oldValue !== '' && (
+            <>
+              {formatObligationValue(d.oldValue)}
+              <span className="log-val-arrow">→</span>
+            </>
+          )}
+          {formatObligationValue(d.newValue)}
+        </div>
+      );
+    }
+
     if (log.action === 'LOGIN' || log.action === 'LOGOUT') {
       return (
         <span className="details-text">
-          {d.motivo || d.message || 'Sessão iniciada'}
+          {d.motivo || d.message || (log.action === 'LOGIN' ? 'Sessão iniciada com sucesso' : 'Sessão finalizada')}
         </span>
       );
     }
@@ -288,7 +400,7 @@ export function SystemLogs() {
     if (log.action === 'LOGIN_FALHA') {
       return (
         <span className="details-text text-danger">
-          <strong>Motivo:</strong> {d.motivo || d.reason || 'Tentativa inválida'}
+          <strong>Motivo:</strong> {d.motivo || d.reason || 'Tentativa de acesso com credenciais inválidas'}
         </span>
       );
     }
@@ -307,7 +419,7 @@ export function SystemLogs() {
       const total = d.empresasTransferidas ? ` [${d.empresasTransferidas} emp. transferidas]` : '';
       return (
         <span className="details-text text-danger">
-          <strong>{d.usuarioDesligado || 'Colaborador'}</strong>: Não faz mais parte da empresa{saida}{dest}{total}
+          <strong>{d.usuarioDesligado || 'Colaborador'}</strong>: Desligado do sistema{saida}{dest}{total}
         </span>
       );
     }
@@ -320,19 +432,19 @@ export function SystemLogs() {
       );
     }
 
-    if (log.action === 'ATUALIZOU_OBRIGACAO') {
-      const col = d.columnKey || 'campo';
-      const val = d.newValue !== undefined ? String(d.newValue) : '';
+    if (log.action === 'ATUALIZOU_EMPRESA' || log.action === 'CRIOU_EMPRESA') {
       return (
-        <span className="details-text">
-          <strong>{col}:</strong> {val ? `“${val}”` : 'limpo'}
-        </span>
+        <div className="log-details-visual">
+          {companyTag}
+          <span>{log.action === 'CRIOU_EMPRESA' ? 'Nova empresa cadastrada' : 'Cadastro da empresa atualizado'}</span>
+        </div>
       );
     }
 
     if (typeof d === 'object') {
+      if (d.message) return <span className="details-text">{d.message}</span>;
       const str = JSON.stringify(d);
-      return <span className="details-text">{str.length > 55 ? str.slice(0, 55) + '...' : str}</span>;
+      return <span className="details-text">{str.length > 70 ? str.slice(0, 70) + '...' : str}</span>;
     }
 
     return <span className="details-text">{String(d)}</span>;

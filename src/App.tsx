@@ -1,24 +1,35 @@
-import {CompanyQuality} from './components/CompanyQuality';
-import {CushmanClosings} from './components/CushmanClosings';
-import { InstallmentSettings } from './components/InstallmentSettings';
-import { AccountingClosings } from './components/AccountingClosings';
-import { ErrorBoundary } from './components/ErrorBoundary';
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, lazy, Suspense } from 'react';
 import './index.css';
-import { Dashboard } from './components/Dashboard';
-import { Settings } from './components/Settings';
-import { Companies } from './components/Companies';
 import { hasSectorAccess } from './components/ClosingSectorTabs';
-import { PayrollClosings } from './components/PayrollClosings';
-import { Closings } from './components/Closings';
-import { Certificates } from './components/Certificates';
-import { SystemLogs } from './components/SystemLogs';
-import { Analytics } from './components/Analytics';
 import { Sidebar } from './components/Sidebar';
+import { ErrorBoundary } from './components/ErrorBoundary';
 import type { CurrentUser } from './types/auth';
 import { API } from './api';
 import { AlertCircle, LogIn } from 'lucide-react';
 import { ButtonSpinner } from './components/LoadingSkeleton';
+
+// Carregamento sob demanda (Code-Splitting) para máxima performance inicial
+const Dashboard = lazy(() => import('./components/Dashboard').then(m => ({ default: m.Dashboard })));
+const Closings = lazy(() => import('./components/Closings').then(m => ({ default: m.Closings })));
+const PayrollClosings = lazy(() => import('./components/PayrollClosings').then(m => ({ default: m.PayrollClosings })));
+const AccountingClosings = lazy(() => import('./components/AccountingClosings').then(m => ({ default: m.AccountingClosings })));
+const CushmanClosings = lazy(() => import('./components/CushmanClosings').then(m => ({ default: m.CushmanClosings })));
+const Companies = lazy(() => import('./components/Companies').then(m => ({ default: m.Companies })));
+const Analytics = lazy(() => import('./components/Analytics').then(m => ({ default: m.Analytics })));
+const Settings = lazy(() => import('./components/Settings').then(m => ({ default: m.Settings })));
+const Certificates = lazy(() => import('./components/Certificates').then(m => ({ default: m.Certificates })));
+const SystemLogs = lazy(() => import('./components/SystemLogs').then(m => ({ default: m.SystemLogs })));
+const CompanyQuality = lazy(() => import('./components/CompanyQuality').then(m => ({ default: m.CompanyQuality })));
+const InstallmentSettings = lazy(() => import('./components/InstallmentSettings').then(m => ({ default: m.InstallmentSettings })));
+
+const ViewLoading = () => (
+  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', width: '100%', background: '#090d16', color: '#94a3b8' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12 }}>
+      <ButtonSpinner />
+      <span style={{ fontSize: 13, letterSpacing: '0.02em' }}>Carregando módulo...</span>
+    </div>
+  </div>
+);
 
 function App() {
   const [currentUser, setCurrentUser] = useState<CurrentUser | null>(null);
@@ -108,81 +119,93 @@ function App() {
     setPassword('');
   };
 
-  if (currentView === 'dashboard') {
-    return (
-      <Dashboard
-        currentView={currentView}
-        onNavigate={handleNavigate}
-        currentUser={currentUser}
-        onLogout={handleLogout}
-      />
-    );
-  }
+  const renderView = () => {
+    if (currentView === 'dashboard') {
+      return (
+        <Dashboard
+          currentView={currentView}
+          onNavigate={handleNavigate}
+          currentUser={currentUser}
+          onLogout={handleLogout}
+        />
+      );
+    }
 
-  if (currentView === 'analytics') return <Analytics currentView={currentView} onNavigate={handleNavigate} currentUser={currentUser} onLogout={handleLogout} />;
+    if (currentView === 'analytics') return <Analytics currentView={currentView} onNavigate={handleNavigate} currentUser={currentUser} onLogout={handleLogout} />;
 
-  if (currentView === 'closings-cushman') return <CushmanClosings currentView={currentView} onNavigate={handleNavigate} currentUser={currentUser} onLogout={handleLogout}/>;
+    if (currentView === 'closings-cushman') return <CushmanClosings currentView={currentView} onNavigate={handleNavigate} currentUser={currentUser} onLogout={handleLogout}/>;
 
-  if (currentView === 'closings-accounting') return <AccountingClosings currentView={currentView} onNavigate={handleNavigate} currentUser={currentUser} onLogout={handleLogout} />;
+    if (currentView === 'closings-accounting') return <AccountingClosings currentView={currentView} onNavigate={handleNavigate} currentUser={currentUser} onLogout={handleLogout} />;
 
-  if (currentView === 'closings-dp') return <ErrorBoundary fallbackTitle="Erro ao carregar o Fechamento DP"><PayrollClosings currentView={currentView} onNavigate={handleNavigate} currentUser={currentUser} onLogout={handleLogout} /></ErrorBoundary>;
+    if (currentView === 'closings-dp') return <ErrorBoundary fallbackTitle="Erro ao carregar o Fechamento DP"><PayrollClosings currentView={currentView} onNavigate={handleNavigate} currentUser={currentUser} onLogout={handleLogout} /></ErrorBoundary>;
 
-  if (currentView === 'closings') {
-    return (
-      <Closings
-        currentView={currentView}
-        onNavigate={handleNavigate}
-        currentUser={currentUser}
-        onLogout={handleLogout}
-      />
-    );
-  }
+    if (currentView === 'closings') {
+      return (
+        <Closings
+          currentView={currentView}
+          onNavigate={handleNavigate}
+          currentUser={currentUser}
+          onLogout={handleLogout}
+        />
+      );
+    }
 
-  if (currentView === 'companies') {
-    return (
-      <Companies
-        currentView={currentView}
-        onNavigate={handleNavigate}
-        currentUser={currentUser}
-        onLogout={handleLogout}
-      />
-    );
-  }
+    if (currentView === 'companies') {
+      return (
+        <Companies
+          currentView={currentView}
+          onNavigate={handleNavigate}
+          currentUser={currentUser}
+          onLogout={handleLogout}
+        />
+      );
+    }
 
-  if (currentView==='settings-data-quality') return <CompanyQuality currentView={currentView} onNavigate={handleNavigate} currentUser={currentUser} onLogout={handleLogout}/>;
+    if (currentView === 'settings-data-quality') return <CompanyQuality currentView={currentView} onNavigate={handleNavigate} currentUser={currentUser} onLogout={handleLogout}/>;
 
-  if (currentView==='settings-installments') return <InstallmentSettings currentView={currentView} onNavigate={handleNavigate} currentUser={currentUser} onLogout={handleLogout}/>;
+    if (currentView === 'settings-installments') return <InstallmentSettings currentView={currentView} onNavigate={handleNavigate} currentUser={currentUser} onLogout={handleLogout}/>;
 
-  if (currentView === 'certificates') {
-    return (
-      <div style={{ display: 'flex' }}>
-        <Sidebar currentView={currentView} onNavigate={handleNavigate} currentUser={currentUser} onLogout={handleLogout} />
-        <div style={{ flex: 1, height: '100vh', overflowY: 'auto' }}>
-          <Certificates currentUser={currentUser} />
+    if (currentView === 'certificates') {
+      return (
+        <div style={{ display: 'flex' }}>
+          <Sidebar currentView={currentView} onNavigate={handleNavigate} currentUser={currentUser} onLogout={handleLogout} />
+          <div style={{ flex: 1, height: '100vh', overflowY: 'auto' }}>
+            <Certificates currentUser={currentUser} />
+          </div>
         </div>
-      </div>
-    );
-  }
+      );
+    }
 
-  if (currentView === 'logs') {
-    return (
-      <div style={{ display: 'flex' }}>
-        <Sidebar currentView={currentView} onNavigate={handleNavigate} currentUser={currentUser} onLogout={handleLogout} />
-        <div style={{ flex: 1, height: '100vh', overflowY: 'auto' }}>
-          <SystemLogs />
+    if (currentView === 'logs') {
+      return (
+        <div style={{ display: 'flex' }}>
+          <Sidebar currentView={currentView} onNavigate={handleNavigate} currentUser={currentUser} onLogout={handleLogout} />
+          <div style={{ flex: 1, height: '100vh', overflowY: 'auto' }}>
+            <SystemLogs />
+          </div>
         </div>
-      </div>
-    );
-  }
+      );
+    }
 
-  if (currentView.startsWith('settings')) {
+    if (currentView.startsWith('settings')) {
+      return (
+        <Settings
+          currentView={currentView}
+          onNavigate={handleNavigate}
+          currentUser={currentUser}
+          onLogout={handleLogout}
+        />
+      );
+    }
+
+    return null;
+  };
+
+  if (currentView !== 'login' && currentUser) {
     return (
-      <Settings
-        currentView={currentView}
-        onNavigate={handleNavigate}
-        currentUser={currentUser}
-        onLogout={handleLogout}
-      />
+      <Suspense fallback={<ViewLoading />}>
+        {renderView()}
+      </Suspense>
     );
   }
 

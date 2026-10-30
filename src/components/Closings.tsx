@@ -43,6 +43,16 @@ import { visibilitySummary, isColumnComplete } from '../config/columnVisibility'
 import { FISCAL_POPUPS, effectivePopup, type PopupAction } from '../config/fiscalPopups';
 import { exportToCsv } from '../utils/exportCsv';
 import { compareCodes } from '../utils/codeSort';
+import { applyFiscalRegimeRules, isFiscalObligationNA } from '../config/fiscalRegimeRules';
+
+export function getFiscalResponsible(company: any) {
+  if (!company || !Array.isArray(company.responsibles)) return null;
+  return (
+    company.responsibles.find((r: any) => r.sector === 'FISCAL') ||
+    company.responsibles.find((r: any) => !r.sector) ||
+    null
+  );
+}
 
 interface ClosingsProps {
   currentView: string;
@@ -185,8 +195,12 @@ export function Closings({ currentView, onNavigate, currentUser, onLogout }: Clo
       if (res.ok) {
         const data = await res.json();
         if (requestId !== fetchSequence.current) return;
-        setRows(data.rows || []);
-        if (viewInstallments) void loadInstallmentSummaries(data.rows || [], requestId);
+        const normalizedRows = (data.rows || []).map((r: any) => ({
+          ...r,
+          columnsData: applyFiscalRegimeRules(r.company?.taxRegime, r.columnsData || {}),
+        }));
+        setRows(normalizedRows);
+        if (viewInstallments) void loadInstallmentSummaries(normalizedRows, requestId);
         if (Array.isArray(data.popupColumns)) setPopupColumns(data.popupColumns);
         setFiscalUsers(data.fiscalUsers || []);
       } else {
@@ -266,16 +280,24 @@ export function Closings({ currentView, onNavigate, currentUser, onLogout }: Clo
       const res = await fetch(`${API}/api/companies/${companyId}/responsible`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId, sector: 'FISCAL' }),
+        body: JSON.stringify({
+          userId,
+          sector: 'FISCAL',
+          actorId: currentUser?.id,
+          actorEmail: currentUser?.email,
+          actorName: currentUser?.name || currentUser?.email,
+        }),
       });
       if (res.ok) {
         setRows((prev) =>
           prev.map((r) => {
             if (r.company.id === companyId) {
               const selectedUser = fiscalUsers.find((u) => u.id === userId);
-              const updatedResp = selectedUser
-                ? [{ id: 'temp', companyId, userId, sector: 'FISCAL', user: selectedUser }]
-                : [];
+              const otherResponsibles = (r.company.responsibles || []).filter((resp: any) => resp.sector !== 'FISCAL');
+              const updatedResp = [
+                ...otherResponsibles,
+                ...(userId ? [{ id: 'temp', companyId, userId, sector: 'FISCAL', user: selectedUser }] : []),
+              ];
               return {
                 ...r,
                 company: {
@@ -585,7 +607,8 @@ export function Closings({ currentView, onNavigate, currentUser, onLogout }: Clo
 
       const matchRegime = regimeFilter === 'ALL' || c.taxRegime === regimeFilter;
 
-      const respId = c.responsibles?.[0]?.user?.id;
+      const fiscalResp = getFiscalResponsible(c);
+      const respId = fiscalResp?.userId || fiscalResp?.user?.id || '';
       const matchResponsible = responsibleFilter === 'ALL' || respId === responsibleFilter;
 
       // Filtros individuais por obrigação do cabeçalho
@@ -626,6 +649,11 @@ export function Closings({ currentView, onNavigate, currentUser, onLogout }: Clo
       } else if (sortConfig.key === 'status') {
         valA = a.calculatedStatus || '';
         valB = b.calculatedStatus || '';
+      } else if (sortConfig.key === 'responsible') {
+        const respA = getFiscalResponsible(a.company);
+        const respB = getFiscalResponsible(b.company);
+        valA = respA?.user?.name || respA?.user?.email || '';
+        valB = respB?.user?.name || respB?.user?.email || '';
       }
 
       if (valA < valB) return sortConfig.direction === 'asc' ? -1 : 1;
@@ -677,6 +705,17 @@ export function Closings({ currentView, onNavigate, currentUser, onLogout }: Clo
     }
 
     if (!val) {
+      if (isFiscalObligationNA(row.company?.taxRegime, colKey)) {
+        return (
+          <button
+            className="obligation-btn na"
+            onClick={() => handleOpenObligationModal(row, colKey)}
+            title="Isento / Dispensado por regra do regime tributário (N/A)"
+          >
+            N/A
+          </button>
+        );
+      }
       return (
         <button
           className="obligation-btn pendente"
@@ -1182,7 +1221,8 @@ export function Closings({ currentView, onNavigate, currentUser, onLogout }: Clo
                     ) : (
                       filteredRows.map((r) => {
                         const c = r.company;
-                        const currentRespId = c.responsibles?.[0]?.userId || '';
+                        const fiscalResp = getFiscalResponsible(c);
+                        const currentRespId = fiscalResp?.userId || fiscalResp?.user?.id || '';
                         const certInfo = c.hasClientCertificate
                           ? getCertificateStatus(c.certificateExpiration)
                           : null;

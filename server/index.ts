@@ -16,6 +16,7 @@ import { latestOpenPeriod, periodIsOpen, blockedPeriodMessage, setManualLatestPe
 import { PAYROLL_API_VERSION, resolveColumnKey, effectiveFieldConfig, validateFieldConfig, validatePayrollValue } from '../src/config/payrollColumns';
 import { isColumnActive, validateVisibility, calculateColumnProgress, isColumnComplete } from '../src/config/columnVisibility';
 import { validatePopup, effectivePopup, FISCAL_POPUPS } from '../src/config/fiscalPopups';
+import { applyFiscalRegimeRules } from '../src/config/fiscalRegimeRules';
 import express from 'express';
 import cors from 'cors';
 import compression from 'compression';
@@ -584,7 +585,10 @@ app.get('/api/closings', async (req, res) => {
     const reinfColumn = sector === 'DP' ? await prisma.departmentColumn.findFirst({ where: { department: 'FISCAL', OR: [{ columnKey: 'reinf' }, { name: 'Reinf' }, { name: 'REINF' }] } }) : null;
     const rows = companies.map((c: any) => {
       const closing = closingMap.get(c.id) || null;
-      const columnsData = { ...((closing?.columnsData as Record<string, any>) || {}) };
+      let columnsData = { ...((closing?.columnsData as Record<string, any>) || {}) };
+      if (sector === 'FISCAL') {
+        columnsData = applyFiscalRegimeRules(c.taxRegime, columnsData);
+      }
       if (sector === 'DP') {
         for (const column of configuredColumns) {
           const key = resolveColumnKey(column) || column.id;
@@ -722,6 +726,10 @@ app.put('/api/closings/:id/column', async (req, res) => {
     });
 
     if (req.body.userId) {
+      const company = await prisma.company.findUnique({
+        where: { id: existing.companyId },
+        select: { code: true, name: true }
+      });
       await logAction(
         req.body.userId,
         req.body.userEmail || '',
@@ -730,6 +738,8 @@ app.put('/api/closings/:id/column', async (req, res) => {
         existing.type,
         existing.companyId,
         {
+          companyCode: company?.code || null,
+          companyName: company?.name || null,
           columnKey,
           oldValue: currentData[columnKey],
           newValue: columnValue,
@@ -760,17 +770,41 @@ app.put('/api/closings/:id/column', async (req, res) => {
 app.put('/api/companies/:id/responsible', async (req, res) => {
   try {
     const { id } = req.params;
-    const { userId, sector = 'FISCAL' } = req.body;
+    const { userId, sector = 'FISCAL', actorId, actorEmail, actorName } = req.body;
+
+    const [company, newUser] = await Promise.all([
+      prisma.company.findUnique({ where: { id }, select: { code: true, name: true } }),
+      userId ? prisma.user.findUnique({ where: { id: userId }, select: { id: true, name: true, email: true, active: true } }) : null
+    ]);
+
+    if (userId && !newUser?.active) {
+      return res.status(400).json({ error: 'Selecione um usuário ativo para ser responsável.' });
+    }
 
     await prisma.$transaction(async (tx: any) => {
-      if (userId) {
-        const user = await tx.user.findUnique({ where: { id: userId } });
-        if (!user?.active) throw new Error('Selecione um usuário ativo para ser responsável.');
-      }
       await tx.companyResponsible.deleteMany({ where: { companyId: id, sector: sector as any } });
       if (userId) await tx.companyResponsible.create({ data: { companyId: id, userId, sector: sector as any } });
     });
 
+    // Registra no Log de Auditoria
+    await logAction(
+      actorId || req.body.userId || null,
+      actorEmail || req.body.userEmail || null,
+      actorName || req.body.userName || 'Sistema',
+      'ATUALIZOU_RESPONSAVEL',
+      sector,
+      id,
+      {
+        companyCode: company?.code || null,
+        companyName: company?.name || null,
+        sector,
+        responsibleId: userId || null,
+        responsibleName: newUser?.name || newUser?.email || 'Nenhum (Removido)',
+      },
+      req.ip
+    );
+
+    invalidateDashboardCache();
     res.json({ success: true, message: 'Responsável atualizado com sucesso' });
   } catch (error) {
     console.error('Erro ao atualizar responsável:', error);
@@ -970,10 +1004,12 @@ app.get('/api/dashboard', async (req, res) => {
           if (result.calculatedStatus === 'COMPLETED') completed++;
           else if (result.calculatedStatus === 'IN_PROGRESS') inProgress++;
         } else {
+          const comp = companies.find((comp: any) => comp.id === c.companyId);
+          const effectiveData = type === 'FISCAL' ? applyFiscalRegimeRules(comp?.taxRegime, data) : data;
           const activeCols = sectorCols.filter((col: any) => isColumnActive(col, new Date(c.referencePeriod)));
           const progressCols = activeCols.filter((col: any) => col.countsProgress);
           
-          const result = calculateColumnProgress(progressCols, data, (col: any) => resolveColumnKey(col) || col.columnKey || col.id);
+          const result = calculateColumnProgress(progressCols, effectiveData, (col: any) => resolveColumnKey(col) || col.columnKey || col.id);
           
           totalFields += result.progressTotal;
           completedFields += result.progressDone;
