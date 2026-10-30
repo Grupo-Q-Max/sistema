@@ -2,6 +2,7 @@ import {isColumnComplete,isColumnFilled,isColumnActive} from './columnVisibility
 import {accountingMonth,isClientMonth,NOT_CLIENT,accountingColumnComplete,annualColumnActive,accountingColumnReleased} from './accountingColumns';
 import {resolveColumnKey} from './payrollColumns';
 import {effectivePopup} from './fiscalPopups';
+import {formatCompanyCode} from '../utils/codeSort';
 export type ProgressRecord={id:string;name:string;code:string;value:string;status:string;complete:boolean;filled:boolean;eligible:boolean;blocked:boolean};
 export type ProgressColumn={key:string;name:string;tracked:boolean;total:number;done:number;filled:number;percent:number;records:ProgressRecord[]};
 const statusLabels:Record<string,string>={CONCLUIDO:'Concluído',SEM_MOVIMENTO:'Sem movimento','OK - DATA':'Concluído com data','OK - SEM MOVIMENTO':'Sem movimento','N/A':'N/A',PENDENTE:'Pendente',PENDENCIA:'Pendência','PENDÊNCIA':'Pendência'};
@@ -37,7 +38,7 @@ export function buildClosingProgress(rows:any[],columns:any[],sector:'FISCAL'|'D
    const complete=eligible&&(sector==='CONTABIL'?accountingColumnComplete(column,value):isColumnComplete(column,value));
    const filled=eligible&&isColumnFilled(value);
    const status=!client?NOT_CLIENT:blocked?'Competência futura':!applicable?'Coluna fora da competência':complete?'Concluído':filled?'Preenchido / em andamento':'Pendente';
-   return {id:row.closingId||row.company.id,name:row.company.name,code:row.company.code||'',value:displayProgressValue(value,column,key),status,complete,filled,eligible,blocked};
+   return {id:row.closingId||row.company.id,name:row.company.name,code:formatCompanyCode(row.company.code),value:displayProgressValue(value,column,key),status,complete,filled,eligible,blocked};
   });
   const total=records.filter(record=>record.eligible).length;const done=records.filter(record=>record.complete).length;const filled=records.filter(record=>record.filled).length;
   return {key,name:column.name,tracked,total,done,filled,percent:total?Math.round((tracked?done:filled)/total*100):0,records};

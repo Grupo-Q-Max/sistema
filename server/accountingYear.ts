@@ -11,17 +11,35 @@ export function createAccountingYearEngine(prisma:any,now:()=>Date=()=>new Date(
     const nowMs = Date.now();
     // Cache de 15 minutos para sincronização pesada do Contábil anual
     if (nowMs - lastSync < 15 * 60 * 1000) {
+      const startCached = new Date(Date.UTC(year, 0, 1));
+      const endCached = new Date(Date.UTC(year + 1, 0, 1));
       const [companies, columns, closings] = await Promise.all([
-        prisma.company.findMany({where:{AND:[externalCompaniesExcluded]},select:{id:true,code:true,name:true,cnpj:true,taxRegime:true,groupName:true,city:true,activeSectors:true,exitDate:true}}),
+        prisma.company.findMany({
+          where: {
+            AND: [externalCompaniesExcluded],
+            OR: [
+              { obligationStartDate: { lt: endCached }, OR: [{ exitDate: null }, { exitDate: { gte: startCached } }] },
+              { closings: { some: { type: 'CONTABIL', referencePeriod: startCached } } },
+            ],
+          },
+          include: {
+            responsibles: {
+              where: { sector: 'CONTABIL' },
+              include: { user: { select: { id: true, name: true, email: true, role: true, active: true } } },
+            },
+          },
+        }),
         prisma.departmentColumn.findMany({where:{department:'CONTABIL'},orderBy:{orderIndex:'asc'}}),
-        prisma.closing.findMany({where:{type:'CONTABIL',referencePeriod:new Date(Date.UTC(year,0,1))}}),
+        prisma.closing.findMany({where:{type:'CONTABIL',referencePeriod:startCached}}),
       ]);
-      return { createdCount: 0, companies, columns, closings };
+      const historicCached = new Set(closings.map((row: any) => row.companyId));
+      const eligibleCached = companies.filter((company: any) => !company.activeSectors || company.activeSectors === 'TODOS' || company.activeSectors.split(',').map((item: string) => item.trim()).includes('CONTABIL') || historicCached.has(company.id));
+      return { createdCount: 0, companies: eligibleCached, columns, closings };
     }
 
     const start=new Date(Date.UTC(year,0,1));const end=new Date(Date.UTC(year+1,0,1));
     const [companies,columns,existing]=await Promise.all([
-      prisma.company.findMany({where:{AND:[externalCompaniesExcluded],OR:[{obligationStartDate:{lt:end},OR:[{exitDate:null},{exitDate:{gte:start}}]},{closings:{some:{type:'CONTABIL',referencePeriod:start}}}]},include:{responsibles:{include:{user:{select:{id:true,name:true,email:true}}}}}}),
+      prisma.company.findMany({where:{AND:[externalCompaniesExcluded],OR:[{obligationStartDate:{lt:end},OR:[{exitDate:null},{exitDate:{gte:start}}]},{closings:{some:{type:'CONTABIL',referencePeriod:start}}}]},include:{responsibles:{where:{sector:'CONTABIL'},include:{user:{select:{id:true,name:true,email:true,role:true,active:true}}}}}}),
       prisma.departmentColumn.findMany({where:{department:'CONTABIL'},orderBy:{orderIndex:'asc'}}),
       prisma.closing.findMany({where:{type:'CONTABIL',referencePeriod:{gte:start,lt:end}}}),
     ]);

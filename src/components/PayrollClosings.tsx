@@ -1,6 +1,6 @@
 import { latestOpenPeriod } from '../config/competenceCalendar';
 import { useCompetenceCalendar } from './useCompetenceCalendar';
-import { useEffect, useMemo, useRef, useState, useDeferredValue } from 'react';
+import { memo, useEffect, useMemo, useRef, useState, useDeferredValue } from 'react';
 import { Building2, CheckCircle2, ChevronLeft, ChevronRight, Eye, EyeOff, RefreshCw, Users, X, ExternalLink, AlertTriangle, Copy, Search, AlertCircle, Filter, Check, Calendar, FileText, Clock, Sparkles } from 'lucide-react';
 import { CompanyDetailsModal, getCertificateStatus, formatCnpj, formatRegimeLabel } from './CompanyDetailsModal';
 import { Sidebar } from './Sidebar';
@@ -12,7 +12,7 @@ import { PAYROLL_API_VERSION, effectiveFieldConfig, resolveColumnKey } from '../
 import { defaultPopup, type PopupConfig } from '../config/fiscalPopups';
 import { visibilitySummary } from '../config/columnVisibility';
 import { exportToCsv } from '../utils/exportCsv';
-import { compareCodes } from '../utils/codeSort';
+import { compareCodes, formatCompanyCode } from '../utils/codeSort';
 import './Closings.css';
 import './PayrollClosings.css';
 
@@ -100,7 +100,17 @@ function reinfAppearance(value: any) {
   return { className: 'pendente', label: value?.label || 'Pendente' };
 }
 
-export function PayrollInput({ column, value, disabled, onSave }: { column: any; value: any; disabled: boolean; onSave: (value: any) => Promise<void> }) {
+function brToIsoDate(val: string): string {
+  const m = val.trim().match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+  return m ? `${m[3]}-${m[2]}-${m[1]}` : '';
+}
+
+function isoToBrDate(val: string): string {
+  const m = val.trim().match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  return m ? `${m[3]}/${m[2]}/${m[1]}` : val;
+}
+
+export const PayrollInput = memo(function PayrollInput({ column, value, disabled, onSave }: { column: any; value: any; disabled: boolean; onSave: (value: any) => Promise<void> }) {
   const [draft, setDraft] = useState(() => normalizePayrollDraft(value));
   const [saving, setSaving] = useState(false);
   const [revealed, setRevealed] = useState(false);
@@ -114,17 +124,27 @@ export function PayrollInput({ column, value, disabled, onSave }: { column: any;
     setSaving(true); setError('');
     try { await onSave(parsed); dirty.current = false; } catch (e) { setError(e instanceof Error ? e.message : 'Não foi possível salvar.'); } finally { setSaving(false); }
   }
-  const config = effectiveFieldConfig(column);
+  const config = useMemo(() => effectiveFieldConfig(column), [column]);
+  const options = useMemo(
+    () => Array.from(new Set([...(Array.isArray(config.options) ? config.options : []), ...(Array.isArray(config.pendingOptions) ? config.pendingOptions : [])])),
+    [config]
+  );
+  const pendingSet = useMemo(
+    () => new Set(['PENDENTE', 'PENDÊNCIA', 'PENDENCIA', ...((config.pendingOptions || []).map(o => o.trim().toUpperCase()))]),
+    [config]
+  );
   const inputProps = { value: draft, disabled: disabled || saving, 'aria-label': column.name, placeholder: config.placeholder, onChange: (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => { dirty.current = true; setDraft(e.target.value); }, onBlur: () => { void commit(); }, onKeyDown: (e: React.KeyboardEvent<HTMLInputElement>) => { if (e.key === 'Enter') e.currentTarget.blur(); } };
   if (column.inputType === 'CHECKBOX') return <div className="payroll-input-cell"><input aria-label={column.name} type="checkbox" checked={value === true} disabled={disabled || saving} onChange={async e => { setSaving(true); try { await onSave(e.target.checked); } catch (err) { setError(err instanceof Error ? err.message : 'Erro ao salvar.'); } finally { setSaving(false); } }} />{error && <small role="alert">{error}</small>}</div>;
-  const options = Array.from(new Set([...(Array.isArray(config.options) ? config.options : []), ...(Array.isArray(config.pendingOptions) ? config.pendingOptions : [])]));
+  const selectClass = column.inputType === 'SELECT'
+    ? (!draft || pendingSet.has(draft.trim().toUpperCase()) ? 'payroll-select-pending' : draft.trim().toUpperCase() === 'N/A' ? 'payroll-select-na' : 'payroll-select-filled')
+    : '';
   return <div className="payroll-input-cell">
-    {column.inputType === 'SELECT' ? <select aria-label={column.name} value={draft} disabled={disabled || saving} onChange={e => { dirty.current = true; setDraft(e.target.value); void commit(e.target.value); }}><option value="">Selecione...</option>{draft && !options.includes(draft) && <option value={draft}>{draft} (anterior)</option>}{options.map(option => <option key={option} value={option}>{option}</option>)}</select>
+    {column.inputType === 'SELECT' ? <select className={selectClass} aria-label={column.name} value={draft} disabled={disabled || saving} onChange={e => { dirty.current = true; setDraft(e.target.value); void commit(e.target.value); }}><option value="">Selecione...</option>{draft && !options.includes(draft) && <option value={draft}>{draft} (anterior)</option>}{options.map(option => <option key={option} value={option}>{option}</option>)}</select>
       : column.inputType === 'TEXTAREA' ? <textarea {...inputProps} onKeyDown={undefined} rows={1} />
         : <div className="payroll-password-cell"><input {...inputProps} type={column.inputType === 'NUMBER' ? 'number' : column.inputType === 'PASSWORD' && !revealed ? 'password' : 'text'} min={column.inputType === 'NUMBER' ? 0 : undefined} step={column.inputType === 'NUMBER' ? 1 : undefined} autoComplete="off" />{column.inputType === 'PASSWORD' && <button type="button" aria-label={revealed ? 'Ocultar senha' : 'Mostrar senha'} onClick={() => setRevealed(!revealed)}>{revealed ? <EyeOff size={14} /> : <Eye size={14} />}</button>}</div>}
     {saving && <small>Salvando...</small>}{error && <small role="alert">{error} <button type="button" onClick={() => { void commit(); }}>Tentar novamente</button></small>}
   </div>;
-}
+});
 
 export function PayrollClosings({ currentView, onNavigate, currentUser, onLogout }: Props) {
   const [period, setPeriod] = useState(() => latestOpenPeriod());
@@ -156,6 +176,7 @@ export function PayrollClosings({ currentView, onNavigate, currentUser, onLogout
   const saveQueue = useRef<Promise<unknown>>(Promise.resolve());
   const upperScroll = useRef<HTMLDivElement>(null);
   const tableScroll = useRef<HTMLDivElement>(null);
+  const syncingScroll = useRef(false);
   const periodKey = `${period.getUTCFullYear()}-${period.getUTCMonth()}`;
   const currentPeriodKey = useRef(periodKey); currentPeriodKey.current = periodKey;
   const canEdit = hasSectorAccess(currentUser, 'DP', true);
@@ -166,6 +187,7 @@ export function PayrollClosings({ currentView, onNavigate, currentUser, onLogout
   const [inputDate, setInputDate] = useState('');
   const [inputPendencyReason, setInputPendencyReason] = useState('');
   const [customTextInput, setCustomTextInput] = useState('');
+  const [actionError, setActionError] = useState('');
 
   const canView = hasSectorAccess(currentUser, 'DP');
 
@@ -228,7 +250,7 @@ export function PayrollClosings({ currentView, onNavigate, currentUser, onLogout
   const [onlyMyCompanies, setOnlyMyCompanies] = useState(false);
   const isPrivileged = currentUser?.role === 'ADMIN' || currentUser?.role === 'SOCIO';
 
-  const getResponsible = (company: any) => company.responsibles?.find((r: any) => r.sector === 'DP') || company.responsibles?.find((r: any) => !r.sector);
+  const getResponsible = (company: any) => company.responsibles?.find((r: any) => r.sector === 'DP') || null;
 
   const isRowEditable = (row: PayrollRow) => {
     if (!canEdit) return false;
@@ -238,7 +260,7 @@ export function PayrollClosings({ currentView, onNavigate, currentUser, onLogout
   };
 
   const scopedRows = useMemo(() => rows.filter(row => {
-    const isMine = row.company.responsibles?.some((r: any) => r.userId === currentUser?.id && (r.sector === 'DP' || r.sector === null)) || row.company.responsibleId === currentUser?.id;
+    const isMine = row.company.responsibles?.some((r: any) => r.userId === currentUser?.id && r.sector === 'DP') || row.company.responsibleId === currentUser?.id;
     if (onlyMyCompanies) return isMine;
     if (!currentUser || isPrivileged) return true;
     if (currentUser.companyScope === 'CUSTOM') return currentUser.companyAccess?.some(a => a.companyId === row.company.id);
@@ -335,27 +357,36 @@ export function PayrollClosings({ currentView, onNavigate, currentUser, onLogout
       { header: 'CNPJ', key: 'cnpj' },
       { header: 'Tributação', key: 'taxRegime' },
       { header: 'Status Geral', key: 'status' },
+      { header: 'Responsável', key: 'responsible' },
       ...columns.map(c => ({ header: c.name, key: c.id }))
     ];
 
     const data = filtered.map(r => {
+      const resp = getResponsible(r.company);
+      const respUser = users.find(u => u.id === resp?.userId) || resp?.user;
+      const respName = (respUser?.name || respUser?.email || 'Não atribuído').replace(/\s*\(Inativo\)$/i, '');
       const rowData: any = {
-        code: r.company.code || '',
+        code: formatCompanyCode(r.company.code),
         name: r.company.name || '',
         cnpj: formatCnpj(r.company.cnpj) || '',
         taxRegime: formatRegimeLabel(r.company.taxRegime),
-        status: STATUS_LABELS[r.calculatedStatus] || 'Pendente'
+        status: STATUS_LABELS[r.calculatedStatus] || 'Pendente',
+        responsible: respName,
       };
 
       columns.forEach(col => {
         const key = resolveColumnKey(col) || col.id;
+        if (key === 'dp_reinf_fiscal') {
+          rowData[col.id] = reinfAppearance(r.fiscalReinf).label;
+          return;
+        }
         const val = r.columnsData?.[key];
         if (typeof val === 'object' && val !== null) {
           rowData[col.id] = val.completionDate || val.label || val.status || '';
         } else if (col.inputType === 'CHECKBOX') {
           rowData[col.id] = val ? 'Sim' : 'Não';
         } else {
-          rowData[col.id] = val || '';
+          rowData[col.id] = val ?? '';
         }
       });
       return rowData;
@@ -381,24 +412,36 @@ export function PayrollClosings({ currentView, onNavigate, currentUser, onLogout
   function openActionModal(row: PayrollRow, column: any, key: string) {
     if (!isRowEditable(row)) return;
     const currentVal = row.columnsData[key];
+    const existingDate = typeof currentVal === 'object' && currentVal?.completionDate
+      ? String(currentVal.completionDate)
+      : typeof currentVal === 'string' && /^\d{2}\/\d{2}\/\d{4}$/.test(currentVal.trim())
+      ? currentVal.trim()
+      : getTodayBr();
     setActionModal({ row, column, key });
     setModalMode('MAIN');
-    setInputDate(getTodayBr());
+    setActionError('');
+    setInputDate(existingDate);
     setInputPendencyReason(typeof currentVal === 'object' && currentVal?.pendingReason ? String(currentVal.pendingReason) : '');
     setCustomTextInput(typeof currentVal === 'string' ? currentVal : (currentVal?.label || ''));
   }
 
   async function handleActionOkData() {
     if (!actionModal) return;
-    const dateVal = inputDate.trim() || getTodayBr();
+    const raw = inputDate.trim() || getTodayBr();
+    const dateVal = isoToBrDate(raw);
     const payload = {
       status: 'CONCLUIDO',
       label: dateVal,
       completionDate: dateVal,
       updatedAt: new Date().toISOString()
     };
-    await enqueueSave(actionModal.row, actionModal.column, payload);
-    setActionModal(null);
+    setActionError('');
+    try {
+      await enqueueSave(actionModal.row, actionModal.column, payload);
+      setActionModal(null);
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : 'Erro ao salvar a data.');
+    }
   }
 
   async function handleActionSemMov() {
@@ -408,8 +451,13 @@ export function PayrollClosings({ currentView, onNavigate, currentUser, onLogout
       label: 'OK - S/ MOV',
       updatedAt: new Date().toISOString()
     };
-    await enqueueSave(actionModal.row, actionModal.column, payload);
-    setActionModal(null);
+    setActionError('');
+    try {
+      await enqueueSave(actionModal.row, actionModal.column, payload);
+      setActionModal(null);
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : 'Erro ao salvar.');
+    }
   }
 
   async function handleActionNA() {
@@ -419,14 +467,24 @@ export function PayrollClosings({ currentView, onNavigate, currentUser, onLogout
       label: 'N/A',
       updatedAt: new Date().toISOString()
     };
-    await enqueueSave(actionModal.row, actionModal.column, payload);
-    setActionModal(null);
+    setActionError('');
+    try {
+      await enqueueSave(actionModal.row, actionModal.column, payload);
+      setActionModal(null);
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : 'Erro ao salvar N/A.');
+    }
   }
 
   async function handleActionLimpar() {
     if (!actionModal) return;
-    await enqueueSave(actionModal.row, actionModal.column, '');
-    setActionModal(null);
+    setActionError('');
+    try {
+      await enqueueSave(actionModal.row, actionModal.column, '');
+      setActionModal(null);
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : 'Erro ao limpar.');
+    }
   }
 
   async function handleActionSavePendency() {
@@ -438,8 +496,13 @@ export function PayrollClosings({ currentView, onNavigate, currentUser, onLogout
       pendingReason: reason,
       updatedAt: new Date().toISOString()
     };
-    await enqueueSave(actionModal.row, actionModal.column, payload);
-    setActionModal(null);
+    setActionError('');
+    try {
+      await enqueueSave(actionModal.row, actionModal.column, payload);
+      setActionModal(null);
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : 'Erro ao salvar pendência.');
+    }
   }
 
   async function handleActionSaveCustom() {
@@ -449,8 +512,13 @@ export function PayrollClosings({ currentView, onNavigate, currentUser, onLogout
       await handleActionLimpar();
       return;
     }
-    await enqueueSave(actionModal.row, actionModal.column, text);
-    setActionModal(null);
+    setActionError('');
+    try {
+      await enqueueSave(actionModal.row, actionModal.column, text);
+      setActionModal(null);
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : 'Erro ao salvar anotação.');
+    }
   }
 
   return (
@@ -574,10 +642,28 @@ export function PayrollClosings({ currentView, onNavigate, currentUser, onLogout
                   <div className="payroll-loading"><TableSkeleton count={6} /></div>
                 ) : (
                   <>
-                    <div className="payroll-scroll-top" ref={upperScroll} onScroll={e => { if (tableScroll.current) tableScroll.current.scrollLeft = e.currentTarget.scrollLeft; }}>
+                    <div
+                      className="payroll-scroll-top"
+                      ref={upperScroll}
+                      onScroll={e => {
+                        if (syncingScroll.current || !tableScroll.current) return;
+                        syncingScroll.current = true;
+                        tableScroll.current.scrollLeft = e.currentTarget.scrollLeft;
+                        requestAnimationFrame(() => { syncingScroll.current = false; });
+                      }}
+                    >
                       <div style={{ width: scrollWidth || 1080 + columns.length * 170, height: 1 }} />
                     </div>
-                    <div className="closings-table-wrapper payroll-table-scroll" ref={tableScroll} onScroll={e => { if (upperScroll.current) upperScroll.current.scrollLeft = e.currentTarget.scrollLeft; }}>
+                    <div
+                      className="closings-table-wrapper payroll-table-scroll"
+                      ref={tableScroll}
+                      onScroll={e => {
+                        if (syncingScroll.current || !upperScroll.current) return;
+                        syncingScroll.current = true;
+                        upperScroll.current.scrollLeft = e.currentTarget.scrollLeft;
+                        requestAnimationFrame(() => { syncingScroll.current = false; });
+                      }}
+                    >
                       <table className="closings-table payroll-table" style={{ minWidth: `${1080 + columns.length * 170}px` }}>
                         <thead>
                           <tr>
@@ -593,8 +679,8 @@ export function PayrollClosings({ currentView, onNavigate, currentUser, onLogout
                               const c = row.company;
                               const certInfo = c.hasClientCertificate ? getCertificateStatus(c.certificateExpiration) : null;
                               return (
-                                <tr key={row.closingId}>
-                                  <td className="sticky-col-code"><span style={{ fontWeight: 600, color: '#94a3b8' }}>{c.code || '—'}</span></td>
+                                <tr key={row.closingId || c.id}>
+                                  <td className="sticky-col-code"><span style={{ fontWeight: 600, color: '#94a3b8' }}>{formatCompanyCode(c.code) || '—'}</span></td>
                                   <td className="sticky-col-company">
                                     <div className="company-cell-wrapper">
                                       <button type="button" className="company-interactive-link" title="Ver dados da empresa e certificado" onClick={() => setCompanyDetails(c)}>
@@ -611,7 +697,7 @@ export function PayrollClosings({ currentView, onNavigate, currentUser, onLogout
                                   </td>
                                   <td><span className={`tax-regime-pill ${c.taxRegime === 'SIMPLES_NACIONAL' ? 'simples' : c.taxRegime?.includes('PRESUMIDO') ? 'presumido' : c.taxRegime?.includes('REAL') ? 'real' : c.taxRegime === 'MEI' ? 'mei' : ''}`}>{formatRegimeLabel(c.taxRegime || '')}</span></td>
                                   <td title={`Progresso: ${row.progressPercent}%`}><span className={`status-badge ${row.calculatedStatus === 'COMPLETED' ? 'completed' : row.calculatedStatus === 'IN_PROGRESS' ? 'in-progress' : 'pending'}`}>{STATUS_LABELS[row.calculatedStatus] || row.calculatedStatus}</span></td>
-                                  <td><select className="table-user-select" aria-label={`Responsável DP de ${c.name}`} disabled={!canEdit || pending > 0} value={getResponsible(c)?.userId || ''} onChange={e => { void changeResponsible(row, e.target.value); }}><option value="">Não atribuído</option>{users.map(user => <option key={user.id} value={user.id}>{user.name || user.email}</option>)}</select></td>
+                                  <td><select className="table-user-select" aria-label={`Responsável DP de ${c.name}`} disabled={!canEdit || pending > 0} value={getResponsible(c)?.userId || ''} onChange={e => { void changeResponsible(row, e.target.value); }}><option value="">Não atribuído</option>{users.map(user => <option key={user.id} value={user.id} disabled={user.active === false}>{user.name || user.email}</option>)}</select></td>
                                   <td><button type="button" className="copy-badge-btn" title="Copiar CNPJ" onClick={() => { void navigator.clipboard.writeText(c.cnpj || '').then(() => setCopyMessage('CNPJ copiado!')).catch(() => setError('Não foi possível copiar o CNPJ.')); }}>{formatCnpj(c.cnpj || '')}<Copy size={12} /></button></td>
                                   {columns.map(column => {
                                     const key = resolveColumnKey(column) || column.id;
@@ -689,6 +775,7 @@ export function PayrollClosings({ currentView, onNavigate, currentUser, onLogout
             <p style={{ color: '#475569', fontSize: '0.9rem', marginBottom: 16 }}>
               <strong>{actionModal.row.company.name}</strong> · {monthLabel}
             </p>
+            {actionError && <p className="payroll-error" role="alert" style={{ marginBottom: 12 }}>{actionError}</p>}
 
             {modalMode === 'MAIN' && (
               <>
@@ -766,9 +853,9 @@ export function PayrollClosings({ currentView, onNavigate, currentUser, onLogout
             {modalMode === 'DATE' && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
                 <label style={{ fontSize: '0.9rem', color: '#cbd5e1', fontWeight: 500 }}>
-                  Informe a data de conclusão (DD/MM/AAAA):
+                  Informe a data de conclusão (qualquer data atual ou retroativa):
                 </label>
-                <div style={{ display: 'flex', gap: 8 }}>
+                <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
                   <input
                     type="text"
                     className="fiscal-column-text"
@@ -778,6 +865,14 @@ export function PayrollClosings({ currentView, onNavigate, currentUser, onLogout
                     onChange={e => setInputDate(e.target.value)}
                     autoFocus
                     onKeyDown={e => { if (e.key === 'Enter') handleActionOkData(); }}
+                  />
+                  <input
+                    type="date"
+                    aria-label="Selecionar no calendário"
+                    className="fiscal-column-text"
+                    style={{ width: 42, padding: '8px 6px', cursor: 'pointer' }}
+                    value={brToIsoDate(inputDate)}
+                    onChange={e => { if (e.target.value) setInputDate(isoToBrDate(e.target.value)); }}
                   />
                   <button
                     type="button"

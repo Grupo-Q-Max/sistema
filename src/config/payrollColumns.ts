@@ -7,7 +7,7 @@ export type FieldConfig = { version: 1; placeholder: string; options: string[]; 
 export const MONTH_OPTIONS = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro', 'N/A'];
 export const PAYROLL_COLUMNS: { key: string; name: string; inputType: PayrollInputType; options: string[]; replicates: boolean; countsProgress: boolean; isEditable: boolean; aliases: string[] }[] = [
   { key:'dp_observacao',name:'Observação do DP',inputType:'TEXTAREA',options:[],replicates:true,countsProgress:false,isEditable:true,aliases:['Observações DP','Observacao DP'] },
-  { key:'dp_adto',name:'Adiantamento',inputType:'SELECT',options:['Sim','Não'],replicates:true,countsProgress:false,isEditable:true,aliases:['ADTO'] },
+  { key:'dp_adto',name:'Adiantamento',inputType:'TEXT',options:[],replicates:false,countsProgress:false,isEditable:true,aliases:['ADTO'] },
   { key:'dp_folha_pagto',name:'Data de Pagamento Folha',inputType:'SELECT',options:['N/A','5º dia útil','Último dia'],replicates:true,countsProgress:false,isEditable:true,aliases:['Folha Pagto'] },
   { key:'dp_data_calc_folha',name:'Data Calc Folha',inputType:'TEXT',options:[],replicates:false,countsProgress:true,isEditable:true,aliases:[] },
   { key:'dp_data_envio_folha',name:'Data Envio Folha',inputType:'TEXT',options:[],replicates:false,countsProgress:true,isEditable:true,aliases:[] },
@@ -37,14 +37,12 @@ export function effectiveFieldConfig(column: any): FieldConfig {
   const normName = normalize(column?.name || '');
   const isDissidio = normName.includes('dissidio') || (column?.columnKey && column.columnKey.includes('dissidio'));
 
-  if (column.fieldConfig) {
-    const cloned = structuredClone(column.fieldConfig);
-    if (!Array.isArray(cloned.options)) cloned.options = [];
-    if (typeof cloned.placeholder !== 'string') cloned.placeholder = '';
-    if (cloned.options.length === 0 && isDissidio) {
-      cloned.options = [...MONTH_OPTIONS];
-    }
-    return cloned;
+  if (column?.fieldConfig && typeof column.fieldConfig === 'object') {
+    const rawOpts = Array.isArray(column.fieldConfig.options) ? column.fieldConfig.options : [];
+    const options = rawOpts.length === 0 && isDissidio ? [...MONTH_OPTIONS] : [...rawOpts];
+    const placeholder = typeof column.fieldConfig.placeholder === 'string' ? column.fieldConfig.placeholder : '';
+    const pendingOptions = Array.isArray(column.fieldConfig.pendingOptions) ? [...column.fieldConfig.pendingOptions] : undefined;
+    return pendingOptions ? { version: 1, placeholder, options, pendingOptions } : { version: 1, placeholder, options };
   }
   const template = [...PAYROLL_COLUMNS, ...ACCOUNTING_COLUMNS].find(c => c.key === resolveColumnKey(column));
   const options = template && Array.isArray(template.options) && template.options.length > 0 
@@ -69,10 +67,11 @@ export function validatePayrollValue(column:any,value:any):string|null {
   } else if(column.inputType==='CHECKBOX') {
     if(typeof value!=='boolean') return 'Valor de checkbox inválido.';
   } else if(column.inputType==='SELECT') {
+    if (value === null || value === undefined || value === '') return null;
     const cfg = effectiveFieldConfig(column);
-    const allowed = new Set([...cfg.options, ...(cfg.pendingOptions || [])]);
-    if(typeof value!=='string'||(value!==''&&!allowed.has(value))) return 'Escolha uma das opções configuradas.';
-  } else if(['TEXT','TEXTAREA','PASSWORD'].includes(column.inputType)) {
+    const allowed = new Set([...cfg.options, ...(cfg.pendingOptions || []), 'N/A']);
+    if(typeof value!=='string'||!allowed.has(value)) return 'Escolha uma das opções configuradas.';
+  } else if(['TEXT','TEXTAREA','PASSWORD','DATE'].includes(column.inputType)) {
     if (value === null || value === undefined || value === '') return null;
     if (typeof value !== 'string' && (typeof value !== 'object' || value === null)) return 'Informe um texto ou status válido.';
   }

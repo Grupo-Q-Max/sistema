@@ -32,7 +32,7 @@ import { TableSkeleton, ButtonSpinner } from './LoadingSkeleton';
 import type { CurrentUser } from '../types/auth';
 import './Dashboard.css';
 import './Companies.css';
-import { compareCodes } from '../utils/codeSort';
+import { compareCodes, formatCompanyCode } from '../utils/codeSort';
 
 interface Company {
   id: string;
@@ -873,7 +873,7 @@ export function Companies({ currentView, onNavigate, currentUser, onLogout }: Co
                             {/* Código */}
                             <td>
                               {comp.code ? (
-                                <span className="comp-code-tag">{comp.code}</span>
+                                <span className="comp-code-tag">{formatCompanyCode(comp.code)}</span>
                               ) : (
                                 <span style={{ color: 'var(--text-muted)', fontSize: '11px' }}>-</span>
                               )}

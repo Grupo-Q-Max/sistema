@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Building2, AlertTriangle, Copy, Eye, EyeOff, ExternalLink } from 'lucide-react';
+import { formatCompanyCode } from '../utils/codeSort';
 import './Closings.css';
 
 export function formatDateBr(dateVal?: string | Date | null): string {
@@ -162,7 +163,7 @@ export function CompanyDetailsModal({company:c,onClose,notesLabel='Observações
                       <h4>Identificação & Tributação</h4>
                       <div className="info-item-row">
                         <span className="label">Código:</span>
-                        <span className="value">{c.code || '-'}</span>
+                        <span className="value">{formatCompanyCode(c.code) || '-'}</span>
                       </div>
                       <div className="info-item-row">
                         <span className="label">Razão Social:</span>

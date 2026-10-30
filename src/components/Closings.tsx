@@ -42,14 +42,22 @@ import './FiscalPopup.css';
 import { visibilitySummary, isColumnComplete } from '../config/columnVisibility';
 import { FISCAL_POPUPS, effectivePopup, type PopupAction } from '../config/fiscalPopups';
 import { exportToCsv } from '../utils/exportCsv';
-import { compareCodes } from '../utils/codeSort';
+import { compareCodes, formatCompanyCode } from '../utils/codeSort';
 import { applyFiscalRegimeRules, isFiscalObligationNA } from '../config/fiscalRegimeRules';
+
+function brDateToIso(val: string): string {
+  const m = String(val || '').trim().match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+  return m ? `${m[3]}-${m[2]}-${m[1]}` : '';
+}
+
+function isoDateToBr(val: string): string {
+  const m = String(val || '').trim().match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  return m ? `${m[3]}/${m[2]}/${m[1]}` : val;
+}
 
 export function getFiscalResponsible(company: any) {
   if (!company || !Array.isArray(company.responsibles)) return null;
-  return company.responsibles.find((r: any) => r.sector === 'FISCAL')
-      || company.responsibles.find((r: any) => !r.sector)
-      || null;
+  return company.responsibles.find((r: any) => r.sector === 'FISCAL') || null;
 }
 
 export function companyBelongsToFiscal(company: any): boolean {
@@ -120,6 +128,10 @@ export function Closings({ currentView, onNavigate, currentUser, onLogout }: Clo
 
 
   const fetchSequence = useRef(0);
+  const tableScroll = useRef<HTMLDivElement>(null);
+  const upperScroll = useRef<HTMLDivElement>(null);
+  const syncingScroll = useRef(false);
+  const [scrollWidth, setScrollWidth] = useState(0);
   const [loading, setLoading] = useState(true);
   const [rows, setRows] = useState<any[]>([]);
   const [fiscalUsers, setFiscalUsers] = useState<any[]>([]);
@@ -244,6 +256,25 @@ export function Closings({ currentView, onNavigate, currentUser, onLogout }: Clo
     const timer = window.setInterval(() => { void loadInstallmentSummaries(rows); }, 60_000);
     return () => window.clearInterval(timer);
   }, [viewInstallments, rows, selectedYear, selectedMonth, installmentCompany]);
+
+  useEffect(() => {
+    const table = tableScroll.current?.querySelector('table');
+    if (!table) return;
+    const update = () => setScrollWidth(table.scrollWidth);
+    update();
+    const observer = new ResizeObserver(update);
+    observer.observe(table);
+    return () => observer.disconnect();
+  }, [loading, popupColumns.length, viewInstallments]);
+
+  const syncScroll = (source: HTMLDivElement, target: HTMLDivElement | null) => {
+    if (!target || syncingScroll.current) return;
+    syncingScroll.current = true;
+    target.scrollLeft = source.scrollLeft;
+    requestAnimationFrame(() => {
+      syncingScroll.current = false;
+    });
+  };
 
   // Fecha popover de filtro ao clicar fora ou pressionar ESC
   useEffect(() => {
@@ -384,7 +415,7 @@ export function Closings({ currentView, onNavigate, currentUser, onLogout }: Clo
             if (r.closingId === closingId) {
               return {
                 ...r,
-                columnsData: data.closing.columnsData,
+                columnsData: applyFiscalRegimeRules(r.company?.taxRegime, data.closing.columnsData || {}),
                 calculatedStatus: data.calculatedStatus,
                 progressPercent: data.progressPercent,
               };
@@ -393,7 +424,6 @@ export function Closings({ currentView, onNavigate, currentUser, onLogout }: Clo
           })
         );
         closeAllModals();
-        await fetchClosings();
       } else {
         const error = await res.json();
         window.alert(error.error || 'Erro ao salvar a obrigação.');
@@ -435,8 +465,10 @@ export function Closings({ currentView, onNavigate, currentUser, onLogout }: Clo
 
   const finishPopup = (colKey: string, formData?: any, sentWithApi?: boolean) => {
     const todayBr = new Date().toLocaleDateString('pt-BR');
+    const existingRaw = activeModal?.row?.columnsData?.[colKey]?.completionDate;
+    const prefillDate = existingRaw && formatDateBr(existingRaw) !== '-' ? formatDateBr(existingRaw) : todayBr;
     if (activePopupConfig.askDate) {
-      setInputDateValue(todayBr); setDatePrompt({ show: true, colKey, formData, sentWithApi }); return;
+      setInputDateValue(prefillDate); setDatePrompt({ show: true, colKey, formData, sentWithApi }); return;
     }
     if (!activeModal) return;
     saveColumnValue(activeModal.row.closingId, colKey, { status: 'CONCLUIDO', label: todayBr, completionDate: todayBr, data: formData, sentWithApi, updatedAt: new Date().toISOString() });
@@ -509,11 +541,12 @@ export function Closings({ currentView, onNavigate, currentUser, onLogout }: Clo
   const handleConfirmDate = () => {
     if (!activeModal || !datePrompt) return;
     const { colKey, sentWithApi, formData } = datePrompt;
+    const normalizedDate = isoDateToBr(inputDateValue.trim()) || new Date().toLocaleDateString('pt-BR');
 
     saveColumnValue(activeModal.row.closingId, colKey, {
       status: 'CONCLUIDO',
-      label: inputDateValue || 'OK - DATA',
-      completionDate: inputDateValue,
+      label: normalizedDate,
+      completionDate: normalizedDate,
       sentWithApi: sentWithApi !== undefined ? sentWithApi : undefined,
       data: formData || undefined,
       updatedAt: new Date().toISOString(),
@@ -610,9 +643,11 @@ export function Closings({ currentView, onNavigate, currentUser, onLogout }: Clo
       const c = r.company;
       const search = deferredSearchTerm.toLowerCase();
 
+      const formattedCode = formatCompanyCode(c.code);
       const matchSearch =
         !deferredSearchTerm ||
         (c.code && c.code.toLowerCase().includes(search)) ||
+        (formattedCode && formattedCode.toLowerCase().includes(search)) ||
         c.name.toLowerCase().includes(search) ||
         (c.tradeName && c.tradeName.toLowerCase().includes(search)) ||
         c.cnpj.includes(search) ||
@@ -682,7 +717,7 @@ export function Closings({ currentView, onNavigate, currentUser, onLogout }: Clo
     });
 
     return list;
-  }, [rows, deferredSearchTerm, statusFilter, regimeFilter, responsibleFilter, obligationFilters, sortConfig, popupColumns, installmentFilter, installmentSummaries, viewInstallments]);
+  }, [scopedRows, deferredSearchTerm, statusFilter, regimeFilter, responsibleFilter, obligationFilters, sortConfig, popupColumns, installmentFilter, installmentSummaries, viewInstallments]);
 
   const renderObligationCell = (row: any, colKey: string) => {
     const val = row.columnsData?.[colKey];
@@ -788,16 +823,23 @@ export function Closings({ currentView, onNavigate, currentUser, onLogout }: Clo
       { header: 'CNPJ', key: 'cnpj' },
       { header: 'Tributação', key: 'taxRegime' },
       { header: 'Status Geral', key: 'status' },
+      { header: 'Responsável', key: 'responsible' },
       ...popupColumns.map(c => ({ header: c.name, key: c.columnKey }))
     ];
 
     const data = filteredRows.map(c => {
+      const fiscalResp = getFiscalResponsible(c.company);
+      const currentRespId = fiscalResp?.userId || fiscalResp?.user?.id || '';
+      const respUser = fiscalResp?.user || fiscalUsers.find((u) => u.id === currentRespId);
+      const respName = (respUser?.name || respUser?.email || 'Não atribuído').replace(/\s*\(Inativo\)$/i, '');
+
       const row: any = {
-        code: c.company.code || '',
+        code: formatCompanyCode(c.company.code),
         name: c.company.name || '',
         cnpj: formatCnpj(c.company.cnpj) || '',
         taxRegime: formatRegimeLabel(c.company.taxRegime),
-        status: c.calculatedStatus === 'COMPLETED' ? 'Concluído' : c.calculatedStatus === 'IN_PROGRESS' ? 'Em Andamento' : 'Pendente'
+        status: c.calculatedStatus === 'COMPLETED' ? 'Concluído' : c.calculatedStatus === 'IN_PROGRESS' ? 'Em Andamento' : 'Pendente',
+        responsible: respName
       };
 
       popupColumns.forEach(col => {
@@ -808,6 +850,17 @@ export function Closings({ currentView, onNavigate, currentUser, onLogout }: Clo
           row[col.columnKey] = val ? 'Sim' : 'Não';
         } else if (col.inputType === 'MULTISELECT') {
           row[col.columnKey] = Array.isArray(val) ? val.join(', ') : (val || '');
+        } else if (!val && isFiscalObligationNA(c.company?.taxRegime, col.columnKey)) {
+          row[col.columnKey] = 'N/A';
+        } else if (val?.status === 'CONCLUIDO' || val?.status === 'OK - DATA') {
+          const dt = (val.completionDate ? formatDateBr(val.completionDate) : null) || val.label || 'OK';
+          row[col.columnKey] = val.sentWithApi ? `${dt} (API)` : dt;
+        } else if (val?.status === 'N/A') {
+          row[col.columnKey] = 'N/A';
+        } else if (val?.status === 'SEM_MOVIMENTO' || val?.status === 'OK - SEM MOVIMENTO') {
+          row[col.columnKey] = val.sentWithApi ? 'S/ MOV (API)' : 'OK - S/ MOV';
+        } else if (val?.status === 'PENDENCIA') {
+          row[col.columnKey] = val.pendingReason ? `PENDÊNCIA (${val.pendingReason})` : 'PENDÊNCIA';
         } else {
           row[col.columnKey] = val?.label || val?.status || 'Pendente';
         }
@@ -1018,8 +1071,20 @@ export function Closings({ currentView, onNavigate, currentUser, onLogout }: Clo
                 <TableSkeleton count={6} />
               </div>
             ) : (
-              <div className="closings-table-wrapper">
-                <table className="closings-table">
+              <>
+                <div
+                  className="payroll-scroll-top"
+                  ref={upperScroll}
+                  onScroll={(e) => syncScroll(e.currentTarget, tableScroll.current)}
+                >
+                  <div style={{ width: scrollWidth || 2200, height: 1 }} />
+                </div>
+                <div
+                  className="closings-table-wrapper"
+                  ref={tableScroll}
+                  onScroll={(e) => syncScroll(e.currentTarget, upperScroll.current)}
+                >
+                  <table className="closings-table">
                   <thead>
                     <tr>
                       {/* 1. Código com Ordenação */}
@@ -1270,7 +1335,7 @@ export function Closings({ currentView, onNavigate, currentUser, onLogout }: Clo
                           <tr key={c.id}>
                             {/* 1. Código */}
                             <td className="sticky-col-code">
-                              <span style={{ fontWeight: 600, color: '#94a3b8' }}>{c.code || '-'}</span>
+                              <span style={{ fontWeight: 600, color: '#94a3b8' }}>{formatCompanyCode(c.code) || '—'}</span>
                             </td>
 
                             {/* 2. Empresa Interativa com ícone, link explícito e alerta de certificado */}
@@ -1342,7 +1407,7 @@ export function Closings({ currentView, onNavigate, currentUser, onLogout }: Clo
                               >
                                 <option value="">Não atribuído</option>
                                 {fiscalUsers.map((u) => (
-                                  <option key={u.id} value={u.id}>
+                                  <option key={u.id} value={u.id} disabled={u.active === false}>
                                     {u.name || u.email}
                                   </option>
                                 ))}
@@ -1388,6 +1453,7 @@ export function Closings({ currentView, onNavigate, currentUser, onLogout }: Clo
                   </tbody>
                 </table>
               </div>
+              </>
             )}
           </div>
           </>
@@ -1468,7 +1534,7 @@ export function Closings({ currentView, onNavigate, currentUser, onLogout }: Clo
         {/* Sub-modal: Data de Conclusão */}
         {datePrompt?.show && (
           <div className="closing-modal-backdrop" style={{ zIndex: 1100 }}>
-            <div className="closing-modal-content" style={{ maxWidth: '420px' }}>
+            <div className="closing-modal-content" style={{ maxWidth: '460px' }}>
               <div className="closing-modal-header">
                 <div className="closing-modal-title">
                   <Calendar size={20} />
@@ -1476,23 +1542,44 @@ export function Closings({ currentView, onNavigate, currentUser, onLogout }: Clo
                 </div>
               </div>
               <div className="closing-modal-body">
-                <label style={{ fontSize: '0.88rem', color: '#475569', fontWeight: 500 }}>
-                  Informe a data em que foi concluído (DD/MM/AAAA):
+                <label style={{ fontSize: '0.88rem', color: '#cbd5e1', fontWeight: 500 }}>
+                  Informe ou escolha a data em que foi concluído (aceita datas retroativas):
                 </label>
-                <input
-                  type="text"
-                  placeholder="DD/MM/AAAA"
-                  value={inputDateValue}
-                  onChange={(e) => setInputDateValue(e.target.value)}
-                  style={{
-                    padding: '10px 12px',
-                    borderRadius: '8px',
-                    border: '1px solid #cbd5e1',
-                    fontSize: '0.95rem',
-                    outline: 'none',
-                  }}
-                  autoFocus
-                />
+                <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                  <input
+                    type="text"
+                    className="fiscal-column-text"
+                    placeholder="DD/MM/AAAA"
+                    value={inputDateValue}
+                    onChange={(e) => setInputDateValue(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === 'Enter') handleConfirmDate(); }}
+                    style={{
+                      flex: 1,
+                      width: 'auto',
+                      padding: '10px 12px',
+                      fontSize: '0.95rem',
+                    }}
+                    autoFocus
+                  />
+                  <input
+                    type="date"
+                    aria-label="Selecionar data no calendário"
+                    className="fiscal-column-text"
+                    style={{ width: '148px', padding: '9px 10px', fontSize: '0.9rem' }}
+                    value={brDateToIso(inputDateValue)}
+                    onChange={(e) => {
+                      if (e.target.value) setInputDateValue(isoDateToBr(e.target.value));
+                    }}
+                  />
+                  <button
+                    type="button"
+                    className="btn-secondary-light"
+                    onClick={() => setInputDateValue(new Date().toLocaleDateString('pt-BR'))}
+                    title="Usar data de hoje"
+                  >
+                    Hoje
+                  </button>
+                </div>
                 <div className="sub-modal-actions" style={{ marginTop: '12px' }}>
                   <button className="btn-secondary-light" onClick={() => setDatePrompt(null)}>
                     Cancelar

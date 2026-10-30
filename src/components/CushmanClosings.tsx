@@ -10,7 +10,7 @@ import { useCompetenceCalendar } from './useCompetenceCalendar';
 import { CUSHMAN_API_VERSION, cushmanAccess, resolveCushmanKey } from '../config/cushmanColumns';
 import { buildClosingProgress, summarizeClosingProgress } from '../config/closingProgress';
 import { exportToCsv } from '../utils/exportCsv';
-import { compareCodes } from '../utils/codeSort';
+import { compareCodes, formatCompanyCode } from '../utils/codeSort';
 import { installmentHeaders } from '../config/installments';
 import { latestOpenPeriod } from '../config/competenceCalendar';
 import type { CurrentUser } from '../types/auth';
@@ -37,6 +37,16 @@ function formatDateDisplay(val: string): string {
     return `${d}/${m}/${y}`;
   }
   return val;
+}
+
+function brDateToIso(val: string): string {
+  const m = String(val || '').trim().match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+  return m ? `${m[3]}-${m[2]}-${m[1]}` : '';
+}
+
+function isoDateToBr(val: string): string {
+  const m = String(val || '').trim().match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  return m ? `${m[3]}/${m[2]}/${m[1]}` : val;
 }
 
 export function getCushmanStatusAppearance(value: any): { className: string; label: string; tooltip?: string } {
@@ -100,6 +110,7 @@ export function CushmanClosings({ currentView, onNavigate, currentUser, onLogout
   const [inputDate, setInputDate] = useState('');
   const [inputPendencyReason, setInputPendencyReason] = useState('');
   const [customTextInput, setCustomTextInput] = useState('');
+  const [actionError, setActionError] = useState('');
 
   // Modal de Observação
   const [notesModal, setNotesModal] = useState<{ row: any; column: any } | null>(null);
@@ -174,7 +185,7 @@ export function CushmanClosings({ currentView, onNavigate, currentUser, onLogout
     const company = row.company;
     const term = deferredSearch.trim().toLocaleLowerCase('pt-BR');
     const digits = term.replace(/\D/g, '');
-    const matches = [company.code, company.name, company.tradeName, company.cnpj, company.city].join(' ').toLocaleLowerCase('pt-BR').includes(term) || (digits.length >= 3 && (company.cnpj || '').replace(/\D/g, '').includes(digits));
+    const matches = [company.code, formatCompanyCode(company.code), company.name, company.tradeName, company.cnpj, company.city].join(' ').toLocaleLowerCase('pt-BR').includes(term) || (digits.length >= 3 && (company.cnpj || '').replace(/\D/g, '').includes(digits));
     const certificate = company.hasClientCertificate ? getCertificateStatus(company.certificateExpiration) : null;
     return matches && (status === 'ALL' || row.calculatedStatus === status) && (city === 'ALL' || company.city === city) && (cert === 'ALL' || (cert === 'NONE' && !company.hasClientCertificate) || certificate?.status === cert);
   }).sort((a, b) => {
@@ -221,56 +232,84 @@ export function CushmanClosings({ currentView, onNavigate, currentUser, onLogout
 
   function openActionModal(row: any, column: any, key: string) {
     const currentVal = row.columnsData[key];
+    const existingDate =
+      typeof currentVal === 'object' && currentVal?.completionDate
+        ? formatDateDisplay(String(currentVal.completionDate))
+        : typeof currentVal === 'string' && /^\d{2}\/\d{2}\/\d{4}$/.test(currentVal.trim())
+        ? currentVal.trim()
+        : getTodayBr();
     setActionModal({ row, column, key });
     setModalMode('MAIN');
-    setInputDate(getTodayBr());
+    setActionError('');
+    setInputDate(existingDate);
     setInputPendencyReason(typeof currentVal === 'object' && currentVal?.pendingReason ? String(currentVal.pendingReason) : '');
     setCustomTextInput(typeof currentVal === 'string' ? currentVal : (currentVal?.label || ''));
   }
 
   async function handleActionOkData() {
     if (!actionModal) return;
-    const dateVal = inputDate.trim() || getTodayBr();
+    setActionError('');
+    const dateVal = isoDateToBr(inputDate.trim()) || getTodayBr();
     const payload = {
       status: 'CONCLUIDO',
       label: dateVal,
       completionDate: dateVal,
       updatedAt: new Date().toISOString()
     };
-    await saveColumn(actionModal.row, actionModal.key, payload);
-    setActionModal(null);
+    try {
+      await saveColumn(actionModal.row, actionModal.key, payload);
+      setActionModal(null);
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : 'Erro ao salvar conclusão.');
+    }
   }
 
   async function handleActionSemMov() {
     if (!actionModal) return;
+    setActionError('');
     const payload = {
       status: 'OK - SEM MOVIMENTO',
       label: 'OK - S/ MOV',
       updatedAt: new Date().toISOString()
     };
-    await saveColumn(actionModal.row, actionModal.key, payload);
-    setActionModal(null);
+    try {
+      await saveColumn(actionModal.row, actionModal.key, payload);
+      setActionModal(null);
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : 'Erro ao salvar.');
+    }
   }
 
   async function handleActionNA() {
     if (!actionModal) return;
+    setActionError('');
     const payload = {
       status: 'N/A',
       label: 'N/A',
       updatedAt: new Date().toISOString()
     };
-    await saveColumn(actionModal.row, actionModal.key, payload);
-    setActionModal(null);
+    try {
+      await saveColumn(actionModal.row, actionModal.key, payload);
+      setActionModal(null);
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : 'Erro ao salvar.');
+    }
   }
 
   async function handleActionLimpar() {
     if (!actionModal) return;
-    await saveColumn(actionModal.row, actionModal.key, '');
-    setActionModal(null);
+    setActionError('');
+    try {
+      await saveColumn(actionModal.row, actionModal.key, '');
+      setActionModal(null);
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : 'Erro ao limpar.');
+    }
   }
 
   async function handleActionSavePendency() {
     if (!actionModal) return;
+    setActionError('');
     const reason = inputPendencyReason.trim() || 'Pendência informada';
     const payload = {
       status: 'PENDENCIA',
@@ -278,15 +317,24 @@ export function CushmanClosings({ currentView, onNavigate, currentUser, onLogout
       pendingReason: reason,
       updatedAt: new Date().toISOString()
     };
-    await saveColumn(actionModal.row, actionModal.key, payload);
-    setActionModal(null);
+    try {
+      await saveColumn(actionModal.row, actionModal.key, payload);
+      setActionModal(null);
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : 'Erro ao registrar pendência.');
+    }
   }
 
   async function handleActionCustomText() {
     if (!actionModal) return;
+    setActionError('');
     const text = customTextInput.trim();
-    await saveColumn(actionModal.row, actionModal.key, text);
-    setActionModal(null);
+    try {
+      await saveColumn(actionModal.row, actionModal.key, text);
+      setActionModal(null);
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : 'Erro ao salvar anotação.');
+    }
   }
 
   const handleExport = () => {
@@ -301,7 +349,7 @@ export function CushmanClosings({ currentView, onNavigate, currentUser, onLogout
 
     const data = filtered.map(r => {
       const rowData: any = {
-        code: r.company.code || '',
+        code: formatCompanyCode(r.company.code),
         name: r.company.name || '',
         cnpj: formatCnpj(r.company.cnpj) || '',
         city: r.company.city || '',
@@ -331,7 +379,9 @@ export function CushmanClosings({ currentView, onNavigate, currentUser, onLogout
     if (!target || syncing.current) return;
     syncing.current = true;
     target.scrollLeft = source.scrollLeft;
-    syncing.current = false;
+    requestAnimationFrame(() => {
+      syncing.current = false;
+    });
   };
 
   const label = period.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric', timeZone: 'UTC' });
@@ -483,7 +533,7 @@ export function CushmanClosings({ currentView, onNavigate, currentUser, onLogout
                                     {canEdit ? <Settings2 size={18} /> : <Eye size={18} />}
                                   </button>
                                 </td>
-                                <td className="cushman-sticky-code"><span style={{ fontWeight: 600, color: '#94a3b8' }}>{company.code || '—'}</span></td>
+                                <td className="cushman-sticky-code"><span style={{ fontWeight: 600, color: '#94a3b8' }}>{formatCompanyCode(company.code) || '—'}</span></td>
                                 <td className="cushman-sticky-company">
                                   <div className="cushman-company-cell">
                                     <strong>{company.name}</strong>
@@ -655,6 +705,7 @@ export function CushmanClosings({ currentView, onNavigate, currentUser, onLogout
                       <p style={{ color: '#94a3b8', fontSize: '0.9rem', margin: '0 0 16px 0' }}>
                         <strong style={{ color: '#fff' }}>{actionModal.row.company.name}</strong> · {label}
                       </p>
+                      {actionError && <p role="alert" className="cushman-error" style={{ marginBottom: 12 }}>{actionError}</p>}
 
                       {modalMode === 'MAIN' && (
                         <>
@@ -739,9 +790,9 @@ export function CushmanClosings({ currentView, onNavigate, currentUser, onLogout
                       {modalMode === 'DATE' && (
                         <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
                           <label style={{ fontSize: '0.9rem', color: '#cbd5e1', fontWeight: 500 }}>
-                            Informe a data de conclusão (DD/MM/AAAA):
+                            Informe ou escolha a data de conclusão (aceita datas retroativas):
                           </label>
-                          <div style={{ display: 'flex', gap: 8 }}>
+                          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
                             <input
                               type="text"
                               className="fiscal-column-text"
@@ -751,6 +802,16 @@ export function CushmanClosings({ currentView, onNavigate, currentUser, onLogout
                               onChange={e => setInputDate(e.target.value)}
                               autoFocus
                               onKeyDown={e => { if (e.key === 'Enter') handleActionOkData(); }}
+                            />
+                            <input
+                              type="date"
+                              aria-label="Selecionar data no calendário"
+                              className="fiscal-column-text"
+                              style={{ width: '148px', padding: '9px 10px', fontSize: '0.9rem' }}
+                              value={brDateToIso(inputDate)}
+                              onChange={e => {
+                                if (e.target.value) setInputDate(isoDateToBr(e.target.value));
+                              }}
                             />
                             <button
                               type="button"

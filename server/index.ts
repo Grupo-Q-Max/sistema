@@ -11,7 +11,8 @@ import { normalizeLoginEmail, verifyLoginPassword } from './authPassword';
 import { issueSession, registerInstallments } from './installments';
 import { createAccountingYearEngine } from './accountingYear';
 import { ACCOUNTING_COLUMNS, ACCOUNTING_API_VERSION, accountingYear, accountingMonth, annualColumnActive, annualValues, accountingProgress } from '../src/config/accountingColumns';
-import { createRolloverEngine } from './monthRollover';
+import { createRolloverEngine, replicatedData } from './monthRollover';
+import { formatCompanyCode } from '../src/utils/codeSort';
 import { latestOpenPeriod, periodIsOpen, blockedPeriodMessage, setManualLatestPeriod, normalizePeriod } from '../src/config/competenceCalendar';
 import { PAYROLL_API_VERSION, resolveColumnKey, effectiveFieldConfig, validateFieldConfig, validatePayrollValue } from '../src/config/payrollColumns';
 import { isColumnActive, validateVisibility, calculateColumnProgress, isColumnComplete } from '../src/config/columnVisibility';
@@ -441,6 +442,57 @@ app.get('/api/logs', async (req, res) => {
   }
 });
 
+function sanitizeColumnsData(raw: any): Record<string, any> {
+  const clean = { ...((raw && typeof raw === 'object' ? raw : {}) as Record<string, any>) };
+  delete clean._legacy;
+  return clean;
+}
+
+async function getSectorResponsibleUsers(sector: 'FISCAL' | 'DP' | 'CONTABIL', companies: any[] = []) {
+  const baseUsers = await prisma.user.findMany({
+    where: {
+      active: true,
+      OR: [
+        { role: sector as any },
+        {
+          role: { notIn: ['ADMIN', 'SOCIO', 'FISCAL', 'DP', 'CONTABIL'] as any },
+          sectorPermissions: { some: { sector: sector as any, access: 'EDIT' } },
+        },
+        {
+          responsibleAssignments: { some: { sector: sector as any } },
+        },
+      ],
+    },
+    select: { id: true, name: true, email: true, role: true, active: true },
+    orderBy: { name: 'asc' },
+  });
+
+  const userMap = new Map<string, any>();
+  for (const u of baseUsers) {
+    if (!u.name && !u.email) continue;
+    userMap.set(u.id, u);
+  }
+  for (const c of companies) {
+    for (const r of (c.responsibles || [])) {
+      if (r.sector !== sector) continue;
+      if (r.user && !userMap.has(r.user.id)) {
+        const isInactive = r.user.active === false;
+        const baseName = (r.user.name || r.user.email || '').trim();
+        userMap.set(r.user.id, {
+          ...r.user,
+          name: isInactive && baseName && !baseName.includes('(Inativo)') ? `${baseName} (Inativo)` : baseName,
+          active: !isInactive,
+        });
+      }
+    }
+  }
+
+  return Array.from(userMap.values()).sort((a, b) => {
+    if ((a.active !== false) !== (b.active !== false)) return a.active !== false ? -1 : 1;
+    return (a.name || a.email || '').localeCompare(b.name || b.email || '', 'pt-BR');
+  });
+}
+
 // Fechamento contábil anual: mantém empresas que saíram dentro do ano histórico.
 app.get('/api/accounting-closings', async (req,res)=>{
   try {
@@ -450,11 +502,11 @@ app.get('/api/accounting-closings', async (req,res)=>{
     const columns=result.columns.filter((column:any)=>annualColumnActive(column,year));
     const map=new Map<string,any>(result.closings.map((closing:any)=>[closing.companyId,closing]));
     const rows=result.companies.map((company:any)=>{
-      const closing=map.get(company.id);const data=annualValues(company,year,result.columns,closing?.columnsData||{});
+      const closing=map.get(company.id);const data=sanitizeColumnsData(annualValues(company,year,result.columns,closing?.columnsData||{}));
       for(const column of result.columns)if(column.inputType==='PASSWORD'){const key=resolveColumnKey(column)||column.id;if(data[key])data[key]=decryptPassword(data[key]);}
-      return {company:{...company,certificatePasswordDecrypted:decryptPassword(company.certificatePassword),ginfessPasswordDecrypted:decryptPassword(company.ginfessPassword),gissOnlinePasswordDecrypted:decryptPassword(company.gissOnlinePassword),sdPasswordDecrypted:decryptPassword(company.sdPassword),nfPasswordDecrypted:decryptPassword(company.nfPassword)},closingId:closing?.id,columnsData:data,...accountingProgress(company,year,result.columns,data)};
+      return {company:{...company,code:formatCompanyCode(company.code)||null,certificatePasswordDecrypted:decryptPassword(company.certificatePassword),ginfessPasswordDecrypted:decryptPassword(company.ginfessPassword),gissOnlinePasswordDecrypted:decryptPassword(company.gissOnlinePassword),sdPasswordDecrypted:decryptPassword(company.sdPassword),nfPasswordDecrypted:decryptPassword(company.nfPassword)},closingId:closing?.id,columnsData:data,...accountingProgress(company,year,result.columns,data)};
     });
-    const users=await prisma.user.findMany({where:{active:true},select:{id:true,name:true,email:true},orderBy:{name:'asc'}});
+    const users=await getSectorResponsibleUsers('CONTABIL',result.companies);
     res.json({accountingApiVersion:ACCOUNTING_API_VERSION,year,latestYear:accountingYear(),rows,columns,users,configured:result.columns.some((column:any)=>column.columnKey?.startsWith('cont_'))});
   }catch(error){console.error('Erro no Contábil anual:',error);res.status(500).json({error:'Não foi possível carregar o Contábil anual.'});}
 });
@@ -474,7 +526,7 @@ async function saveAccountingColumn(existing:any,columnKey:string,columnValue:an
   }
   const error=validatePayrollValue(column,columnValue);if(error)return res.status(400).json({error});
   const stored={...(existing.columnsData||{}),[columnKey]:column.inputType==='PASSWORD'?(encryptPassword(columnValue)||''):columnValue};
-  const projected=annualValues(company,year,columns,stored);const progress=accountingProgress(company,year,columns,projected);
+  const projected=sanitizeColumnsData(annualValues(company,year,columns,stored));const progress=accountingProgress(company,year,columns,projected);
   const updated=await prisma.closing.update({where:{id:existing.id},data:{columnsData:stored,status:progress.calculatedStatus}});
   for(const item of columns)if(item.inputType==='PASSWORD'){const key=resolveColumnKey(item)||item.id;if(projected[key])projected[key]=decryptPassword(projected[key]);}
   return res.json({success:true,closing:{...updated,columnsData:projected},...progress});
@@ -559,14 +611,14 @@ app.get('/api/closings', async (req, res) => {
       ],
     };
 
-    const [companies, closings, baseSectorUsers, distinctPeriods] = await Promise.all([
+    const [companies, closings, configuredColumns, distinctPeriods] = await Promise.all([
       prisma.company.findMany({
         where: activeWhere,
         include: {
           responsibles: {
-            where: { OR: [{ sector: sector as any }, { sector: null }] },
+            where: { sector: sector as any },
             include: {
-              user: { select: { id: true, name: true, email: true, role: true } },
+              user: { select: { id: true, name: true, email: true, role: true, active: true } },
             },
           },
         },
@@ -578,49 +630,107 @@ app.get('/api/closings', async (req, res) => {
           referencePeriod: { gte: monthStart, lt: nextMonthStart },
         },
       }),
-      prisma.user.findMany({
-        where: {
-          active: true,
-          OR: [
-            { role: sector as any },
-            { role: { in: ['ADMIN', 'SOCIO'] } },
-            { sectorPermissions: { some: { sector: sector as any, access: { in: ['VIEW', 'EDIT'] } } } },
-          ],
-        },
-        select: { id: true, name: true, email: true, role: true },
-        orderBy: { name: 'asc' },
-      }),
-      prisma.closing.findMany({
-        select: { referencePeriod: true },
-        distinct: ['referencePeriod'],
-        orderBy: { referencePeriod: 'asc' },
-      }),
+      prisma.departmentColumn.findMany({ where: { department: sector as any }, orderBy: { orderIndex: 'asc' } }),
+      cachedDistinctPeriods(),
     ]);
 
-    // Reúne usuários do setor + quaisquer usuários já atribuídos às empresas listadas
-    const userMap = new Map<string, any>();
-    baseSectorUsers.forEach((u: any) => userMap.set(u.id, u));
-    companies.forEach((c: any) => {
-      (c.responsibles || []).forEach((r: any) => {
-        if (r.user && !userMap.has(r.user.id)) {
-          userMap.set(r.user.id, r.user);
-        }
-      });
-    });
-    const fiscalUsers = Array.from(userMap.values()).sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+    const fiscalUsers = await getSectorResponsibleUsers(sector as 'FISCAL' | 'DP', companies);
 
     const closingMap = new Map<string, any>(closings.map((c: any) => [c.companyId, c]));
-
-    const configuredColumns = await prisma.departmentColumn.findMany({ where: { department: sector as any }, orderBy: { orderIndex: 'asc' } });
     const activeColumns = configuredColumns.filter((col: any) => isColumnActive(col, monthStart));
     const progressColumns = configuredColumns.length ? activeColumns.filter((col: any) => col.countsProgress) : Object.keys(FISCAL_POPUPS).map(columnKey => ({ columnKey, inputType: 'POPUP' }));
+    const replicatingCols = activeColumns.filter((col: any) => col.replicates);
+
+    // Garante que nenhuma empresa ativa fique sem registro de Closing em competências anteriores (ex: voltar para 09/2026 ou 08/2026)
+    // e retropreenche colunas permanentes de cadastro (replicates=true, como Mês Dissídio / Sindicato / Tipo Folha) quando ausentes no mês anterior
+    const missingCompanies = companies.filter((c: any) => !closingMap.has(c.id));
+    const companiesNeedingFallbackIds = new Set<string>(missingCompanies.map((c: any) => c.id));
+    if (replicatingCols.length > 0) {
+      for (const c of companies) {
+        const cl = closingMap.get(c.id);
+        if (!cl) continue;
+        const cData = (cl.columnsData as Record<string, any>) || {};
+        for (const col of replicatingCols) {
+          const key = resolveColumnKey(col) || col.id;
+          if (cData[key] === undefined) {
+            companiesNeedingFallbackIds.add(c.id);
+            break;
+          }
+        }
+      }
+    }
+
+    const latestByCompany = new Map<string, Record<string, any>>();
+    if (companiesNeedingFallbackIds.size > 0) {
+      const refClosings = await prisma.closing.findMany({
+        where: {
+          type: sector as any,
+          companyId: { in: Array.from(companiesNeedingFallbackIds) },
+        },
+        select: { companyId: true, referencePeriod: true, columnsData: true },
+        orderBy: { referencePeriod: 'desc' },
+      });
+      for (const rc of refClosings) {
+        if (!rc.columnsData || typeof rc.columnsData !== 'object') continue;
+        const prev = latestByCompany.get(rc.companyId) || {};
+        for (const [k, v] of Object.entries(rc.columnsData as Record<string, any>)) {
+          if (k === '_legacy') continue;
+          if (prev[k] === undefined && v !== undefined && v !== null && v !== '') {
+            prev[k] = v;
+          }
+        }
+        latestByCompany.set(rc.companyId, prev);
+      }
+    }
+
+    if (missingCompanies.length > 0) {
+      const toCreate = missingCompanies.map((comp: any) => {
+        const refData = latestByCompany.get(comp.id) || {};
+        let seeded = replicatedData(configuredColumns, refData, {}, monthStart);
+        if (sector === 'FISCAL') seeded = applyFiscalRegimeRules(comp.taxRegime, seeded);
+        const prog = calculateColumnProgress(progressColumns, seeded, col => resolveColumnKey(col) || col.columnKey || col.id);
+        const dashboardMetrics = sector === 'DP' && seeded.dp_qtde_funcionarios !== undefined
+          ? { employees: Number(seeded.dp_qtde_funcionarios) || 0 }
+          : undefined;
+        return {
+          companyId: comp.id,
+          type: sector as any,
+          referencePeriod: monthStart,
+          status: prog.calculatedStatus as any,
+          columnsData: seeded,
+          ...(dashboardMetrics ? { dashboardMetrics } : {}),
+        };
+      });
+      await prisma.closing.createMany({ data: toCreate, skipDuplicates: true });
+      const createdClosings = await prisma.closing.findMany({
+        where: {
+          type: sector as any,
+          companyId: { in: missingCompanies.map((c: any) => c.id) },
+          referencePeriod: { gte: monthStart, lt: nextMonthStart },
+        },
+      });
+      for (const cl of createdClosings) closingMap.set(cl.companyId, cl);
+    }
 
     const fiscalReinfClosings = sector === 'DP' ? await prisma.closing.findMany({ where: { type: 'FISCAL', referencePeriod: { gte: monthStart, lt: nextMonthStart } }, select: { companyId: true, columnsData: true } }) : [];
     const fiscalReinfMap = new Map<string, any>(fiscalReinfClosings.map((c: any) => [c.companyId, c.columnsData?.reinf || null]));
     const reinfColumn = sector === 'DP' ? await prisma.departmentColumn.findFirst({ where: { department: 'FISCAL', OR: [{ columnKey: 'reinf' }, { name: 'Reinf' }, { name: 'REINF' }] } }) : null;
     const rows = companies.map((c: any) => {
       const closing = closingMap.get(c.id) || null;
-      let columnsData = { ...((closing?.columnsData as Record<string, any>) || {}) };
+      let columnsData = sanitizeColumnsData(closing?.columnsData);
+      if (replicatingCols.length > 0) {
+        const fallback = latestByCompany.get(c.id);
+        for (const col of replicatingCols) {
+          const key = resolveColumnKey(col) || col.id;
+          if (columnsData[key] === undefined) {
+            if (fallback && fallback[key] !== undefined) {
+              columnsData[key] = fallback[key];
+            } else if (/dissidio/i.test(col.name || '') && c.dissidioMonthYear) {
+              columnsData[key] = c.dissidioMonthYear;
+            }
+          }
+        }
+      }
       if (sector === 'FISCAL') {
         columnsData = applyFiscalRegimeRules(c.taxRegime, columnsData);
       }
@@ -640,6 +750,7 @@ app.get('/api/closings', async (req, res) => {
         ...(sector === 'DP' ? { fiscalReinf: fiscalReinfMap.get(c.id) || null } : {}),
         company: {
           ...c,
+          code: formatCompanyCode(c.code) || null,
           certificatePasswordDecrypted: decryptPassword(c.certificatePassword),
           ginfessPasswordDecrypted: decryptPassword(c.ginfessPassword),
           gissOnlinePasswordDecrypted: decryptPassword(c.gissOnlinePassword),
@@ -784,10 +895,18 @@ app.put('/api/closings/:id/column', async (req, res) => {
       );
     }
 
-    const responseColumnsData = { ...(updated.columnsData || {}) };
-    if (existing.type === 'DP') for (const column of sectorColumns) {
-      const key = resolveColumnKey(column) || column.id;
-      if (column.inputType === 'PASSWORD' && responseColumnsData[key]) responseColumnsData[key] = decryptPassword(responseColumnsData[key]);
+    const responseColumnsData = sanitizeColumnsData(updated.columnsData);
+    if (existing.type === 'DP') {
+      for (const column of sectorColumns) {
+        const key = resolveColumnKey(column) || column.id;
+        if (column.inputType === 'PASSWORD' && responseColumnsData[key]) responseColumnsData[key] = decryptPassword(responseColumnsData[key]);
+      }
+      if (popupColumn && /dissidio/i.test(popupColumn.name || '') && typeof columnValue === 'string') {
+        await prisma.company.update({
+          where: { id: existing.companyId },
+          data: { dissidioMonthYear: columnValue.trim() || null },
+        }).catch(() => {});
+      }
     }
     invalidateDashboardCache();
     res.json({
@@ -1331,6 +1450,7 @@ app.get('/api/companies', async (req, res) => {
 
     const formatted = companies.map((c: any) => ({
       ...c,
+      code: formatCompanyCode(c.code) || null,
       certificatePasswordDecrypted: decryptPassword(c.certificatePassword),
       ginfessPasswordDecrypted: decryptPassword(c.ginfessPassword),
       gissOnlinePasswordDecrypted: decryptPassword(c.gissOnlinePassword),
@@ -1426,7 +1546,7 @@ app.post('/api/companies', async (req, res) => {
 
     const newCompany = await prisma.company.create({
       data: {
-        code: code ? String(code).trim() : null,
+        code: formatCompanyCode(code) || null,
         name: name.trim(),
         tradeName: tradeName ? tradeName.trim() : null,
         cnpj: cleanCnpj,
@@ -1538,7 +1658,7 @@ app.put('/api/companies/:id', async (req, res) => {
     }
 
     const updateData: any = {};
-    if (code !== undefined) updateData.code = code ? String(code).trim() : null;
+    if (code !== undefined) updateData.code = formatCompanyCode(code) || null;
     if (name !== undefined) updateData.name = name.trim();
     if (tradeName !== undefined) updateData.tradeName = tradeName ? tradeName.trim() : null;
     if (cnpj !== undefined) updateData.cnpj = cnpj.replace(/\D/g, '');

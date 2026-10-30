@@ -6,7 +6,15 @@ import {isColumnActive,calculateColumnProgress} from '../src/config/columnVisibi
 import {effectivePopup} from '../src/config/fiscalPopups';
 import {validatePayrollValue} from '../src/config/payrollColumns';
 import {validDate} from '../src/config/installments';
+import {formatCompanyCode} from '../src/utils/codeSort';
 const fail=(status:number,message:string):never=>{throw Object.assign(new Error(message),{status});};
+function validPopupDate(value:any):boolean {
+ if(typeof value!=='string')return false;
+ const text=value.trim();if(!text)return false;
+ if(validDate(text))return true;
+ const br=text.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+ return !!(br&&validDate(`${br[3]}-${br[2]}-${br[1]}`));
+}
 export function validateCushmanCompanyPatch(body:any,existing:any,encrypt:(value:any)=>any):any {
  if(!body||typeof body!=='object'||Array.isArray(body))fail(400,'Dados de cadastro inválidos.');
  const allowed=new Set<string>([...CUSHMAN_COMPANY_FIELDS.map(field=>field.key),'expectedUpdatedAt','exitMonthHasObligations']);
@@ -32,20 +40,21 @@ export function validateCushmanCompanyPatch(body:any,existing:any,encrypt:(value
  return data;
 }
 export function validateCushmanPopup(column:any,value:any,key:string):string|null {
+ if(value===null||value===''||typeof value==='string')return null;
  if(!value||typeof value!=='object'||Array.isArray(value))return 'Informações do popup inválidas.';
- const actionOf:Record<string,string>={'N/A':'NA',PENDENCIA:'PENDENCIA','OK - SEM MOVIMENTO':'SEM_MOV',CONCLUIDO:'SALVAR','OK - DATA':'OK_DATA',PENDENTE:'LIMPAR'};
- const action=actionOf[value.status];if(!action)return 'Situação inválida.';
- const popup=effectivePopup(column,key);if(!popup.actions.some(item=>item.id===action&&item.enabled))return 'Esta ação está desativada na configuração da coluna.';
+ const allowedActions:Record<string,string[]>={'N/A':['NA'],PENDENCIA:['PENDENCIA'],'OK - SEM MOVIMENTO':['SEM_MOV'],CONCLUIDO:['SALVAR','OK_DATA'],'OK - DATA':['OK_DATA','SALVAR'],PENDENTE:['LIMPAR']};
+ const actions=allowedActions[value.status];if(!actions)return 'Situação inválida.';
+ const popup=effectivePopup(column,key);if(!popup.actions.some(item=>actions.includes(item.id)&&item.enabled))return 'Esta ação está desativada na configuração da coluna.';
  if(value.data!==undefined&&(!value.data||typeof value.data!=='object'||Array.isArray(value.data)))return 'Campos do popup inválidos.';
  for(const [field,item] of Object.entries(value.data||{})){
   if(typeof item!=='string'&&typeof item!=='number'&&typeof item!=='boolean'&&item!==null)return `Campo inválido: ${field}`;
   const definition=popup.fields.find(candidate=>candidate.key===field);if(!definition)continue;const text=String(item??'').trim();
   if(text&&definition.type==='NUMBER'&&!Number.isFinite(Number(text)))return `Informe um número em ${definition.label}.`;
-  if(text&&definition.type==='DATE'&&!validDate(text))return `Data inválida em ${definition.label}.`;
+  if(text&&definition.type==='DATE'&&!validPopupDate(text))return `Data inválida em ${definition.label}.`;
   if(text&&definition.type==='SELECT'&&!definition.options.includes(text))return `Escolha uma opção em ${definition.label}.`;
  }
  if(value.status==='CONCLUIDO'){const missing=popup.fields.find(field=>field.required&&!String(value.data?.[field.key]??'').trim());if(missing)return `Preencha o campo: ${missing.label}`;}
- if(['CONCLUIDO','OK - DATA'].includes(value.status)&&popup.askDate&&!validDate(value.completionDate))return 'Informe a data da conclusão.';
+ if(['CONCLUIDO','OK - DATA'].includes(value.status)&&popup.askDate&&!validPopupDate(value.completionDate))return 'Informe a data da conclusão.';
  if(value.status==='PENDENCIA'&&!String(value.pendingReason||'').trim())return 'Informe o motivo da pendência.';
  return null;
 }
@@ -63,7 +72,7 @@ export function registerCushman(app:any,prisma:any,options:{sync:(period:Date)=>
   const user=await prisma.user.findUnique({where:{id},include:{sectorPermissions:true,screenPermissions:true,companyAccess:true,responsibleAssignments:true}});if(!cushmanAccess(user))fail(403,'Sem acesso ao fechamento Cushman.');await handler(req,res,user);
  }catch(error:any){if(!error.status)console.error('Erro no Cushman:',error);res.status(error.status||500).json({error:error.status?error.message:'Não foi possível concluir a operação no Cushman.'});}};
  const reference=(query:any)=>{const year=Number(query.year),month=Number(query.month);if(!Number.isInteger(year)||year<1900||year>9999||!Number.isInteger(month)||month<1||month>12)fail(400,'Competência inválida.');const period=new Date(Date.UTC(year,month-1,1));if(!periodIsOpen(period))fail(423,blockedPeriodMessage(period));return period;};
- const safeCompany=(company:any)=>{const {certificatePassword,ginfessPassword,gissOnlinePassword,...safe}=company;return {...safe,certificatePasswordDecrypted:options.decrypt(certificatePassword),ginfessPasswordDecrypted:options.decrypt(ginfessPassword),gissOnlinePasswordDecrypted:options.decrypt(gissOnlinePassword)};};
+ const safeCompany=(company:any)=>{const {certificatePassword,ginfessPassword,gissOnlinePassword,...safe}=company;return {...safe,code:formatCompanyCode(company.code)||null,certificatePasswordDecrypted:options.decrypt(certificatePassword),ginfessPasswordDecrypted:options.decrypt(ginfessPassword),gissOnlinePasswordDecrypted:options.decrypt(gissOnlinePassword)};};
  const companyAllowed=async(user:any,id:string)=>{const company=await prisma.company.findUnique({where:{id},include:{responsibles:true}});if(!company)fail(404,'Empresa não encontrada.');if(!cushmanCompanyAllowed(user,company))fail(403,'Empresa fora do seu acesso no Cushman.');return company;};
  app.get('/api/cushman-closings',endpoint(async(req:any,res:any,user:any)=>{
   const period=reference(req.query);const mode=req.query.companies||'CUSHMAN';if(!['CUSHMAN','ALL'].includes(mode))fail(400,'Filtro de empresas inválido.');
@@ -71,7 +80,7 @@ export function registerCushman(app:any,prisma:any,options:{sync:(period:Date)=>
   const [companies,closings,storedColumns]=await Promise.all([prisma.company.findMany({include:{responsibles:true},orderBy:[{code:'asc'},{name:'asc'}]}),prisma.closing.findMany({where:{type:'CUSHMAN',referencePeriod:period}}),prisma.departmentColumn.findMany({where:{department:'CUSHMAN'},orderBy:{orderIndex:'asc'}})]);
   const columns=cushmanApplicableColumns(storedColumns,period);const mapped=new Map<string,any>(closings.map((closing:any)=>[closing.companyId,closing]));
   const rows=companies.filter((company:any)=>cushmanCompanyAllowed(user,company)&&companyExitAllowsPeriod(company,period)&&(mode==='ALL'||cushmanCompanyEligible(company,period)||!!mapped.get(company.id)?.columnsData?._legacy)).map((company:any)=>{
-   const closing=mapped.get(company.id);const participates=cushmanCompanyEligible(company,period)||!!closing?.columnsData?._legacy;const data={...(closing?.columnsData||{})};
+   const closing=mapped.get(company.id);const participates=cushmanCompanyEligible(company,period)||!!closing?.columnsData?._legacy;const data={...(closing?.columnsData||{})};delete data._legacy;
    for(const column of columns){const key=resolveCushmanKey(column)||column.id;if(column.inputType==='PASSWORD'&&data[key])data[key]=options.decrypt(data[key]);}
    if(data.cush_observacao===undefined&&company.notesScope==='CUSHMAN')data.cush_observacao=company.notes||'';
    const progress=calculateColumnProgress(participates?columns.filter((column:any)=>column.countsProgress):[],data,column=>resolveCushmanKey(column)||column.id);
@@ -94,7 +103,7 @@ export function registerCushman(app:any,prisma:any,options:{sync:(period:Date)=>
   const error=column.inputType==='POPUP'?validateCushmanPopup(column,columnValue,columnKey):validatePayrollValue(column,columnValue);if(error)fail(400,error);
   const data={...(closing.columnsData||{}),[columnKey]:column.inputType==='PASSWORD'?options.encrypt(columnValue):columnValue};const progress=calculateColumnProgress(columns.filter((item:any)=>item.countsProgress&&isColumnActive(item,period)),data,column=>resolveCushmanKey(column)||column.id);
   const updated=await prisma.closing.updateMany({where:{id:closing.id,updatedAt:closing.updatedAt},data:{columnsData:data,status:progress.calculatedStatus}});if(!updated.count)fail(409,'O fechamento mudou durante a edição. Atualize a tela.');
-  const fresh=await prisma.closing.findUnique({where:{id:closing.id}});const responseData={...(fresh.columnsData||{})};for(const item of columns)if(item.inputType==='PASSWORD'){const key=resolveCushmanKey(item)||item.id;if(responseData[key])responseData[key]=options.decrypt(responseData[key]);}
+  const fresh=await prisma.closing.findUnique({where:{id:closing.id}});const responseData={...(fresh.columnsData||{})};delete responseData._legacy;for(const item of columns)if(item.inputType==='PASSWORD'){const key=resolveCushmanKey(item)||item.id;if(responseData[key])responseData[key]=options.decrypt(responseData[key]);}
   res.json({closing:{...fresh,columnsData:responseData},...progress});
  }));
 }

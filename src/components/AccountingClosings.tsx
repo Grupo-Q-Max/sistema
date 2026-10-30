@@ -13,7 +13,7 @@ import {ACCOUNTING_API_VERSION,accountingYear,accountingMonth,NOT_CLIENT} from '
 import {resolveColumnKey} from '../config/payrollColumns';
 import {visibilitySummary} from '../config/columnVisibility';
 import {exportToCsv} from '../utils/exportCsv';
-import {compareCodes} from '../utils/codeSort';
+import {compareCodes,formatCompanyCode} from '../utils/codeSort';
 import type {CurrentUser} from '../types/auth';
 import {API_URL as API} from '../api';
 import './AccountingClosings.css';
@@ -33,9 +33,10 @@ export function AccountingClosings({currentView,onNavigate,currentUser,onLogout}
   const [companyDetails,setCompanyDetails]=useState<any|null>(null);
   const [notes,setNotes]=useState<{row:Row;column:any}|null>(null);const [noteDraft,setNoteDraft]=useState('');const [noteSaving,setNoteSaving]=useState(false);const [noteError,setNoteError]=useState('');
   const [copied,setCopied]=useState('');const [scrollWidth,setScrollWidth]=useState(0);
-  const tableScroll=useRef<HTMLDivElement>(null);const upperScroll=useRef<HTMLDivElement>(null);const sequence=useRef(0);const queue=useRef<Promise<any>>(Promise.resolve());const currentYear=useRef(year);currentYear.current=year;
+  const tableScroll=useRef<HTMLDivElement>(null);const upperScroll=useRef<HTMLDivElement>(null);const syncingScroll=useRef(false);const sequence=useRef(0);const queue=useRef<Promise<any>>(Promise.resolve());const currentYear=useRef(year);currentYear.current=year;
+  const syncScroll=(source:HTMLDivElement,target:HTMLDivElement|null)=>{if(!target||syncingScroll.current)return;syncingScroll.current=true;target.scrollLeft=source.scrollLeft;requestAnimationFrame(()=>{syncingScroll.current=false;});};
   const canView=hasSectorAccess(currentUser,'CONTABIL');const canEdit=hasSectorAccess(currentUser,'CONTABIL',true);
-  const responsible=(company:any)=>company.responsibles?.find((entry:any)=>entry.sector==='CONTABIL')||company.responsibles?.find((entry:any)=>!entry.sector);
+  const responsible=(company:any)=>company.responsibles?.find((entry:any)=>entry.sector==='CONTABIL')||null;
   const left=(company:any)=>!!company.exitDate&&new Date(company.exitDate)<new Date(Date.UTC(year+1,0,1))&&new Date(company.exitDate)<=new Date();
   async function load(){
     const request=++sequence.current;setLoading(true);setError('');
@@ -52,20 +53,20 @@ export function AccountingClosings({currentView,onNavigate,currentUser,onLogout}
   useEffect(()=>{const table=tableScroll.current?.querySelector('table');if(!table)return;const update=()=>setScrollWidth(table.scrollWidth);update();const observer=new ResizeObserver(update);observer.observe(table);return()=>observer.disconnect();},[loading,columns]);
   const scopedRows=useMemo(()=>rows.filter(row=>{
     if(!currentUser||['ADMIN','SOCIO'].includes(currentUser.role))return true;
-    if(['FISCAL','DP','CONTABIL'].includes(currentUser.role)) return row.company.responsibles?.some((entry:any)=>entry.userId===currentUser.id&&(entry.sector==='CONTABIL'||!entry.sector));
+    if(['FISCAL','DP','CONTABIL'].includes(currentUser.role)) return row.company.responsibles?.some((entry:any)=>entry.userId===currentUser.id&&entry.sector==='CONTABIL');
     if(currentUser.companyScope==='CUSTOM')return currentUser.companyAccess?.some(entry=>entry.companyId===row.company.id);
     if(currentUser.companyScope==='ALL')return true;
-    return row.company.responsibles?.some((entry:any)=>entry.userId===currentUser.id&&(entry.sector==='CONTABIL'||!entry.sector));
+    return row.company.responsibles?.some((entry:any)=>entry.userId===currentUser.id&&entry.sector==='CONTABIL');
   }),[rows,currentUser]);
   const deferredSearch = useDeferredValue(search);
-  const filtered=scopedRows.filter(row=>{
-    const company=row.company;const term=deferredSearch.trim().toLocaleLowerCase('pt-BR');const text=[company.code,company.name,company.tradeName,company.cnpj,company.groupName,company.city].filter(Boolean).join(' ').toLocaleLowerCase('pt-BR');
+  const filtered=useMemo(()=>scopedRows.filter(row=>{
+    const company=row.company;const term=deferredSearch.trim().toLocaleLowerCase('pt-BR');const text=[company.code,formatCompanyCode(company.code),company.name,company.tradeName,company.cnpj,company.groupName,company.city].filter(Boolean).join(' ').toLocaleLowerCase('pt-BR');
     const digits=term.replace(/\D/g,'');const match=text.includes(term)||(digits.length>0&&(company.cnpj||'').replace(/\D/g,'').includes(digits));
     return match&&(situation==='ALL'||(situation==='LEFT'?left(company):!left(company)))&&(responsibleFilter==='ALL'||responsible(company)?.userId===responsibleFilter)&&(regime==='ALL'||company.taxRegime===regime);
   }).sort((a,b)=> {
     if (sort.key === 'code') return compareCodes(a.company.code, b.company.code, sort.asc);
     return String(a.company[sort.key]||'').localeCompare(String(b.company[sort.key]||''),'pt-BR',{numeric:true})*(sort.asc?1:-1);
-  });
+  }),[scopedRows,deferredSearch,situation,responsibleFilter,regime,sort,year]);
   const visibleColumns=groupAccountingColumns(columns);const monthsRow=rows.find(row=>row.closingId===monthsClosingId);
   const regimes=Array.from(new Set(scopedRows.map(row=>row.company.taxRegime).filter(Boolean)));
   const summary=summarizeClosingProgress(buildClosingProgress(scopedRows,columns,'CONTABIL',new Date(Date.UTC(year,0,1)),latestPeriod),scopedRows.length);
@@ -77,7 +78,7 @@ export function AccountingClosings({currentView,onNavigate,currentUser,onLogout}
   }
   async function changeResponsible(row:Row,userId:string){
     const capturedYear=year;setPending(total=>total+1);
-    try{const response=await fetch(`${API}/companies/${row.company.id}/responsible`,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({userId,sector:'CONTABIL'})});const data=await response.json();if(!response.ok)throw new Error(data.error||'Erro ao salvar responsável.');if(currentYear.current===capturedYear)setRows(previous=>previous.map(item=>item.company.id===row.company.id?{...item,company:{...item.company,responsibles:[...(item.company.responsibles||[]).filter((entry:any)=>entry.sector!=='CONTABIL'),...(userId?[{userId,sector:'CONTABIL'}]:[])]}}:item));}
+    try{const response=await fetch(`${API}/companies/${row.company.id}/responsible`,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({userId,sector:'CONTABIL'})});const data=await response.json();if(!response.ok)throw new Error(data.error||'Erro ao salvar responsável.');const selectedUser=users.find(u=>u.id===userId);if(currentYear.current===capturedYear)setRows(previous=>previous.map(item=>item.company.id===row.company.id?{...item,company:{...item.company,responsibles:[...(item.company.responsibles||[]).filter((entry:any)=>entry.sector!=='CONTABIL'&&entry.sector!==null),...(userId?[{userId,sector:'CONTABIL',user:selectedUser}]:[])]}}:item));}
     catch(cause){setError(cause instanceof Error?cause.message:'Erro ao salvar.');}finally{setPending(total=>total-1);}
   }
 
@@ -85,6 +86,7 @@ export function AccountingClosings({currentView,onNavigate,currentUser,onLogout}
     const csvColumns = [
       { header: 'Código', key: 'code' },
       { header: 'Empresa', key: 'name' },
+      { header: 'Responsável', key: 'responsible' },
       { header: 'CNPJ', key: 'cnpj' },
       { header: 'Situação', key: 'situation' },
       { header: 'Grupo', key: 'groupName' },
@@ -95,9 +97,13 @@ export function AccountingClosings({currentView,onNavigate,currentUser,onLogout}
 
     const data = filtered.map(r => {
       const isLeft = left(r.company);
+      const resp = responsible(r.company);
+      const respUser = resp?.user || users.find((u: any) => u.id === resp?.userId);
+      const respName = (respUser?.name || respUser?.email || 'Não atribuído').replace(/\s*\(Inativo\)$/i, '');
       const rowData: any = {
-        code: r.company.code || '',
+        code: formatCompanyCode(r.company.code),
         name: r.company.name || '',
+        responsible: respName,
         cnpj: formatCnpj(r.company.cnpj) || '',
         situation: isLeft ? `Saiu em ${new Date(r.company.exitDate).toLocaleDateString('pt-BR',{timeZone:'UTC'})}` : 'Ativa',
         groupName: r.company.groupName || '',
@@ -133,13 +139,13 @@ export function AccountingClosings({currentView,onNavigate,currentUser,onLogout}
       </div></div>
       <div className="payroll-table-meta"><span>{loading?'Carregando...':`${filtered.length} de ${scopedRows.length} empresas`} · Ano {year}</span><span className="payroll-save-status" aria-live="polite">{pending>0?<><ButtonSpinner/>Salvando alterações...</>:<><CheckCircle2 size={14}/>Salvamento automático</>}</span></div>
       {error&&<p className="payroll-error" role="alert">{error}<button onClick={()=>{void load();}}>Tentar novamente</button></p>}
-      <div className="closings-table-card">{loading?<div className="payroll-loading"><TableSkeleton count={6}/></div>:<><div className="payroll-scroll-top" ref={upperScroll} onScroll={event=>{if(tableScroll.current)tableScroll.current.scrollLeft=event.currentTarget.scrollLeft;}}><div style={{width:scrollWidth||4200,height:1}}/></div><div className="closings-table-wrapper payroll-table-scroll" ref={tableScroll} onScroll={event=>{if(upperScroll.current)upperScroll.current.scrollLeft=event.currentTarget.scrollLeft;}}><table className="closings-table payroll-table accounting-table" style={{minWidth:1400+visibleColumns.length*170}}><thead><tr>
+      <div className="closings-table-card">{loading?<div className="payroll-loading"><TableSkeleton count={6}/></div>:<><div className="payroll-scroll-top" ref={upperScroll} onScroll={event=>syncScroll(event.currentTarget,tableScroll.current)}><div style={{width:scrollWidth||4200,height:1}}/></div><div className="closings-table-wrapper payroll-table-scroll" ref={tableScroll} onScroll={event=>syncScroll(event.currentTarget,upperScroll.current)}><table className="closings-table payroll-table accounting-table" style={{minWidth:1400+visibleColumns.length*170}}><thead><tr>
         {ACCOUNTING_HEADERS.map((label,index)=><th key={label} className={index===0?'sticky-col-code':index===1?'sticky-col-company':''}><div className="th-header-cell">{index<2?<button className="payroll-sort-btn" onClick={()=>setSort({key:index===0?'code':'name',asc:sort.key===(index===0?'code':'name')?!sort.asc:true})}>{label}<span>{sort.key===(index===0?'code':'name')?(sort.asc?'▲':'▼'):'⇅'}</span></button>:label}</div></th>)}
         {visibleColumns.map(column=>{const month=accountingMonth(column);const locked=!!month&&Date.UTC(year,month-1,1)>latestPeriod.getTime();return <th key={column.id} title={locked?'Libera na virada do mês seguinte':visibilitySummary(column)}><div className="th-header-cell">{column.name}{locked&&<LockKeyhole size={12}/>}</div></th>;})}
       </tr></thead><tbody>{!filtered.length?<tr><td colSpan={7+visibleColumns.length} className="payroll-empty">Nenhuma empresa encontrada neste ano.</td></tr>:filtered.map(row=>{const company=row.company;const certificate=company.hasClientCertificate?getCertificateStatus(company.certificateExpiration):null;return <tr key={row.closingId}>
-        <td className="sticky-col-code"><span style={{fontWeight:600,color:'#94a3b8'}}>{company.code||'—'}</span></td>
+        <td className="sticky-col-code"><span style={{fontWeight:600,color:'#94a3b8'}}>{formatCompanyCode(company.code)||'—'}</span></td>
         <td className="sticky-col-company"><div className="company-cell-wrapper"><button className="company-interactive-link" onClick={()=>setCompanyDetails(company)}><div className="company-link-left"><Building2 size={16} color="#818cf8"/><span>{company.name}</span></div><div className="company-link-icon-chip"><span>Ver Dados</span><ExternalLink size={10}/></div></button>{company.tradeName&&<div className="company-cell-trade">{company.tradeName}</div>}{certificate&&<button className={`cert-warning-tag ${certificate.status==='EXPIRED'?'expired':''}`} onClick={()=>setCompanyDetails(company)}><AlertTriangle size={12}/>{certificate.label}</button>}</div></td>
-        <td><select className="table-user-select" aria-label={`Responsável Contábil de ${company.name}`} value={responsible(company)?.userId||''} disabled={!canEdit||pending>0} onChange={event=>{void changeResponsible(row,event.target.value);}}><option value="">Não atribuído</option>{users.map(user=><option key={user.id} value={user.id}>{user.name||user.email}</option>)}</select></td>
+        <td><select className="table-user-select" aria-label={`Responsável Contábil de ${company.name}`} value={responsible(company)?.userId||''} disabled={!canEdit||pending>0} onChange={event=>{void changeResponsible(row,event.target.value);}}><option value="">Não atribuído</option>{users.map(user=><option key={user.id} value={user.id} disabled={user.active===false}>{user.name||user.email}</option>)}</select></td>
         <td><button className="copy-badge-btn" title="Copiar CNPJ" onClick={()=>{void navigator.clipboard.writeText(company.cnpj||'').then(()=>setCopied('CNPJ copiado!')).catch(()=>setError('Não foi possível copiar.'));}}>{formatCnpj(company.cnpj||'')}<Copy size={12}/></button></td>
         <td><span className={`status-badge ${left(company)?'pending':'completed'}`}>{left(company)?`Saiu em ${new Date(company.exitDate).toLocaleDateString('pt-BR',{timeZone:'UTC'})}`:'Ativa'}</span></td><td>{company.groupName||'—'}</td>
         <td><span className={`tax-regime-pill ${company.taxRegime==='SIMPLES_NACIONAL'?'simples':company.taxRegime?.includes('PRESUMIDO')?'presumido':company.taxRegime?.includes('REAL')?'real':company.taxRegime==='MEI'?'mei':''}`}>{formatRegimeLabel(company.taxRegime||'')}</span></td>

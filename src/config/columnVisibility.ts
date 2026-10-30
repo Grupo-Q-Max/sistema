@@ -2,7 +2,10 @@ export type ColumnVisibility = { version: 1; mode: 'ALL' | 'ANNUAL' | 'SPECIFIC'
 export const ALL_MONTHS = [1,2,3,4,5,6,7,8,9,10,11,12];
 export const MONTH_NAMES = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
 export function defaultVisibility(): ColumnVisibility { return { version: 1, mode: 'ALL', months: [...ALL_MONTHS], years: [] }; }
-export function effectiveVisibility(column: { visibilityConfig?: ColumnVisibility | null }): ColumnVisibility { return column.visibilityConfig ? structuredClone(column.visibilityConfig) : defaultVisibility(); }
+export function effectiveVisibility(column: { visibilityConfig?: ColumnVisibility | null }): ColumnVisibility {
+  const vc = column.visibilityConfig;
+  return vc ? { version: 1, mode: vc.mode, months: Array.isArray(vc.months) ? [...vc.months] : [...ALL_MONTHS], years: Array.isArray(vc.years) ? [...vc.years] : [] } : defaultVisibility();
+}
 export function validateVisibility(value: unknown): string | null {
   if (!value || typeof value !== 'object') return 'Configuração de competências inválida.';
   const c = value as ColumnVisibility;
@@ -42,7 +45,7 @@ export function isColumnComplete(column: { inputType?: string; columnKey?: strin
   if (column.inputType === 'READONLY') return false;
   if (column.inputType === 'NUMBER') return typeof value === 'number' && Number.isFinite(value) || typeof value === 'string' && !!value.trim() && Number.isFinite(Number(value));
   if (column.inputType === 'TEXT' && (column.department === 'CUSHMAN' || column.columnKey?.startsWith('cush_')) && typeof value === 'string' && /^(pendente|pend[êe]ncia)(\s|:|$)/i.test(value.trim())) return false;
-  if (['TEXT','SELECT','TEXTAREA','PASSWORD'].includes(column.inputType || '')) {
+  if (['TEXT','SELECT','TEXTAREA','PASSWORD','DATE'].includes(column.inputType || '')) {
     const rawVal = typeof value === 'object' && value !== null ? value.status : value;
     const isPending = column.inputType === 'SELECT' && Array.isArray((column as any).fieldConfig?.pendingOptions)
       ? (column as any).fieldConfig.pendingOptions.some((opt: string) => progressStatus(opt) === progressStatus(rawVal))
