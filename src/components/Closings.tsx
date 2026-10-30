@@ -97,7 +97,18 @@ export function Closings({ currentView, onNavigate, currentUser, onLogout }: Clo
   const [installmentSummaries, setInstallmentSummaries] = useState<Record<string, any>>({});
   const [installmentError, setInstallmentError] = useState('');
   const viewInstallments = installmentAccess(currentUser);
+  const canViewFiscal = hasSectorAccess(currentUser, 'FISCAL', false);
   const canEditFiscal = hasSectorAccess(currentUser, 'FISCAL', true);
+  const isPrivileged = currentUser?.role === 'ADMIN' || currentUser?.role === 'SOCIO';
+  const [onlyMyCompanies, setOnlyMyCompanies] = useState(false);
+
+  const isRowEditable = (row: any) => {
+    if (!canEditFiscal) return false;
+    if (isPrivileged) return true;
+    const fiscalResp = getFiscalResponsible(row.company);
+    const respId = fiscalResp?.userId || fiscalResp?.user?.id;
+    return respId === currentUser?.id || row.company?.responsibles?.some((r: any) => r.userId === currentUser?.id && r.sector === 'FISCAL');
+  };
   async function loadInstallmentSummaries(companies: any[], requestId = fetchSequence.current) {
     if (!viewInstallments) return;
     setInstallmentError('');
@@ -561,12 +572,15 @@ export function Closings({ currentView, onNavigate, currentUser, onLogout }: Clo
 
   const scopedRows = useMemo(() => rows.filter(row => {
     if (!companyBelongsToFiscal(row.company)) return false;
-    if (!currentUser || ['ADMIN', 'SOCIO'].includes(currentUser.role)) return true;
-    if (['FISCAL', 'DP', 'CONTABIL'].includes(currentUser.role)) return row.company.responsibles?.some((r: any) => r.userId === currentUser.id && r.sector === 'FISCAL');
+    const fiscalResp = getFiscalResponsible(row.company);
+    const respId = fiscalResp?.userId || fiscalResp?.user?.id;
+    const isMine = respId === currentUser?.id || row.company?.responsibles?.some((r: any) => r.userId === currentUser?.id && r.sector === 'FISCAL');
+    if (onlyMyCompanies) return isMine;
+    if (!currentUser || isPrivileged) return true;
     if (currentUser.companyScope === 'CUSTOM') return currentUser.companyAccess?.some(a => a.companyId === row.company.id);
     if (currentUser.companyScope === 'ALL') return true;
-    return row.company.responsibles?.some((r: any) => r.userId === currentUser.id && r.sector === 'FISCAL');
-  }), [rows, currentUser]);
+    return isMine;
+  }), [rows, currentUser, onlyMyCompanies, isPrivileged]);
 
   const summary = useMemo(() => {
     const total = scopedRows.length;
@@ -671,7 +685,8 @@ export function Closings({ currentView, onNavigate, currentUser, onLogout }: Clo
   const renderObligationCell = (row: any, colKey: string) => {
     const val = row.columnsData?.[colKey];
     const definition = popupColumns.find(col => col.columnKey === colKey);
-    const readOnly = !canEditFiscal || definition?.isEditable === false;
+    const rowEditable = isRowEditable(row);
+    const readOnly = !rowEditable || definition?.isEditable === false;
     if (definition?.inputType === 'TEXT') {
       const text = typeof val === 'string' || typeof val === 'number' ? String(val) : '';
       return <input className="fiscal-column-text" aria-label={definition.name} key={`${row.closingId}_${colKey}_${text}`} type="text" defaultValue={text} disabled={readOnly || savingAction} onBlur={e => { if (e.target.value !== text) saveColumnValue(row.closingId, colKey, e.target.value); }} onKeyDown={e => { if (e.key === 'Enter') e.currentTarget.blur(); }} />;
@@ -701,7 +716,7 @@ export function Closings({ currentView, onNavigate, currentUser, onLogout }: Clo
           }}
           disabled={readOnly || savingAction}
           onClick={() => handleOpenMultiSelectModal(row, colKey, definition)}
-          title={count > 0 ? selected.join(', ') : 'Clique para selecionar os tipos de NF'}
+          title={!rowEditable ? 'Você só pode editar empresas sob sua responsabilidade' : (count > 0 ? selected.join(', ') : 'Clique para selecionar os tipos de NF')}
         >
           {count === 0 ? '+ Tipos NF' : (count <= 2 ? selected.join(', ') : `${selected.slice(0, 2).join(', ')} (+${count - 2})`)}
         </button>
@@ -713,8 +728,9 @@ export function Closings({ currentView, onNavigate, currentUser, onLogout }: Clo
         return (
           <button
             className="obligation-btn na"
+            disabled={readOnly || savingAction}
             onClick={() => handleOpenObligationModal(row, colKey)}
-            title="Isento / Dispensado por regra do regime tributário (N/A)"
+            title={!rowEditable ? 'Você só pode editar empresas sob sua responsabilidade' : 'Isento / Dispensado por regra do regime tributário (N/A)'}
           >
             N/A
           </button>
@@ -723,8 +739,9 @@ export function Closings({ currentView, onNavigate, currentUser, onLogout }: Clo
       return (
         <button
           className="obligation-btn pendente"
+          disabled={readOnly || savingAction}
           onClick={() => handleOpenObligationModal(row, colKey)}
-          title="Clique para preencher ou alterar status"
+          title={!rowEditable ? 'Você só pode editar empresas sob sua responsabilidade' : 'Clique para preencher ou alterar status'}
         >
           Pendente
         </button>
@@ -753,8 +770,9 @@ export function Closings({ currentView, onNavigate, currentUser, onLogout }: Clo
     return (
       <button
         className={`obligation-btn ${cls}`}
+        disabled={readOnly || savingAction}
         onClick={() => handleOpenObligationModal(row, colKey)}
-        title={val.pendingReason ? `Motivo: ${val.pendingReason}` : text}
+        title={!rowEditable ? 'Você só pode editar empresas sob sua responsabilidade' : (val.pendingReason ? `Motivo: ${val.pendingReason}` : text)}
       >
         {text}
       </button>
@@ -851,6 +869,12 @@ export function Closings({ currentView, onNavigate, currentUser, onLogout }: Clo
           <p style={{ color: '#94a3b8', fontSize: '0.78rem' }}>A competência do mês anterior abre automaticamente na virada do mês, no horário de Brasília.</p>
           {installmentError && <p role="alert" style={{ color: '#fda4af', fontSize: '.8rem' }}>Parcelamentos: {installmentError}</p>}
           {calendarError && <p role="alert" style={{ color: '#fda4af' }}>{calendarError}</p>}
+          {!canViewFiscal ? (
+            <div style={{ marginTop: 24, padding: '20px', borderRadius: '12px', background: 'rgba(239, 68, 68, 0.1)', border: '1px solid rgba(239, 68, 68, 0.3)', color: '#fca5a5' }}>
+              Você não tem permissão para acessar o fechamento Fiscal.
+            </div>
+          ) : (
+            <>
           {/* Cards de Métricas */}
           <div className="closings-stats-grid">
             <div className="closing-stat-card">
@@ -973,6 +997,15 @@ export function Closings({ currentView, onNavigate, currentUser, onLogout }: Clo
                   </option>
                 ))}
               </select>
+
+              <label className="only-mine-toggle" title="Filtrar apenas empresas sob minha responsabilidade">
+                <input
+                  type="checkbox"
+                  checked={onlyMyCompanies}
+                  onChange={(e) => setOnlyMyCompanies(e.target.checked)}
+                />
+                <span>Minhas empresas</span>
+              </label>
             </div>
           </div>
 
@@ -1301,7 +1334,7 @@ export function Closings({ currentView, onNavigate, currentUser, onLogout }: Clo
                             <td>
                               <select
                                 className="table-user-select"
-                                disabled={!canEditFiscal}
+                                disabled={!isPrivileged}
                                 value={currentRespId}
                                 onChange={(e) => handleResponsibleChange(c.id, e.target.value)}
                               >
@@ -1355,6 +1388,8 @@ export function Closings({ currentView, onNavigate, currentUser, onLogout }: Clo
               </div>
             )}
           </div>
+          </>
+          )}
         </div>
 
         {/* ==========================================================================

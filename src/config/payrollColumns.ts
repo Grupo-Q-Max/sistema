@@ -4,6 +4,7 @@ export const PAYROLL_API_VERSION = 2;
 import { resolveFiscalKey } from './fiscalPopups';
 export type PayrollInputType = 'TEXT' | 'NUMBER' | 'SELECT' | 'TEXTAREA' | 'PASSWORD' | 'READONLY';
 export type FieldConfig = { version: 1; placeholder: string; options: string[] };
+export const MONTH_OPTIONS = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
 export const PAYROLL_COLUMNS: { key: string; name: string; inputType: PayrollInputType; options: string[]; replicates: boolean; countsProgress: boolean; isEditable: boolean; aliases: string[] }[] = [
   { key:'dp_observacao',name:'Observação do DP',inputType:'TEXTAREA',options:[],replicates:true,countsProgress:false,isEditable:true,aliases:['Observações DP','Observacao DP'] },
   { key:'dp_adto',name:'ADTO',inputType:'TEXT',options:[],replicates:true,countsProgress:false,isEditable:true,aliases:[] },
@@ -20,6 +21,7 @@ export const PAYROLL_COLUMNS: { key: string; name: string; inputType: PayrollInp
   { key:'dp_sd_login',name:'SD Login',inputType:'TEXT',options:[],replicates:true,countsProgress:false,isEditable:true,aliases:[] },
   { key:'dp_sd_senha',name:'SD Senha',inputType:'PASSWORD',options:[],replicates:true,countsProgress:false,isEditable:true,aliases:[] },
   { key:'dp_reinf_fiscal',name:'Reinf',inputType:'READONLY',options:[],replicates:false,countsProgress:false,isEditable:false,aliases:['REINF Fiscal'] },
+  { key:'dp_dissidio',name:'Mês Dissídio',inputType:'SELECT',options:MONTH_OPTIONS,replicates:true,countsProgress:false,isEditable:true,aliases:['Dissídio','Dissidio','Mes Dissidio','Mês do Dissídio','Mes do Dissidio'] },
 ];
 export const LEGACY_DP_DEFAULTS = ['Cálculo de Folha','eSocial / DCTFWeb','FGTS Digital / DAE','Envio de Holerites & Guias','Férias / Rescisões','Fechamento de Ponto','Dissídio'];
 const normalize=(s:string)=>s.normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/[^a-z0-9]/g,'');
@@ -33,14 +35,23 @@ export function resolveColumnKey(column: any): string | null {
   return PAYROLL_COLUMNS.find(c=>[c.name,...c.aliases].some(n=>normalize(n)===name))?.key || column.id || null;
 }
 export function effectiveFieldConfig(column: any): FieldConfig {
+  const normName = normalize(column?.name || '');
+  const isDissidio = normName.includes('dissidio') || (column?.columnKey && column.columnKey.includes('dissidio'));
+
   if (column.fieldConfig) {
     const cloned = structuredClone(column.fieldConfig);
     if (!Array.isArray(cloned.options)) cloned.options = [];
     if (typeof cloned.placeholder !== 'string') cloned.placeholder = '';
+    if (cloned.options.length === 0 && isDissidio) {
+      cloned.options = [...MONTH_OPTIONS];
+    }
     return cloned;
   }
   const template = [...PAYROLL_COLUMNS, ...ACCOUNTING_COLUMNS].find(c => c.key === resolveColumnKey(column));
-  return { version: 1, placeholder: '', options: template && Array.isArray(template.options) ? [...template.options] : [] };
+  const options = template && Array.isArray(template.options) && template.options.length > 0 
+    ? [...template.options] 
+    : isDissidio ? [...MONTH_OPTIONS] : [];
+  return { version: 1, placeholder: '', options };
 }
 export function validateFieldConfig(value: unknown): string | null {
   if(!value || typeof value!=='object') return 'Configuração de campo inválida.';

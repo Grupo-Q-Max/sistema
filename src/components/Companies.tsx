@@ -1559,10 +1559,69 @@ export function Companies({ currentView, onNavigate, currentUser, onLogout }: Co
                     </div>
                   </div>
 
-                  <div className="grid-2" style={{ marginTop: '12px' }}>
+                  <div className="grid-3" style={{ marginTop: '12px' }}>
+                    <div className="input-field">
+                      <label htmlFor="modal-nf-access">20. Tipo Acesso NF Contribuinte</label>
+                      <select
+                        id="modal-nf-access"
+                        value={nfAccessType}
+                        onChange={(e) => setNfAccessType(e.target.value)}
+                      >
+                        <option value="">Selecione o tipo...</option>
+                        <option value="Senha GOV">Senha GOV</option>
+                        <option value="Senha Própria">Senha Própria</option>
+                        <option value="Certificado A1">Certificado A1</option>
+                        <option value="Outro">Outro</option>
+                      </select>
+                    </div>
+
+                    <div className="input-field">
+                      <label htmlFor="modal-nf-login">21. Login NF Contribuinte</label>
+                      <input
+                        id="modal-nf-login"
+                        type="text"
+                        placeholder="Login / Usuário NF"
+                        value={nfLogin}
+                        onChange={(e) => setNfLogin(e.target.value)}
+                      />
+                    </div>
+
+                    <div className="input-field">
+                      <label htmlFor="modal-nf-senha">
+                        22. Senha NF Contribuinte <span className="hint">(🔒 Criptografada)</span>
+                      </label>
+                      <div className="pwd-input-wrap">
+                        <input
+                          id="modal-nf-senha"
+                          type={showNfPwd ? 'text' : 'password'}
+                          placeholder="Senha NF"
+                          value={nfPassword}
+                          onChange={(e) => setNfPassword(e.target.value)}
+                        />
+                        <button
+                          type="button"
+                          className="btn-eye"
+                          onClick={() => setShowNfPwd(!showNfPwd)}
+                          title={showNfPwd ? 'Ocultar' : 'Revelar'}
+                        >
+                          {showNfPwd ? <EyeOff size={14} /> : <Eye size={14} />}
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* SEÇÃO 6: OPERAÇÕES, DISSÍDIO & OBSERVAÇÕES */}
+                <div className="form-section">
+                  <div className="form-section-title">
+                    <FileText size={15} />
+                    <span>6. Operações, Dissídio & Observações</span>
+                  </div>
+
+                  <div className="grid-2">
                     <div className="input-field">
                       <label htmlFor="modal-sd-login">
-                        21. SD Login (Empregador Web) {!isPrivileged && <span className="hint">(🔒 Somente Sócio/Admin)</span>}
+                        23. SD Login (Empregador Web) {!isPrivileged && <span className="hint">(🔒 Somente Sócio/Admin)</span>}
                       </label>
                       <input
                         id="modal-sd-login"
@@ -1576,7 +1635,7 @@ export function Companies({ currentView, onNavigate, currentUser, onLogout }: Co
 
                     <div className="input-field">
                       <label htmlFor="modal-sd-senha">
-                        22. SD Senha {!isPrivileged && <span className="hint">(🔒 Somente Sócio/Admin)</span>}
+                        24. SD Senha {!isPrivileged && <span className="hint">(🔒 Somente Sócio/Admin)</span>}
                       </label>
                       <div className="pwd-input-wrap">
                         <input
@@ -1601,66 +1660,7 @@ export function Companies({ currentView, onNavigate, currentUser, onLogout }: Co
 
                   <div className="grid-3" style={{ marginTop: '12px' }}>
                     <div className="input-field">
-                      <label htmlFor="modal-nf-access">23. Tipo Acesso NF Contribuinte</label>
-                      <select
-                        id="modal-nf-access"
-                        value={nfAccessType}
-                        onChange={(e) => setNfAccessType(e.target.value)}
-                      >
-                        <option value="">Selecione o tipo...</option>
-                        <option value="Senha GOV">Senha GOV</option>
-                        <option value="Senha Própria">Senha Própria</option>
-                        <option value="Certificado A1">Certificado A1</option>
-                        <option value="Outro">Outro</option>
-                      </select>
-                    </div>
-
-                    <div className="input-field">
-                      <label htmlFor="modal-nf-login">24. Login NF Contribuinte</label>
-                      <input
-                        id="modal-nf-login"
-                        type="text"
-                        placeholder="Login / Usuário NF"
-                        value={nfLogin}
-                        onChange={(e) => setNfLogin(e.target.value)}
-                      />
-                    </div>
-
-                    <div className="input-field">
-                      <label htmlFor="modal-nf-senha">
-                        25. Senha NF Contribuinte <span className="hint">(🔒 Criptografada)</span>
-                      </label>
-                      <div className="pwd-input-wrap">
-                        <input
-                          id="modal-nf-senha"
-                          type={showNfPwd ? 'text' : 'password'}
-                          placeholder="Senha NF"
-                          value={nfPassword}
-                          onChange={(e) => setNfPassword(e.target.value)}
-                        />
-                        <button
-                          type="button"
-                          className="btn-eye"
-                          onClick={() => setShowNfPwd(!showNfPwd)}
-                          title={showNfPwd ? 'Ocultar' : 'Revelar'}
-                        >
-                          {showNfPwd ? <EyeOff size={14} /> : <Eye size={14} />}
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                {/* SEÇÃO 6: DISSÍDIO & OBSERVAÇÕES */}
-                <div className="form-section">
-                  <div className="form-section-title">
-                    <FileText size={15} />
-                    <span>6. Dissídio & Observações</span>
-                  </div>
-
-                  <div className="grid-3">
-                    <div className="input-field">
-                      <label htmlFor="modal-dissidio">23. Dissídio (Mês/Ano)</label>
+                      <label htmlFor="modal-dissidio">25. Dissídio (Mês/Ano)</label>
                       <input
                         id="modal-dissidio"
                         type="text"
@@ -1671,7 +1671,7 @@ export function Companies({ currentView, onNavigate, currentUser, onLogout }: Co
                     </div>
 
                     <div className="input-field" style={{ gridColumn: 'span 2' }}>
-                      <label htmlFor="modal-scope">24. Escopo da Observação</label>
+                      <label htmlFor="modal-scope">26. Escopo da Observação</label>
                       <select
                         id="modal-scope"
                         value={notesScope}
@@ -1686,7 +1686,7 @@ export function Companies({ currentView, onNavigate, currentUser, onLogout }: Co
                     </div>
                   </div>
 
-                  <div className="input-field">
+                  <div className="input-field" style={{ marginTop: '12px' }}>
                     <label htmlFor="modal-notes">Observações</label>
                     <textarea
                       id="modal-notes"

@@ -183,8 +183,8 @@ export function Dashboard({ currentView, onNavigate, currentUser, onLogout }: Da
   const [isManualModalOpen, setIsManualModalOpen] = useState(false);
   const [progressMode, setProgressMode] = useState<'COMPANIES' | 'FIELDS'>('FIELDS');
 
-  const fetchStats = (year: number, month: number) => {
-    setLoading(true);
+  const fetchStats = (year: number, month: number, showSkeleton = false) => {
+    if (showSkeleton) setLoading(true);
     fetch(`${API}/api/dashboard?year=${year}&month=${month + 1}&userId=${currentUser?.id || ''}`)
       .then(res => res.json())
       .then(data => {
@@ -206,8 +206,8 @@ export function Dashboard({ currentView, onNavigate, currentUser, onLogout }: Da
   };
 
   useEffect(() => {
-    fetchStats(selectedYear, selectedMonth);
-  }, [selectedYear, selectedMonth, latestPeriod]);
+    fetchStats(selectedYear, selectedMonth, !stats);
+  }, [selectedYear, selectedMonth]);
 
   const availableMonths = (stats?.availableMonths || []).filter(period => Date.UTC(period.year,period.month,1) <= latestPeriod.getTime());
   const currentMonthIdx = availableMonths.findIndex(

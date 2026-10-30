@@ -863,8 +863,39 @@ app.put('/api/companies/:id/notes', async (req, res) => {
 });
 
 const dashboardCache = new Map<string, { timestamp: number; payload: any }>();
+let cachedPeriodsList: any[] | null = null;
+let cachedPeriodsTimestamp = 0;
+let cachedColsList: any[] | null = null;
+let cachedColsTimestamp = 0;
+
 function invalidateDashboardCache() {
   dashboardCache.clear();
+  cachedPeriodsList = null;
+  cachedColsList = null;
+}
+
+async function cachedDistinctPeriods() {
+  const now = Date.now();
+  if (cachedPeriodsList && now - cachedPeriodsTimestamp < 10 * 60 * 1000) {
+    return cachedPeriodsList;
+  }
+  cachedPeriodsList = await prisma.closing.findMany({
+    select: { referencePeriod: true },
+    distinct: ['referencePeriod'],
+    orderBy: { referencePeriod: 'asc' },
+  });
+  cachedPeriodsTimestamp = now;
+  return cachedPeriodsList;
+}
+
+async function cachedDepartmentColumns() {
+  const now = Date.now();
+  if (cachedColsList && now - cachedColsTimestamp < 5 * 60 * 1000) {
+    return cachedColsList;
+  }
+  cachedColsList = await prisma.departmentColumn.findMany();
+  cachedColsTimestamp = now;
+  return cachedColsList;
 }
 
 app.get('/api/dashboard', async (req, res) => {
@@ -936,9 +967,7 @@ app.get('/api/dashboard', async (req, res) => {
       activeWhere.AND.push(userFilter);
     }
 
-    const [totalCompanies, regimesGroup, companies, closings, allColumns, distinctPeriods] = await Promise.all([
-      prisma.company.count({ where: activeWhere }),
-      prisma.company.groupBy({ by: ['taxRegime'], _count: { _all: true }, where: activeWhere }),
+    const [companies, allColumns, distinctPeriods] = await Promise.all([
       prisma.company.findMany({
         where: activeWhere,
         select: {
@@ -961,22 +990,30 @@ app.get('/api/dashboard', async (req, res) => {
         },
         orderBy: { name: 'asc' },
       }),
-      prisma.closing.findMany({
-        where: { company: activeWhere, OR:[{type:{not:'CONTABIL'},referencePeriod:{gte:monthStart,lt:nextMonthStart}},{type:'CONTABIL',referencePeriod:new Date(Date.UTC(y,0,1))}] },
-        select: { type: true, status: true, dashboardMetrics: true, columnsData: true, companyId: true, referencePeriod: true },
-      }),
-      prisma.departmentColumn.findMany(),
-      prisma.closing.findMany({
-        select: { referencePeriod: true },
-        distinct: ['referencePeriod'],
-        orderBy: { referencePeriod: 'asc' },
-      }),
+      cachedDepartmentColumns(),
+      cachedDistinctPeriods(),
     ]);
 
-    const regimesMap = regimesGroup.reduce((acc: any, curr: any) => {
-      acc[curr.taxRegime] = curr._count._all;
-      return acc;
-    }, {} as Record<string, number>);
+    const companyIds = companies.map((c: any) => c.id);
+    const totalCompanies = companies.length;
+
+    const closings = companyIds.length > 0 ? await prisma.closing.findMany({
+      where: {
+        companyId: { in: companyIds },
+        OR: [
+          { type: { not: 'CONTABIL' }, referencePeriod: { gte: monthStart, lt: nextMonthStart } },
+          { type: 'CONTABIL', referencePeriod: new Date(Date.UTC(y, 0, 1)) },
+        ],
+      },
+      select: { type: true, status: true, dashboardMetrics: true, columnsData: true, companyId: true, referencePeriod: true },
+    }) : [];
+
+    const regimesMap: Record<string, number> = {};
+    for (const c of companies) {
+      if (c.taxRegime) {
+        regimesMap[c.taxRegime] = (regimesMap[c.taxRegime] || 0) + 1;
+      }
+    }
 
     // Movimentações no mês de competência selecionado
     const toItem = (c: any, date: Date) => ({ id: c.id, name: c.name, taxRegime: c.taxRegime, date });

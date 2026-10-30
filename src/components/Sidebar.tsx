@@ -76,7 +76,7 @@ export function Sidebar({ currentView, onNavigate, currentUser, onLogout }: Side
   const isPrivileged = currentUser?.role === 'ADMIN' || currentUser?.role === 'SOCIO';
 
   const canAccessScreen = (screenId: string) => {
-    if (!currentUser) return true;
+    if (!currentUser) return false;
     if (isPrivileged) return true;
     const perm = currentUser.screenPermissions?.find((p) => p.screen === screenId);
     return perm ? perm.allowed : false;

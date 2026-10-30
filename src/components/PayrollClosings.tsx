@@ -68,8 +68,21 @@ export function getPayrollStatusAppearance(value: any): { className: string; lab
   return { className: 'ok-data', label: str };
 }
 
-function isPayrollActionColumn(key: string): boolean {
-  if (['dp_observacao', 'dp_reinf_fiscal', 'dp_qtde_funcionarios', 'dp_tipo_folha', 'dp_folha_pagto', 'dp_data_pagto', 'dp_sd_login', 'dp_sd_senha'].includes(key)) {
+function isPayrollActionColumn(key: string, column?: any): boolean {
+  if (column) {
+    if (['SELECT', 'NUMBER', 'TEXT', 'TEXTAREA', 'PASSWORD', 'CHECKBOX', 'READONLY'].includes(column.inputType)) {
+      return false;
+    }
+    if (column.inputType === 'ACTION' || column.actionType === 'MODAL') {
+      return true;
+    }
+  }
+  const normKey = (key || '').toLowerCase();
+  const normName = (column?.name || '').toLowerCase();
+  if (normKey.includes('dissidio') || normName.includes('dissidio')) {
+    return false;
+  }
+  if (['dp_observacao', 'dp_reinf_fiscal', 'dp_qtde_funcionarios', 'dp_tipo_folha', 'dp_folha_pagto', 'dp_data_pagto', 'dp_sd_login', 'dp_sd_senha', 'dp_dissidio'].includes(key)) {
     return false;
   }
   return true;
@@ -209,15 +222,26 @@ export function PayrollClosings({ currentView, onNavigate, currentUser, onLogout
     const observer = new ResizeObserver(measure); observer.observe(table); return () => observer.disconnect();
   }, [loading, columns]);
 
-  const scopedRows = useMemo(() => rows.filter(row => {
-    if (!currentUser || currentUser.role === 'ADMIN' || currentUser.role === 'SOCIO') return true;
-    if (['FISCAL', 'DP', 'CONTABIL'].includes(currentUser.role)) return row.company.responsibles?.some((r: any) => r.userId === currentUser.id && (r.sector === 'DP' || r.sector === null));
-    if (currentUser.companyScope === 'CUSTOM') return currentUser.companyAccess?.some(a => a.companyId === row.company.id);
-    if (currentUser.companyScope === 'ALL') return true;
-    return row.company.responsibles?.some((r: any) => r.userId === currentUser.id && (r.sector === 'DP' || r.sector === null));
-  }), [rows, currentUser]);
+  const [onlyMyCompanies, setOnlyMyCompanies] = useState(false);
+  const isPrivileged = currentUser?.role === 'ADMIN' || currentUser?.role === 'SOCIO';
 
   const getResponsible = (company: any) => company.responsibles?.find((r: any) => r.sector === 'DP') || company.responsibles?.find((r: any) => !r.sector);
+
+  const isRowEditable = (row: PayrollRow) => {
+    if (!canEdit) return false;
+    if (isPrivileged) return true;
+    const resp = getResponsible(row.company);
+    return resp?.userId === currentUser?.id || row.company.responsibleId === currentUser?.id;
+  };
+
+  const scopedRows = useMemo(() => rows.filter(row => {
+    const isMine = row.company.responsibles?.some((r: any) => r.userId === currentUser?.id && (r.sector === 'DP' || r.sector === null)) || row.company.responsibleId === currentUser?.id;
+    if (onlyMyCompanies) return isMine;
+    if (!currentUser || isPrivileged) return true;
+    if (currentUser.companyScope === 'CUSTOM') return currentUser.companyAccess?.some(a => a.companyId === row.company.id);
+    if (currentUser.companyScope === 'ALL') return true;
+    return isMine;
+  }), [rows, currentUser, onlyMyCompanies, isPrivileged]);
 
   function sortValue(row: PayrollRow) {
     if (sort.key === 'status') return STATUS_LABELS[row.calculatedStatus] || '';
@@ -352,6 +376,7 @@ export function PayrollClosings({ currentView, onNavigate, currentUser, onLogout
   const monthLabel = `${String(period.getUTCMonth() + 1).padStart(2, '0')}/${period.getUTCFullYear()}`;
 
   function openActionModal(row: PayrollRow, column: any, key: string) {
+    if (!isRowEditable(row)) return;
     const currentVal = row.columnsData[key];
     setActionModal({ row, column, key });
     setModalMode('MAIN');
@@ -517,6 +542,14 @@ export function PayrollClosings({ currentView, onNavigate, currentUser, onLogout
                     <option value="ALL">Responsável: Todos</option>
                     {users.map(user => <option key={user.id} value={user.id}>{user.name || user.email}</option>)}
                   </select>
+                  <label className="only-mine-toggle" title="Filtrar apenas empresas sob minha responsabilidade">
+                    <input
+                      type="checkbox"
+                      checked={onlyMyCompanies}
+                      onChange={e => setOnlyMyCompanies(e.target.checked)}
+                    />
+                    <span>Minhas empresas</span>
+                  </label>
                   <button className="payroll-refresh-btn" type="button" title="Atualizar fechamento DP" aria-label="Atualizar fechamento DP" disabled={pending > 0 || loading} onClick={() => { void load(); }}>
                     <RefreshCw size={16} className={loading ? 'payroll-spin' : ''} />
                   </button>
@@ -575,7 +608,7 @@ export function PayrollClosings({ currentView, onNavigate, currentUser, onLogout
                                   </td>
                                   <td><span className={`tax-regime-pill ${c.taxRegime === 'SIMPLES_NACIONAL' ? 'simples' : c.taxRegime?.includes('PRESUMIDO') ? 'presumido' : c.taxRegime?.includes('REAL') ? 'real' : c.taxRegime === 'MEI' ? 'mei' : ''}`}>{formatRegimeLabel(c.taxRegime || '')}</span></td>
                                   <td title={`Progresso: ${row.progressPercent}%`}><span className={`status-badge ${row.calculatedStatus === 'COMPLETED' ? 'completed' : row.calculatedStatus === 'IN_PROGRESS' ? 'in-progress' : 'pending'}`}>{STATUS_LABELS[row.calculatedStatus] || row.calculatedStatus}</span></td>
-                                  <td><select className="table-user-select" aria-label={`Responsável DP de ${c.name}`} disabled={!canEdit || pending > 0} value={getResponsible(c)?.userId || ''} onChange={e => { void changeResponsible(row, e.target.value); }}><option value="">Não atribuído</option>{users.map(user => <option key={user.id} value={user.id}>{user.name || user.email}</option>)}</select></td>
+                                  <td><select className="table-user-select" aria-label={`Responsável DP de ${c.name}`} disabled={!isPrivileged || pending > 0} value={getResponsible(c)?.userId || ''} onChange={e => { void changeResponsible(row, e.target.value); }}><option value="">Não atribuído</option>{users.map(user => <option key={user.id} value={user.id}>{user.name || user.email}</option>)}</select></td>
                                   <td><button type="button" className="copy-badge-btn" title="Copiar CNPJ" onClick={() => { void navigator.clipboard.writeText(c.cnpj || '').then(() => setCopyMessage('CNPJ copiado!')).catch(() => setError('Não foi possível copiar o CNPJ.')); }}>{formatCnpj(c.cnpj || '')}<Copy size={12} /></button></td>
                                   {columns.map(column => {
                                     const key = resolveColumnKey(column) || column.id;
@@ -597,7 +630,7 @@ export function PayrollClosings({ currentView, onNavigate, currentUser, onLogout
                                         </td>
                                       );
                                     }
-                                    if (isPayrollActionColumn(key)) {
+                                    if (isPayrollActionColumn(key, column)) {
                                       const appearance = getPayrollStatusAppearance(row.columnsData[key]);
                                       return (
                                         <td key={column.id}>
@@ -605,7 +638,7 @@ export function PayrollClosings({ currentView, onNavigate, currentUser, onLogout
                                             type="button"
                                             className={`obligation-btn ${appearance.className}`}
                                             title={appearance.tooltip || appearance.label}
-                                            disabled={!canEdit || column.isEditable === false}
+                                            disabled={!isRowEditable(row) || column.isEditable === false}
                                             onClick={() => openActionModal(row, column, key)}
                                           >
                                             {appearance.label}
@@ -615,7 +648,7 @@ export function PayrollClosings({ currentView, onNavigate, currentUser, onLogout
                                     }
                                     return (
                                       <td key={column.id}>
-                                        <PayrollInput column={column} value={row.columnsData[key]} disabled={!canEdit || column.isEditable === false || column.inputType === 'READONLY'} onSave={value => enqueueSave(row, column, value)} />
+                                        <PayrollInput column={column} value={row.columnsData[key]} disabled={!isRowEditable(row) || column.isEditable === false || column.inputType === 'READONLY'} onSave={value => enqueueSave(row, column, value)} />
                                       </td>
                                     );
                                   })}

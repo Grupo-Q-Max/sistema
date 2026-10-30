@@ -1,9 +1,15 @@
 import type { CurrentUser } from '../types/auth';
 export function hasSectorAccess(user: CurrentUser | null | undefined, sector: 'FISCAL' | 'DP' | 'CONTABIL' | 'CUSHMAN', edit=false): boolean {
-  if(!user) return true;
+  if(!user) return false;
   if(user.role==='ADMIN'||user.role==='SOCIO') return true;
   const permission=user.sectorPermissions?.find(p=>p.sector===sector);
-  return permission ? edit ? permission.access==='EDIT' : permission.access!=='NONE' : user.role===sector;
+  if (permission) {
+    return edit ? permission.access==='EDIT' : permission.access!=='NONE';
+  }
+  if (Array.isArray(user.sectorPermissions) && user.sectorPermissions.length > 0) {
+    return false;
+  }
+  return user.role===sector;
 }
 export function ClosingSectorTabs({ sector, currentUser, onNavigate }: { sector:'FISCAL'|'DP'|'CONTABIL'|'CUSHMAN';currentUser?:CurrentUser|null;onNavigate:(view:string)=>void }) {
   return <div className="closing-sector-tabs" aria-label="Setor do fechamento">

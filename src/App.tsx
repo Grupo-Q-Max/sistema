@@ -48,7 +48,31 @@ function App() {
     return 'companies';
   };
 
-  const handleNavigate = (view: string) => setCurrentView(view === 'closings' && !hasSectorAccess(currentUser, 'FISCAL') && hasSectorAccess(currentUser, 'DP') ? 'closings-dp' : view==='closings'&&!hasSectorAccess(currentUser,'FISCAL')&&hasSectorAccess(currentUser,'CONTABIL')?'closings-accounting':view==='closings'&&!hasSectorAccess(currentUser,'FISCAL')&&hasSectorAccess(currentUser,'CUSHMAN')?'closings-cushman':view);
+  const handleNavigate = (view: string) => {
+    let target = view;
+    if (target === 'closings' && !hasSectorAccess(currentUser, 'FISCAL')) {
+      target = hasSectorAccess(currentUser, 'DP') ? 'closings-dp' 
+        : hasSectorAccess(currentUser, 'CONTABIL') ? 'closings-accounting'
+        : hasSectorAccess(currentUser, 'CUSHMAN') ? 'closings-cushman'
+        : 'dashboard';
+    } else if (target === 'closings-dp' && !hasSectorAccess(currentUser, 'DP')) {
+      target = hasSectorAccess(currentUser, 'FISCAL') ? 'closings'
+        : hasSectorAccess(currentUser, 'CONTABIL') ? 'closings-accounting'
+        : hasSectorAccess(currentUser, 'CUSHMAN') ? 'closings-cushman'
+        : 'dashboard';
+    } else if (target === 'closings-accounting' && !hasSectorAccess(currentUser, 'CONTABIL')) {
+      target = hasSectorAccess(currentUser, 'FISCAL') ? 'closings'
+        : hasSectorAccess(currentUser, 'DP') ? 'closings-dp'
+        : hasSectorAccess(currentUser, 'CUSHMAN') ? 'closings-cushman'
+        : 'dashboard';
+    } else if (target === 'closings-cushman' && !hasSectorAccess(currentUser, 'CUSHMAN')) {
+      target = hasSectorAccess(currentUser, 'FISCAL') ? 'closings'
+        : hasSectorAccess(currentUser, 'DP') ? 'closings-dp'
+        : hasSectorAccess(currentUser, 'CONTABIL') ? 'closings-accounting'
+        : 'dashboard';
+    }
+    setCurrentView(target);
+  };
 
   // Restaura sessão se existir
   useEffect(() => {

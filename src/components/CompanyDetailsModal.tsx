@@ -450,61 +450,6 @@ export function CompanyDetailsModal({company:c,onClose,notesLabel='Observações
                         </span>
                       </div>
                       <div className="info-item-row">
-                        <span className="label">SD Login:</span>
-                        <span className="value">
-                          {c.sdLogin ? (
-                            <div className="password-reveal-badge">
-                              <span>{c.sdLogin}</span>
-                              <button
-                                type="button"
-                                onClick={() => handleCopy(c.sdLogin, 'SD Login')}
-                                title="Copiar SD Login"
-                              >
-                                <Copy size={11} />
-                              </button>
-                            </div>
-                          ) : (
-                            '-'
-                          )}
-                        </span>
-                      </div>
-                      <div className="info-item-row">
-                        <span className="label">SD Senha:</span>
-                        <span className="value">
-                          {c.sdPasswordDecrypted ? (
-                            <div className="password-reveal-badge">
-                              <span>
-                                {revealedPasswords[`sd_modal_${c.id}`]
-                                  ? c.sdPasswordDecrypted
-                                  : '••••••'}
-                              </span>
-                              <button
-                                type="button"
-                                onClick={() => togglePasswordReveal(`sd_modal_${c.id}`)}
-                                title={revealedPasswords[`sd_modal_${c.id}`] ? 'Ocultar' : 'Revelar'}
-                              >
-                                {revealedPasswords[`sd_modal_${c.id}`] ? (
-                                  <EyeOff size={13} />
-                                ) : (
-                                  <Eye size={13} />
-                                )}
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() =>
-                                  handleCopy(c.sdPasswordDecrypted, 'SD Senha')
-                                }
-                                title="Copiar SD Senha"
-                              >
-                                <Copy size={11} />
-                              </button>
-                            </div>
-                          ) : (
-                            '-'
-                          )}
-                        </span>
-                      </div>
-                      <div className="info-item-row">
                         <span className="label">Tipo Acesso NF:</span>
                         <span className="value">{c.nfAccessType || '-'}</span>
                       </div>
@@ -579,6 +524,61 @@ export function CompanyDetailsModal({company:c,onClose,notesLabel='Observações
                       <div className="info-item-row">
                         <span className="label">Mês/Ano Dissídio:</span>
                         <span className="value">{c.dissidioMonthYear || '-'}</span>
+                      </div>
+                      <div className="info-item-row">
+                        <span className="label">SD Login:</span>
+                        <span className="value">
+                          {c.sdLogin ? (
+                            <div className="password-reveal-badge">
+                              <span>{c.sdLogin}</span>
+                              <button
+                                type="button"
+                                onClick={() => handleCopy(c.sdLogin, 'SD Login')}
+                                title="Copiar SD Login"
+                              >
+                                <Copy size={11} />
+                              </button>
+                            </div>
+                          ) : (
+                            '-'
+                          )}
+                        </span>
+                      </div>
+                      <div className="info-item-row">
+                        <span className="label">SD Senha:</span>
+                        <span className="value">
+                          {c.sdPasswordDecrypted ? (
+                            <div className="password-reveal-badge">
+                              <span>
+                                {revealedPasswords[`sd_modal_${c.id}`]
+                                  ? c.sdPasswordDecrypted
+                                  : '••••••'}
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => togglePasswordReveal(`sd_modal_${c.id}`)}
+                                title={revealedPasswords[`sd_modal_${c.id}`] ? 'Ocultar' : 'Revelar'}
+                              >
+                                {revealedPasswords[`sd_modal_${c.id}`] ? (
+                                  <EyeOff size={13} />
+                                ) : (
+                                  <Eye size={13} />
+                                )}
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  handleCopy(c.sdPasswordDecrypted, 'SD Senha')
+                                }
+                                title="Copiar SD Senha"
+                              >
+                                <Copy size={11} />
+                              </button>
+                            </div>
+                          ) : (
+                            '-'
+                          )}
+                        </span>
                       </div>
                       <div style={{ marginTop: '6px' }}>
                         <span className="label" style={{ display: 'block', marginBottom: '4px' }}>
