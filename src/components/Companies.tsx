@@ -26,9 +26,12 @@ import {
   CalendarX,
   RotateCcw,
   ArrowRight,
+  Users,
+  CheckSquare,
 } from 'lucide-react';
 import { Sidebar } from './Sidebar';
 import { TableSkeleton, ButtonSpinner } from './LoadingSkeleton';
+import { BulkAssignResponsibleModal } from './BulkAssignResponsibleModal';
 import type { CurrentUser } from '../types/auth';
 import './Dashboard.css';
 import './Companies.css';
@@ -255,6 +258,31 @@ export function Companies({ currentView, onNavigate, currentUser, onLogout }: Co
   const [revealedTablePasswords, setRevealedTablePasswords] = useState<Record<string, boolean>>({});
   const [copiedId, setCopiedId] = useState<string | null>(null);
 
+  // Seleção e Atribuição em Massa (Bulk Assign)
+  const [selectedCompanyIds, setSelectedCompanyIds] = useState<string[]>([]);
+  const [isBulkAssignOpen, setIsBulkAssignOpen] = useState(false);
+  const [users, setUsers] = useState<Array<{ id: string; name: string; email: string; role: string }>>([]);
+  const [toastMsg, setToastMsg] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
+
+  const fetchUsers = async () => {
+    try {
+      const res = await fetch(`${API}/api/users`, {
+        headers: currentUser ? installmentHeaders(currentUser) : {},
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setUsers(Array.isArray(data) ? data : []);
+      }
+    } catch (err) {
+      console.error('Erro ao buscar usuários:', err);
+    }
+  };
+
+  const showToast = (text: string, type: 'success' | 'error' = 'success') => {
+    setToastMsg({ text, type });
+    setTimeout(() => setToastMsg(null), 4500);
+  };
+
   const fetchCompanies = async () => {
     setLoading(true);
     try {
@@ -281,6 +309,7 @@ export function Companies({ currentView, onNavigate, currentUser, onLogout }: Co
 
   useEffect(() => {
     fetchCompanies();
+    fetchUsers();
   }, []);
 
   // Fecha modal ao pressionar ESC
@@ -868,6 +897,21 @@ export function Companies({ currentView, onNavigate, currentUser, onLogout }: Co
                   <table className="comp-table">
                     <thead>
                       <tr>
+                        <th style={{ width: '40px', textAlign: 'center' }}>
+                          <input
+                            type="checkbox"
+                            className="bulk-table-checkbox"
+                            checked={filteredCompanies.length > 0 && selectedCompanyIds.length === filteredCompanies.length}
+                            onChange={() => {
+                              if (selectedCompanyIds.length === filteredCompanies.length) {
+                                setSelectedCompanyIds([]);
+                              } else {
+                                setSelectedCompanyIds(filteredCompanies.map((c) => c.id));
+                              }
+                            }}
+                            title={selectedCompanyIds.length === filteredCompanies.length ? "Desmarcar todas" : "Selecionar todas as empresas filtradas"}
+                          />
+                        </th>
                         <th style={{ width: '70px' }}>Cód.</th>
                         <th>Empresa & CNPJ</th>
                         <th>Grupo</th>
@@ -883,9 +927,24 @@ export function Companies({ currentView, onNavigate, currentUser, onLogout }: Co
                       {filteredCompanies.map((comp) => {
                         const isCertPwdRevealed = Boolean(revealedTablePasswords[`cert_${comp.id}`]);
                         const isGinfessRevealed = Boolean(revealedTablePasswords[`ginfess_${comp.id}`]);
+                        const isSelected = selectedCompanyIds.includes(comp.id);
 
                         return (
-                          <tr key={comp.id}>
+                          <tr key={comp.id} style={{ background: isSelected ? 'rgba(59, 130, 246, 0.08)' : undefined }}>
+                            {/* Checkbox de Seleção */}
+                            <td style={{ textAlign: 'center' }}>
+                              <input
+                                type="checkbox"
+                                className="bulk-table-checkbox"
+                                checked={isSelected}
+                                onChange={() => {
+                                  setSelectedCompanyIds((prev) =>
+                                    prev.includes(comp.id) ? prev.filter((id) => id !== comp.id) : [...prev, comp.id]
+                                  );
+                                }}
+                              />
+                            </td>
+
                             {/* Código */}
                             <td>
                               {comp.code ? (
@@ -1964,6 +2023,58 @@ export function Companies({ currentView, onNavigate, currentUser, onLogout }: Co
                 </div>
               </div>
             </div>
+          </div>
+        )}
+
+        {/* Barra Flutuante de Ações em Massa */}
+        {selectedCompanyIds.length > 0 && (
+          <div className="companies-bulk-bar">
+            <div className="bulk-bar-info">
+              <CheckSquare size={18} />
+              <span>
+                <strong>{selectedCompanyIds.length}</strong> empresa(s) selecionada(s)
+              </span>
+            </div>
+            <div className="bulk-bar-actions">
+              <button
+                type="button"
+                className="bulk-btn-assign"
+                onClick={() => setIsBulkAssignOpen(true)}
+              >
+                <Users size={16} />
+                <span>Atribuir Responsável em Massa</span>
+              </button>
+              <button
+                type="button"
+                className="bulk-btn-clear"
+                onClick={() => setSelectedCompanyIds([])}
+              >
+                Desmarcar Todas
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Modal de Atribuição em Massa */}
+        <BulkAssignResponsibleModal
+          isOpen={isBulkAssignOpen}
+          onClose={() => setIsBulkAssignOpen(false)}
+          selectedCompanyIds={selectedCompanyIds}
+          companies={companies}
+          users={users}
+          currentUser={currentUser}
+          onSuccess={(count, sectorLabel, respName) => {
+            setSelectedCompanyIds([]);
+            fetchCompanies();
+            showToast(`Responsável do setor ${sectorLabel} atualizado para ${respName} em ${count} empresa(s)!`, 'success');
+          }}
+        />
+
+        {/* Toast Notification */}
+        {toastMsg && (
+          <div className={`comp-toast-alert comp-toast-${toastMsg.type}`}>
+            {toastMsg.type === 'success' ? <CheckCircle2 size={18} /> : <AlertCircle size={18} />}
+            <span>{toastMsg.text}</span>
           </div>
         )}
       </main>

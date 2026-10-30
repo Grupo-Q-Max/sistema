@@ -2078,6 +2078,131 @@ app.post('/api/companies/:id/responsibles', async (req, res) => {
   }
 });
 
+// Atribuição em Massa de Responsáveis (Bulk Assign)
+app.post('/api/companies/bulk-responsible', async (req, res) => {
+  try {
+    const { companyIds, sector, userId, actorId, actorEmail, actorName } = req.body;
+
+    if (!Array.isArray(companyIds) || companyIds.length === 0) {
+      return res.status(400).json({ error: 'Nenhuma empresa selecionada para atribuição.' });
+    }
+
+    let targetUser: any = null;
+    if (userId) {
+      targetUser = await prisma.user.findUnique({
+        where: { id: String(userId) },
+        select: { id: true, name: true, email: true, role: true },
+      });
+      if (!targetUser) {
+        return res.status(400).json({ error: 'Usuário selecionado não foi encontrado.' });
+      }
+    }
+
+    const normSector = sector ? String(sector).toUpperCase() : null;
+
+    await prisma.$transaction(async (tx: any) => {
+      for (const compId of companyIds) {
+        // Remove vínculo anterior do setor para a empresa
+        await tx.companyResponsible.deleteMany({
+          where: {
+            companyId: compId,
+            ...(normSector ? { sector: normSector } : {}),
+          },
+        });
+
+        // Se foi selecionado um novo responsável, cria o vínculo
+        if (targetUser) {
+          await tx.companyResponsible.create({
+            data: {
+              companyId: compId,
+              userId: targetUser.id,
+              sector: normSector || null,
+            },
+          });
+        }
+      }
+    });
+
+    invalidateAllDataCaches();
+
+    // Log de auditoria
+    void logAction(
+      actorId || req.body.userId || null,
+      actorEmail || req.body.userEmail || null,
+      actorName || req.body.userName || 'Sistema',
+      'ATRIBUICAO_EM_MASSA_RESPONSAVEL',
+      normSector || 'GERAL',
+      null,
+      {
+        totalCompanies: companyIds.length,
+        sector: normSector,
+        responsibleId: targetUser?.id || null,
+        responsibleName: targetUser?.name || targetUser?.email || 'Nenhum (Removido)',
+      },
+      getClientIp(req)
+    );
+
+    res.json({
+      success: true,
+      count: companyIds.length,
+      responsibleName: targetUser?.name || 'Nenhum',
+      sector: normSector,
+    });
+  } catch (error) {
+    console.error('Erro na atribuição em massa de responsáveis:', error);
+    res.status(500).json({ error: 'Erro interno ao atribuir responsáveis em massa.' });
+  }
+});
+
+// Trilha de Auditoria na Própria Célula (Quick Cell History)
+app.get('/api/audit/cell-history', async (req, res) => {
+  try {
+    const { companyId, columnKey, sector } = req.query;
+    if (!companyId || !columnKey) {
+      return res.status(400).json({ error: 'companyId e columnKey são obrigatórios.' });
+    }
+
+    const logs = await prisma.systemLog.findMany({
+      where: {
+        entityId: String(companyId),
+        action: 'ATUALIZOU_OBRIGACAO',
+        ...(sector ? { entity: String(sector).toUpperCase() } : {}),
+      },
+      orderBy: { createdAt: 'desc' },
+      take: 80,
+    });
+
+    const parsedLogs = logs
+      .filter((l: any) => {
+        try {
+          const det = typeof l.details === 'string' ? JSON.parse(l.details) : l.details;
+          return det && det.columnKey === columnKey;
+        } catch {
+          return false;
+        }
+      })
+      .slice(0, 30)
+      .map((l: any) => {
+        const det = typeof l.details === 'string' ? JSON.parse(l.details) : l.details;
+        return {
+          id: l.id,
+          userName: l.userName || l.userEmail || 'Usuário',
+          userEmail: l.userEmail,
+          userId: l.userId,
+          oldValue: det?.oldValue,
+          newValue: det?.newValue,
+          status: det?.status,
+          createdAt: l.createdAt,
+        };
+      });
+
+    res.json({ logs: parsedLogs });
+  } catch (error) {
+    console.error('Erro ao buscar histórico de auditoria da célula:', error);
+    res.status(500).json({ error: 'Erro ao buscar histórico.' });
+  }
+});
+
 // ========================
 // 4. USUÁRIOS E PERMISSÕES
 // ========================

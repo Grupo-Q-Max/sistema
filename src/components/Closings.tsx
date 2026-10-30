@@ -29,6 +29,7 @@ import {
   Sparkles,
   Info,
   Send,
+  History,
 } from 'lucide-react';
 import type { CurrentUser } from '../types/auth';
 import { API } from '../api';
@@ -38,6 +39,7 @@ import './PayrollClosings.css';
 import { CompanyDetailsModal, getCertificateStatus, formatCnpj, formatRegimeLabel, formatDateBr } from './CompanyDetailsModal';
 import { ManualCompetenceModal } from './ManualCompetenceModal';
 import { ClosingSectorTabs, hasSectorAccess } from './ClosingSectorTabs';
+import { CellAuditModal } from './CellAuditModal';
 import './FiscalPopup.css';
 import { visibilitySummary, isColumnComplete } from '../config/columnVisibility';
 import { FISCAL_POPUPS, effectivePopup, type PopupAction } from '../config/fiscalPopups';
@@ -148,6 +150,15 @@ export function Closings({ currentView, onNavigate, currentUser, onLogout }: Clo
     type: 'POPUP' | 'COMPANY_INFO' | 'CARNE_LEAO' | 'REINF' | 'IMPOSTOS' | 'ISS' | 'MIT' | 'SPED_FISCAL' | 'SPED_CONTRIBUICAO' | 'DESTDA' | 'NOTES';
     row: any;
     colKey?: string;
+  } | null>(null);
+
+  // Trilha de Auditoria na Célula
+  const [auditTarget, setAuditTarget] = useState<{
+    companyId: string;
+    companyName: string;
+    companyCode?: string | null;
+    columnKey: string;
+    columnLabel: string;
   } | null>(null);
 
   // Sub-modais (Perguntas de API, Data e Motivo de Pendência)
@@ -1460,7 +1471,23 @@ export function Closings({ currentView, onNavigate, currentUser, onLogout }: Clo
                             {viewInstallments && <td><div className="fiscal-installment-cell">{(() => { const summary = installmentSummaries[c.id]; const disabled = summary?.status === 'NA' || !summary; return <button className={`obligation-btn ${summary?.status === 'OVERDUE' ? 'pendencia' : summary?.status === 'PAID' ? 'ok-data' : summary?.status === 'NA' ? 'na' : 'pendente'}`} disabled={disabled} title={summary?.status === 'NA' ? 'Empresa sem parcelamentos cadastrados' : 'Consultar todos os parcelamentos desta empresa'} onClick={() => { setInstallmentCreate(false); setInstallmentFocus(null); setInstallmentCompany(c); }}>{summary?.label || (installmentError ? 'Indisponível' : 'Carregando...')}</button>; })()}</div></td>}
 
                             {/* 8 Colunas de Obrigações Fiscais */}
-                            {popupColumns.map(col => <td key={col.columnKey}>{renderObligationCell(r, col.columnKey)}</td>)}
+                            {popupColumns.map(col => (
+                              <td
+                                key={col.columnKey}
+                                onContextMenu={(e) => {
+                                  e.preventDefault();
+                                  setAuditTarget({
+                                    companyId: r.company.id,
+                                    companyName: r.company.name,
+                                    companyCode: r.company.code,
+                                    columnKey: col.columnKey,
+                                    columnLabel: col.name || col.columnKey,
+                                  });
+                                }}
+                              >
+                                {renderObligationCell(r, col.columnKey)}
+                              </td>
+                            ))}
 
                           </tr>
                         );
@@ -1488,7 +1515,26 @@ export function Closings({ currentView, onNavigate, currentUser, onLogout }: Clo
             <div className="closing-modal-content" onClick={e => e.stopPropagation()} style={{ maxWidth: activePopupConfig.fields.length ? '650px' : '440px' }}>
               <div className="closing-modal-header">
                 <div className="closing-modal-title purple"><FileSpreadsheet size={22} />{activePopupConfig.title}</div>
-                <button className="closing-modal-close-btn" onClick={closeAllModals}>&times;</button>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <button
+                    type="button"
+                    className="closing-modal-history-btn"
+                    title="Ver trilha de auditoria desta obrigação"
+                    onClick={() => {
+                      setAuditTarget({
+                        companyId: activeModal.row.company.id,
+                        companyName: activeModal.row.company.name,
+                        companyCode: activeModal.row.company.code,
+                        columnKey: activeModal.colKey!,
+                        columnLabel: activePopupConfig.title || activePopupColumn?.name || activeModal.colKey!,
+                      });
+                    }}
+                  >
+                    <History size={15} />
+                    <span>Histórico</span>
+                  </button>
+                  <button className="closing-modal-close-btn" onClick={closeAllModals}>&times;</button>
+                </div>
               </div>
               <div className="closing-modal-body">
                 {activePopupConfig.description && <p>{activePopupConfig.description}</p>}
@@ -1820,6 +1866,19 @@ export function Closings({ currentView, onNavigate, currentUser, onLogout }: Clo
               </div>
             </div>
           </div>
+        )}
+        {/* Trilha de Auditoria na Célula */}
+        {auditTarget && (
+          <CellAuditModal
+            isOpen={Boolean(auditTarget)}
+            onClose={() => setAuditTarget(null)}
+            companyId={auditTarget.companyId}
+            companyName={auditTarget.companyName}
+            companyCode={auditTarget.companyCode}
+            columnKey={auditTarget.columnKey}
+            columnLabel={auditTarget.columnLabel}
+            sector="FISCAL"
+          />
         )}
       </main>
     </div>

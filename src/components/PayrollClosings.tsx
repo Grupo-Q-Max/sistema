@@ -1,11 +1,12 @@
 import { latestOpenPeriod } from '../config/competenceCalendar';
 import { useCompetenceCalendar } from './useCompetenceCalendar';
 import { memo, useEffect, useMemo, useRef, useState, useDeferredValue } from 'react';
-import { Building2, CheckCircle2, ChevronLeft, ChevronRight, Eye, EyeOff, RefreshCw, Users, X, ExternalLink, AlertTriangle, Copy, Search, AlertCircle, Filter, Check, Calendar, FileText, Clock, Sparkles } from 'lucide-react';
+import { Building2, CheckCircle2, ChevronLeft, ChevronRight, Eye, EyeOff, RefreshCw, Users, X, ExternalLink, AlertTriangle, Copy, Search, AlertCircle, Filter, Check, Calendar, FileText, Clock, Sparkles, History } from 'lucide-react';
 import { CompanyDetailsModal, getCertificateStatus, formatCnpj, formatRegimeLabel } from './CompanyDetailsModal';
 import { Sidebar } from './Sidebar';
 import { ClosingSectorTabs, hasSectorAccess } from './ClosingSectorTabs';
 import { TableSkeleton, ButtonSpinner } from './LoadingSkeleton';
+import { CellAuditModal } from './CellAuditModal';
 import type { CurrentUser } from '../types/auth';
 import { API } from '../api';
 import { PAYROLL_API_VERSION, effectiveFieldConfig, resolveColumnKey } from '../config/payrollColumns';
@@ -251,6 +252,13 @@ export function PayrollClosings({ currentView, onNavigate, currentUser, onLogout
   }, [loading, columns]);
 
   const [onlyMyCompanies, setOnlyMyCompanies] = useState(false);
+  const [auditTarget, setAuditTarget] = useState<{
+    companyId: string;
+    companyName: string;
+    companyCode?: string | null;
+    columnKey: string;
+    columnLabel: string;
+  } | null>(null);
   const isPrivileged = currentUser?.role === 'ADMIN' || currentUser?.role === 'SOCIO';
 
   const getResponsible = (company: any) => company.responsibles?.find((r: any) => r.sector === 'DP') || null;
@@ -728,9 +736,20 @@ export function PayrollClosings({ currentView, onNavigate, currentUser, onLogout
                                   <td><button type="button" className="copy-badge-btn" title="Copiar CNPJ" onClick={() => { void navigator.clipboard.writeText(c.cnpj || '').then(() => setCopyMessage('CNPJ copiado!')).catch(() => setError('Não foi possível copiar o CNPJ.')); }}>{formatCnpj(c.cnpj || '')}<Copy size={12} /></button></td>
                                   {columns.map(column => {
                                     const key = resolveColumnKey(column) || column.id;
+                                    const handleCellContextMenu = (e: React.MouseEvent) => {
+                                      e.preventDefault();
+                                      setAuditTarget({
+                                        companyId: c.id,
+                                        companyName: c.name,
+                                        companyCode: c.code,
+                                        columnKey: key,
+                                        columnLabel: column.name || key,
+                                      });
+                                    };
+
                                     if (key === 'dp_reinf_fiscal') {
                                       return (
-                                        <td key={column.id}>
+                                        <td key={column.id} onContextMenu={handleCellContextMenu}>
                                           <button className={`obligation-btn ${reinfAppearance(row.fiscalReinf).className}`} title="Consultar REINF do Fiscal desta competência" onClick={() => setReinfRow(row)}>
                                             <Eye size={14} />{reinfAppearance(row.fiscalReinf).label}
                                           </button>
@@ -739,7 +758,7 @@ export function PayrollClosings({ currentView, onNavigate, currentUser, onLogout
                                     }
                                     if (key === 'dp_observacao') {
                                       return (
-                                        <td key={column.id}>
+                                        <td key={column.id} onContextMenu={handleCellContextMenu}>
                                           <button type="button" className="copy-badge-btn" style={{ background: row.columnsData[key] ? 'rgba(99, 102, 241, 0.15)' : undefined }} title={row.columnsData[key] || 'Observação do DP'} onClick={() => { setNotesDialog({ row, column }); setNotesDraft(String(row.columnsData[key] ?? '')); setNotesError(''); }}>
                                             {row.columnsData[key] ? String(row.columnsData[key]).slice(0, 16) + (String(row.columnsData[key]).length > 16 ? '...' : '') : '+ Obs'}
                                           </button>
@@ -749,7 +768,7 @@ export function PayrollClosings({ currentView, onNavigate, currentUser, onLogout
                                     if (isPayrollActionColumn(key, column)) {
                                       const appearance = getPayrollStatusAppearance(row.columnsData[key]);
                                       return (
-                                        <td key={column.id}>
+                                        <td key={column.id} onContextMenu={handleCellContextMenu}>
                                           <button
                                             type="button"
                                             className={`obligation-btn ${appearance.className}`}
@@ -763,7 +782,7 @@ export function PayrollClosings({ currentView, onNavigate, currentUser, onLogout
                                       );
                                     }
                                     return (
-                                      <td key={column.id}>
+                                      <td key={column.id} onContextMenu={handleCellContextMenu}>
                                         <PayrollInput column={column} value={row.columnsData[key]} disabled={!isRowEditable(row) || column.isEditable === false || column.inputType === 'READONLY'} onSave={value => enqueueSave(row, column, value)} />
                                       </td>
                                     );
@@ -797,9 +816,28 @@ export function PayrollClosings({ currentView, onNavigate, currentUser, onLogout
               <FileText size={20} />
               {popupConf.title || actionModal.column.name}
             </div>
-            <button className="closing-modal-close-btn" onClick={() => setActionModal(null)} aria-label="Fechar modal">
-              <X size={20} />
-            </button>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <button
+                type="button"
+                className="closing-modal-history-btn"
+                title="Ver histórico desta obrigação"
+                onClick={() => {
+                  setAuditTarget({
+                    companyId: actionModal.row.company.id,
+                    companyName: actionModal.row.company.name,
+                    companyCode: actionModal.row.company.code,
+                    columnKey: actionModal.key,
+                    columnLabel: popupConf.title || actionModal.column.name,
+                  });
+                }}
+              >
+                <History size={15} />
+                <span>Histórico</span>
+              </button>
+              <button className="closing-modal-close-btn" onClick={() => setActionModal(null)} aria-label="Fechar modal">
+                <X size={20} />
+              </button>
+            </div>
           </div>
           <div className="closing-modal-body">
             <p style={{ color: '#475569', fontSize: '0.9rem', marginBottom: 14 }}>
@@ -1014,6 +1052,19 @@ export function PayrollClosings({ currentView, onNavigate, currentUser, onLogout
     );
     })()}
         </div>
+        {/* Trilha de Auditoria na Célula */}
+        {auditTarget && (
+          <CellAuditModal
+            isOpen={Boolean(auditTarget)}
+            onClose={() => setAuditTarget(null)}
+            companyId={auditTarget.companyId}
+            companyName={auditTarget.companyName}
+            companyCode={auditTarget.companyCode}
+            columnKey={auditTarget.columnKey}
+            columnLabel={auditTarget.columnLabel}
+            sector="DP"
+          />
+        )}
       </main>
     </div>
   );

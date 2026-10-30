@@ -6,3 +6,24 @@
 .closing-modal-content .modal-input-group textarea { resize: vertical; }
 .closing-modal-content button:disabled { opacity: .55; cursor: not-allowed; }
 .fiscal-column-text { width: 135px; border: 1px solid #475569; border-radius: 7px; padding: 8px; background: #171720; color: #f1f5f9; }
+
+.closing-modal-history-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 8px;
+  color: #cbd5e1;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.closing-modal-history-btn:hover {
+  background: rgba(217, 15, 129, 0.18);
+  border-color: rgba(217, 15, 129, 0.45);
+  color: #fce7f3;
+}
