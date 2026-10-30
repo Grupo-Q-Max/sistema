@@ -20,12 +20,14 @@ export const FISCAL_POPUPS: Record<string, PopupConfig> = {
 };
 // A chave permanece igual mesmo se o nome da coluna mudar.
 export function resolveFiscalKey(column: { columnKey?: string | null; name?: string; department?: string; inputType?: string; id?: string }): string | null {
-  if (column.department !== 'FISCAL') return null;
   if (column.columnKey) return column.columnKey;
-  if (column.inputType && column.inputType !== 'POPUP') return null;
-  const name = (column.name || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]/g, '');
-  const aliases: Record<string, string> = { carneleao: 'carne_leao', reinf: 'reinf', impostos: 'impostos', iss: 'iss', mit: 'mit', spedfiscal: 'sped_fiscal', spedcontribuicao: 'sped_contribuicao', spedcontribuicoes: 'sped_contribuicao', spedcontrib: 'sped_contribuicao', destda: 'destda' };
-  return aliases[name] || (column.inputType === 'POPUP' && column.id ? column.id : null);
+  if (column.department === 'FISCAL') {
+    if (column.inputType && column.inputType !== 'POPUP') return null;
+    const name = (column.name || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]/g, '');
+    const aliases: Record<string, string> = { carneleao: 'carne_leao', reinf: 'reinf', impostos: 'impostos', iss: 'iss', mit: 'mit', spedfiscal: 'sped_fiscal', spedcontribuicao: 'sped_contribuicao', spedcontribuicoes: 'sped_contribuicao', spedcontrib: 'sped_contribuicao', destda: 'destda' };
+    return aliases[name] || (column.inputType === 'POPUP' && column.id ? column.id : null);
+  }
+  return column.inputType === 'POPUP' && column.id ? column.id : null;
 }
 export function defaultPopup(key: string, name = 'Detalhes'): PopupConfig {
   return structuredClone(FISCAL_POPUPS[key] || preset(name, []));

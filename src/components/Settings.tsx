@@ -563,7 +563,7 @@ export function Settings({ currentView, onNavigate, currentUser, onLogout }: Set
     if ((colInputType === 'SELECT' || (colInputType === 'MULTISELECT' && colDepartment === 'FISCAL' && !editingColumn)) && !cleanedFieldConfig.options.length) { showToast('Informe as opções da lista.', 'error'); return; }
     const visibilityError = validateVisibility(colVisibility);
     if (visibilityError) { showToast(visibilityError, 'error'); return; }
-    if (['FISCAL','CUSHMAN'].includes(colDepartment) && colInputType === 'POPUP') {
+    if (colInputType === 'POPUP') {
       const error = validatePopup(colPopupConfig);
       if (error) { showToast(error, 'error'); return; }
     }
@@ -571,7 +571,7 @@ export function Settings({ currentView, onNavigate, currentUser, onLogout }: Set
       isActive: colActive,
       fieldConfig: cleanedFieldConfig,
       visibilityConfig: colVisibility,
-      popupConfig: ['FISCAL','CUSHMAN'].includes(colDepartment) && colInputType === 'POPUP' ? colPopupConfig : undefined,
+      popupConfig: colInputType === 'POPUP' ? colPopupConfig : undefined,
       name: colName.trim(),
       department: colDepartment,
       inputType: colInputType,
@@ -1035,7 +1035,7 @@ export function Settings({ currentView, onNavigate, currentUser, onLogout }: Set
                           <div className="col-name">
                             <strong>{col.name}</strong>{col.isActive === false && <small className="popup-column-summary">Inativa · dados preservados</small>}
                             <small className="popup-column-summary">{visibilitySummary(col)}</small>
-                            {['FISCAL','CUSHMAN'].includes(col.department) && col.inputType === 'POPUP' && <small className="popup-column-summary">{effectivePopup(col, resolveColumnKey(col) || col.id).fields.length} campos · {effectivePopup(col, resolveColumnKey(col) || col.id).actions.filter(a => a.enabled).length} botões · {col.popupConfig ? 'Personalizado' : 'Modelo original'}</small>}
+                            {col.inputType === 'POPUP' && <small className="popup-column-summary">{effectivePopup(col, resolveColumnKey(col) || col.id).fields.length} campos · {effectivePopup(col, resolveColumnKey(col) || col.id).actions.filter(a => a.enabled).length} botões · {col.popupConfig ? 'Personalizado' : 'Modelo original'}</small>}
                           </div>
                           <div className="col-type">
                             <span className="type-badge">
@@ -1529,7 +1529,15 @@ export function Settings({ currentView, onNavigate, currentUser, onLogout }: Set
                 <div className="form-group full-width">
                   <label>Tipo de Entrada de Dados</label>
                   <div className="column-type-options">
-                    {Object.entries(INPUT_TYPES).filter(([type]) => ['DP','CONTABIL'].includes(colDepartment) ? ['TEXT','CHECKBOX','SELECT','NUMBER','TEXTAREA','PASSWORD'].includes(type) || (type === 'READONLY' && editingColumn?.inputType === 'READONLY') : colDepartment === 'FISCAL' ? ['POPUP','SELECT','MULTISELECT','TEXT','NUMBER','CHECKBOX','TEXTAREA','PASSWORD'].includes(type) : ['TEXT','CHECKBOX','POPUP','TEXTAREA','MULTISELECT'].includes(type)).map(([type, item]) => <button type="button" key={type} aria-pressed={colInputType === type} className={colInputType === type ? 'selected' : ''} disabled={!!editingColumn && ((['FISCAL','CUSHMAN'].includes(colDepartment) && editingColumn.inputType==='POPUP' && !!resolveColumnKey(editingColumn) && type !== 'POPUP') || (colDepartment==='CONTABIL'&&String(resolveColumnKey(editingColumn)||'').startsWith('cont_')&&type!==editingColumn.inputType) || (['dp_reinf_fiscal','dp_qtde_funcionarios','dp_sd_senha'].includes(resolveColumnKey(editingColumn) || '') && type !== editingColumn.inputType))} onClick={() => {
+                    {Object.entries(INPUT_TYPES).filter(([type]) => {
+                      if (['DP','CONTABIL'].includes(colDepartment)) {
+                        return ['POPUP','TEXT','CHECKBOX','SELECT','NUMBER','TEXTAREA','PASSWORD'].includes(type) || (type === 'READONLY' && editingColumn?.inputType === 'READONLY');
+                      }
+                      if (colDepartment === 'FISCAL') {
+                        return ['POPUP','SELECT','MULTISELECT','TEXT','NUMBER','CHECKBOX','TEXTAREA','PASSWORD'].includes(type);
+                      }
+                      return ['POPUP','TEXT','CHECKBOX','TEXTAREA','MULTISELECT'].includes(type);
+                    }).map(([type, item]) => <button type="button" key={type} aria-pressed={colInputType === type} className={colInputType === type ? 'selected' : ''} disabled={!!editingColumn && ((['FISCAL','CUSHMAN'].includes(colDepartment) && editingColumn.inputType==='POPUP' && !!resolveColumnKey(editingColumn) && type !== 'POPUP') || (colDepartment==='CONTABIL'&&String(resolveColumnKey(editingColumn)||'').startsWith('cont_')&&type!==editingColumn.inputType) || (['dp_reinf_fiscal','dp_qtde_funcionarios','dp_sd_senha'].includes(resolveColumnKey(editingColumn) || '') && type !== editingColumn.inputType))} onClick={() => {
                       setColInputType(type);
                       if (!editingColumn && type === 'POPUP') setColPopupConfig(defaultPopup(resolveFiscalKey({ department: colDepartment, name: colName }) || '', colName));
                     }}><item.Icon size={20} /><strong>{type === 'POPUP' ? 'Popup com detalhes' : item.label}</strong><small>{type === 'POPUP' ? 'Campos e botões configuráveis' : type === 'CHECKBOX' ? 'Marcar ou desmarcar' : type === 'READONLY' ? 'Consulta dados do Fiscal' : type === 'SELECT' ? 'Escolher uma opção configurada' : 'Preencher um valor ou texto'}</small></button>)}
@@ -1578,7 +1586,7 @@ export function Settings({ currentView, onNavigate, currentUser, onLogout }: Set
                 {(['DP','CONTABIL'].includes(colDepartment) || (colDepartment === 'FISCAL' && ['SELECT','MULTISELECT','TEXT','NUMBER','TEXTAREA','PASSWORD'].includes(colInputType))) && colInputType !== 'READONLY' && <div className="dp-field-config"><h3>Detalhes do campo</h3><label>Texto de exemplo<input type="text" value={colFieldConfig.placeholder} onChange={e=>setColFieldConfig({...colFieldConfig,placeholder:e.target.value})}/></label>{(colInputType === 'SELECT' || colInputType === 'MULTISELECT') && <><label>Opções disponíveis (uma por linha)<textarea rows={5} value={colFieldConfig.options.join('\n')} onChange={e=>setColFieldConfig({...colFieldConfig,options:e.target.value.split('\n')})}/></label>{colInputType === 'SELECT' && <label>Opções que <strong>NÃO</strong> contabilizam progresso (ex: Pendente)<textarea rows={3} placeholder="Deixe em branco para que todas as opções (exceto vazias) contem como concluído" value={(colFieldConfig.pendingOptions || []).join('\n')} onChange={e=>setColFieldConfig({...colFieldConfig,pendingOptions:e.target.value.split('\n').filter(Boolean)})}/></label>}</>}</div>}
                 {colInputType === 'READONLY' && <p>Esta REINF vem do Fiscal da mesma empresa e competência. Nenhum campo pode ser alterado pelo DP.</p>}
                 <ColumnVisibilityEditor value={colVisibility} onChange={setColVisibility} />
-                {['FISCAL','CUSHMAN'].includes(colDepartment) && colInputType === 'POPUP' && <PopupConfigEditor value={colPopupConfig} onChange={setColPopupConfig} columnKey={resolveColumnKey(editingColumn || { department: colDepartment, name: colName }) || ''} name={colName} />}
+                {colInputType === 'POPUP' && <PopupConfigEditor value={colPopupConfig} onChange={setColPopupConfig} columnKey={resolveColumnKey(editingColumn || { department: colDepartment, name: colName }) || ''} name={colName} />}
               </div>
 
               <div className="modal-footer">

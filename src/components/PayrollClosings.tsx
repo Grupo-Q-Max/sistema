@@ -9,7 +9,7 @@ import { TableSkeleton, ButtonSpinner } from './LoadingSkeleton';
 import type { CurrentUser } from '../types/auth';
 import { API } from '../api';
 import { PAYROLL_API_VERSION, effectiveFieldConfig, resolveColumnKey } from '../config/payrollColumns';
-import { defaultPopup, type PopupConfig } from '../config/fiscalPopups';
+import { defaultPopup, effectivePopup, type PopupConfig } from '../config/fiscalPopups';
 import { visibilitySummary } from '../config/columnVisibility';
 import { exportToCsv } from '../utils/exportCsv';
 import { compareCodes, formatCompanyCode } from '../utils/codeSort';
@@ -183,9 +183,10 @@ export function PayrollClosings({ currentView, onNavigate, currentUser, onLogout
   const currentPeriodKey = useRef(periodKey); currentPeriodKey.current = periodKey;
   const canEdit = hasSectorAccess(currentUser, 'DP', true);
 
-  // Modal de Ação Padronizado (OK - DATA, OK - SEM MOVIMENTO, PENDÊNCIA, N/A, LIMPAR)
+  // Modal de Ação Padronizado (OK - DATA, OK - SEM MOVIMENTO, PENDÊNCIA, N/A, LIMPAR) e POPUP customizável
   const [actionModal, setActionModal] = useState<{ row: PayrollRow; column: any; key: string } | null>(null);
   const [modalMode, setModalMode] = useState<'MAIN' | 'DATE' | 'PENDENCY'>('MAIN');
+  const [popupCustomForm, setPopupCustomForm] = useState<Record<string, string>>({});
   const [inputDate, setInputDate] = useState('');
   const [inputPendencyReason, setInputPendencyReason] = useState('');
   const [customTextInput, setCustomTextInput] = useState('');
@@ -415,6 +416,9 @@ export function PayrollClosings({ currentView, onNavigate, currentUser, onLogout
       : typeof currentVal === 'string' && /^\d{2}\/\d{2}\/\d{4}$/.test(currentVal.trim())
       ? currentVal.trim()
       : getTodayBr();
+    const config = effectivePopup(column, key);
+    const existingData = (typeof currentVal === 'object' && currentVal !== null ? currentVal.data : null) || {};
+    setPopupCustomForm(Object.fromEntries(config.fields.map(f => [f.key, String(existingData[f.key] ?? '')])));
     setActionModal({ row, column, key });
     setModalMode('MAIN');
     setActionError('');
@@ -516,6 +520,31 @@ export function PayrollClosings({ currentView, onNavigate, currentUser, onLogout
       setActionModal(null);
     } catch (err) {
       setActionError(err instanceof Error ? err.message : 'Erro ao salvar anotação.');
+    }
+  }
+
+  async function handleActionSavePopupFields() {
+    if (!actionModal) return;
+    const config = effectivePopup(actionModal.column, actionModal.key);
+    const missing = config.fields.find(f => f.required && !(popupCustomForm[f.key] || '').trim());
+    if (missing) {
+      setActionError(`Preencha o campo obrigatório: ${missing.label}`);
+      return;
+    }
+    const todayBr = getTodayBr();
+    const payload = {
+      status: 'CONCLUIDO',
+      label: todayBr,
+      completionDate: todayBr,
+      data: popupCustomForm,
+      updatedAt: new Date().toISOString()
+    };
+    setActionError('');
+    try {
+      await enqueueSave(actionModal.row, actionModal.column, payload);
+      setActionModal(null);
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : 'Erro ao salvar dados do popup.');
     }
   }
 
@@ -756,28 +785,78 @@ export function PayrollClosings({ currentView, onNavigate, currentUser, onLogout
     {notesDialog && <div className="closing-modal-backdrop" onClick={() => { if (!notesSaving) setNotesDialog(null); }}><div className="closing-modal-content" style={{ maxWidth: 500 }} onClick={e => e.stopPropagation()}><div className="closing-modal-header"><div className="closing-modal-title">Observação do DP</div><button type="button" className="closing-modal-close-btn" aria-label="Fechar observação do DP" disabled={notesSaving} onClick={() => setNotesDialog(null)}><X size={20} /></button></div><div className="closing-modal-body"><p>{notesDialog.row.company.name} · {monthLabel}</p><textarea className="payroll-note-textarea" rows={6} value={notesDraft} disabled={notesSaving || !isRowEditable(notesDialog.row) || notesDialog.column.isEditable === false} onChange={e => setNotesDraft(e.target.value)} placeholder="Observações do DP para esta competência" />{notesError && <p role="alert">{notesError}</p>}<div className="sub-modal-actions"><button type="button" className="btn-secondary-light" disabled={notesSaving} onClick={() => setNotesDialog(null)}>Fechar</button>{isRowEditable(notesDialog.row) && notesDialog.column.isEditable !== false && <button type="button" className="btn-primary-gradient" disabled={notesSaving} onClick={async () => { setNotesSaving(true); setNotesError(''); try { await enqueueSave(notesDialog.row, notesDialog.column, notesDraft); setNotesDialog(null); } catch (err) { setNotesError(err instanceof Error ? err.message : 'Erro ao salvar.'); } finally { setNotesSaving(false); } }}>{notesSaving ? 'Salvando...' : 'Salvar observação'}</button>}</div></div></div></div>}
     {reinfRow && <PayrollReinfPreview row={reinfRow} definition={reinfDefinition} monthLabel={monthLabel} onClose={() => setReinfRow(null)} />}
 
-    {/* MODAL PADRONIZADO DO DP (IDÊNTICO AO FISCAL: OK - DATA, OK - SEM MOVIMENTO, PENDÊNCIA, N/A, LIMPAR) */}
-    {actionModal && (
+    {/* MODAL PADRONIZADO DO DP (IDÊNTICO AO FISCAL: OK - DATA, OK - SEM MOVIMENTO, PENDÊNCIA, N/A, LIMPAR E CAMPOS CONFIGURADOS) */}
+    {actionModal && (() => {
+      const popupConf = effectivePopup(actionModal.column, actionModal.key);
+      const hasFields = Array.isArray(popupConf.fields) && popupConf.fields.length > 0;
+      return (
       <div className="closing-modal-backdrop" onClick={() => setActionModal(null)}>
-        <div className="closing-modal-content" style={{ maxWidth: 500 }} onClick={e => e.stopPropagation()}>
+        <div className="closing-modal-content" style={{ maxWidth: hasFields ? 620 : 500 }} onClick={e => e.stopPropagation()}>
           <div className="closing-modal-header">
             <div className="closing-modal-title">
               <FileText size={20} />
-              {actionModal.column.name}
+              {popupConf.title || actionModal.column.name}
             </div>
             <button className="closing-modal-close-btn" onClick={() => setActionModal(null)} aria-label="Fechar modal">
               <X size={20} />
             </button>
           </div>
           <div className="closing-modal-body">
-            <p style={{ color: '#475569', fontSize: '0.9rem', marginBottom: 16 }}>
+            <p style={{ color: '#475569', fontSize: '0.9rem', marginBottom: 14 }}>
               <strong>{actionModal.row.company.name}</strong> · {monthLabel}
             </p>
+            {popupConf.description && <p style={{ fontSize: '0.85rem', color: '#94a3b8', marginBottom: 12 }}>{popupConf.description}</p>}
             {actionError && <p className="payroll-error" role="alert" style={{ marginBottom: 12 }}>{actionError}</p>}
 
             {modalMode === 'MAIN' && (
               <>
+                {hasFields && (
+                  <div className="modal-fields-grid" style={{ marginBottom: 16 }}>
+                    {popupConf.fields.map(f => (
+                      <div className={`modal-input-group ${f.fullWidth || f.type === 'TEXTAREA' ? 'full-width' : ''}`} key={f.key}>
+                        <label>{f.label}{f.required ? ' *' : ''}</label>
+                        {f.type === 'TEXTAREA' ? (
+                          <textarea
+                            rows={3}
+                            value={popupCustomForm[f.key] || ''}
+                            placeholder={f.placeholder}
+                            onChange={e => setPopupCustomForm(prev => ({ ...prev, [f.key]: e.target.value }))}
+                          />
+                        ) : f.type === 'SELECT' ? (
+                          <select
+                            value={popupCustomForm[f.key] || ''}
+                            onChange={e => setPopupCustomForm(prev => ({ ...prev, [f.key]: e.target.value }))}
+                          >
+                            <option value="">Selecione...</option>
+                            {f.options.map(opt => <option key={opt} value={opt}>{opt}</option>)}
+                          </select>
+                        ) : (
+                          <input
+                            type={f.type === 'NUMBER' ? 'number' : f.type === 'DATE' ? 'date' : 'text'}
+                            step={f.type === 'NUMBER' ? 'any' : undefined}
+                            value={popupCustomForm[f.key] || ''}
+                            placeholder={f.placeholder}
+                            onChange={e => setPopupCustomForm(prev => ({ ...prev, [f.key]: e.target.value }))}
+                          />
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                  {hasFields && (
+                    <button
+                      type="button"
+                      className="btn-action-blue-gradient"
+                      onClick={handleActionSavePopupFields}
+                      style={{ background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)', color: '#fff' }}
+                    >
+                      <Check size={16} />
+                      SALVAR CAMPOS
+                    </button>
+                  )}
+
                   <button
                     type="button"
                     className="btn-action-blue-gradient"
@@ -932,7 +1011,8 @@ export function PayrollClosings({ currentView, onNavigate, currentUser, onLogout
           </div>
         </div>
       </div>
-    )}
+    );
+    })()}
         </div>
       </main>
     </div>
