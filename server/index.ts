@@ -2303,6 +2303,7 @@ app.post('/api/columns', async (req, res) => {
       },
     });
 
+    invalidateDashboardCache();
     res.status(201).json(column);
   } catch (error) {
     console.error('Erro ao criar coluna:', error);
@@ -2366,6 +2367,7 @@ app.put('/api/columns/:id', async (req, res) => {
       });
     }
 
+    invalidateDashboardCache();
     res.json(column);
   } catch (error) {
     console.error('Erro ao atualizar coluna:', error);
@@ -2377,6 +2379,7 @@ app.delete('/api/columns/:id', async (req, res) => {
   try {
     const { id } = req.params;
     await prisma.departmentColumn.delete({ where: { id } });
+    invalidateDashboardCache();
     res.json({ success: true, message: 'Coluna excluída com sucesso' });
   } catch (error) {
     console.error('Erro ao excluir coluna:', error);
@@ -2402,6 +2405,7 @@ app.post('/api/columns/reorder', async (req, res) => {
       }
     }
 
+    invalidateDashboardCache();
     res.json({ success: true });
   } catch (error) {
     console.error('Erro ao reordenar colunas:', error);

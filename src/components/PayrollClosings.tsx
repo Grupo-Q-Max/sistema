@@ -70,22 +70,25 @@ export function getPayrollStatusAppearance(value: any): { className: string; lab
 
 function isPayrollActionColumn(key: string, column?: any): boolean {
   if (column) {
-    if (['SELECT', 'NUMBER', 'TEXT', 'TEXTAREA', 'PASSWORD', 'CHECKBOX', 'READONLY'].includes(column.inputType)) {
+    if (['SELECT', 'NUMBER', 'TEXTAREA', 'PASSWORD', 'CHECKBOX', 'READONLY'].includes(column.inputType)) {
       return false;
     }
-    if (column.inputType === 'ACTION' || column.actionType === 'MODAL') {
+    if (column.inputType === 'ACTION' || column.inputType === 'POPUP' || column.actionType === 'MODAL') {
       return true;
     }
   }
-  const normKey = (key || '').toLowerCase();
-  const normName = (column?.name || '').toLowerCase();
-  if (normKey.includes('dissidio') || normName.includes('dissidio')) {
-    return false;
-  }
-  if (['dp_observacao', 'dp_reinf_fiscal', 'dp_qtde_funcionarios', 'dp_tipo_folha', 'dp_folha_pagto', 'dp_data_pagto', 'dp_sd_login', 'dp_sd_senha', 'dp_dissidio'].includes(key)) {
+  if (['dp_observacao', 'dp_reinf_fiscal', 'dp_qtde_funcionarios', 'dp_tipo_folha', 'dp_folha_pagto', 'dp_data_pagto', 'dp_sd_login', 'dp_sd_senha'].includes(key)) {
     return false;
   }
   return true;
+}
+
+function normalizePayrollDraft(value: any): string {
+  if (value === null || value === undefined) return '';
+  if (typeof value === 'object') {
+    return String(value.completionDate || value.label || value.status || '');
+  }
+  return String(value);
 }
 
 function reinfAppearance(value: any) {
@@ -98,12 +101,12 @@ function reinfAppearance(value: any) {
 }
 
 export function PayrollInput({ column, value, disabled, onSave }: { column: any; value: any; disabled: boolean; onSave: (value: any) => Promise<void> }) {
-  const [draft, setDraft] = useState(value === null || value === undefined ? '' : String(value));
+  const [draft, setDraft] = useState(() => normalizePayrollDraft(value));
   const [saving, setSaving] = useState(false);
   const [revealed, setRevealed] = useState(false);
   const [error, setError] = useState('');
   const dirty = useRef(false);
-  useEffect(() => { if (!dirty.current) setDraft(value === null || value === undefined ? '' : String(value)); }, [value]);
+  useEffect(() => { if (!dirty.current) setDraft(normalizePayrollDraft(value)); }, [value]);
   async function commit(next = draft) {
     if (disabled || saving || !dirty.current) return;
     const parsed = column.inputType === 'NUMBER' ? (next.trim() === '' ? '' : Number(next)) : next;
@@ -114,7 +117,7 @@ export function PayrollInput({ column, value, disabled, onSave }: { column: any;
   const config = effectiveFieldConfig(column);
   const inputProps = { value: draft, disabled: disabled || saving, 'aria-label': column.name, placeholder: config.placeholder, onChange: (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => { dirty.current = true; setDraft(e.target.value); }, onBlur: () => { void commit(); }, onKeyDown: (e: React.KeyboardEvent<HTMLInputElement>) => { if (e.key === 'Enter') e.currentTarget.blur(); } };
   if (column.inputType === 'CHECKBOX') return <div className="payroll-input-cell"><input aria-label={column.name} type="checkbox" checked={value === true} disabled={disabled || saving} onChange={async e => { setSaving(true); try { await onSave(e.target.checked); } catch (err) { setError(err instanceof Error ? err.message : 'Erro ao salvar.'); } finally { setSaving(false); } }} />{error && <small role="alert">{error}</small>}</div>;
-  const options = Array.isArray(config.options) ? config.options : [];
+  const options = Array.from(new Set([...(Array.isArray(config.options) ? config.options : []), ...(Array.isArray(config.pendingOptions) ? config.pendingOptions : [])]));
   return <div className="payroll-input-cell">
     {column.inputType === 'SELECT' ? <select aria-label={column.name} value={draft} disabled={disabled || saving} onChange={e => { dirty.current = true; setDraft(e.target.value); void commit(e.target.value); }}><option value="">Selecione...</option>{draft && !options.includes(draft) && <option value={draft}>{draft} (anterior)</option>}{options.map(option => <option key={option} value={option}>{option}</option>)}</select>
       : column.inputType === 'TEXTAREA' ? <textarea {...inputProps} onKeyDown={undefined} rows={1} />

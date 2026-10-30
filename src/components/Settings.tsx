@@ -491,9 +491,14 @@ export function Settings({ currentView, onNavigate, currentUser, onLogout }: Set
       return;
     }
 
-    const fieldError = validateFieldConfig(colFieldConfig);
+    const cleanedFieldConfig: FieldConfig = {
+      ...colFieldConfig,
+      options: (colFieldConfig.options || []).map(o => o.trim()).filter(Boolean),
+      ...(colFieldConfig.pendingOptions ? { pendingOptions: colFieldConfig.pendingOptions.map(o => o.trim()).filter(Boolean) } : {}),
+    };
+    const fieldError = validateFieldConfig(cleanedFieldConfig);
     if (fieldError) { showToast(fieldError, 'error'); return; }
-    if (colInputType === 'SELECT' && !colFieldConfig.options.length) { showToast('Informe as opções da lista.', 'error'); return; }
+    if (colInputType === 'SELECT' && !cleanedFieldConfig.options.length) { showToast('Informe as opções da lista.', 'error'); return; }
     const visibilityError = validateVisibility(colVisibility);
     if (visibilityError) { showToast(visibilityError, 'error'); return; }
     if (['FISCAL','CUSHMAN'].includes(colDepartment) && colInputType === 'POPUP') {
@@ -502,7 +507,7 @@ export function Settings({ currentView, onNavigate, currentUser, onLogout }: Set
     }
     const payload: any = {
       isActive: colActive,
-      fieldConfig: colFieldConfig,
+      fieldConfig: cleanedFieldConfig,
       visibilityConfig: colVisibility,
       popupConfig: ['FISCAL','CUSHMAN'].includes(colDepartment) && colInputType === 'POPUP' ? colPopupConfig : undefined,
       name: colName.trim(),
