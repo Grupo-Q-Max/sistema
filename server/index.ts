@@ -609,12 +609,14 @@ async function getCachedBaseSectorUsers(sector: 'FISCAL' | 'DP' | 'CONTABIL'): P
         { role: sector as any },
         { role: 'ADMIN' as any },
         { role: 'SOCIO' as any },
+        { role: 'CADASTRO' as any },
         {
-          sectorPermissions: { some: { sector: sector as any, access: 'EDIT' } },
+          sectorPermissions: { some: { sector: sector as any, access: { in: ['EDIT', 'VIEW'] } } },
         },
         {
           responsibleAssignments: { some: { sector: sector as any } },
         },
+        ...(sector === 'CONTABIL' ? [{ role: 'FISCAL' as any }] : []),
       ],
     },
     select: { id: true, name: true, email: true, role: true, active: true },
@@ -1389,6 +1391,11 @@ function invalidateAllDataCaches() {
   invalidateDashboardCache();
   invalidateSectorUsersCache();
   invalidateAuthUserCache();
+  try {
+    if (accountingEngine && typeof (accountingEngine as any).invalidateCache === 'function') {
+      (accountingEngine as any).invalidateCache();
+    }
+  } catch {}
 }
 
 async function cachedDistinctPeriods(): Promise<any[]> {

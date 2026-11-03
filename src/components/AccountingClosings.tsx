@@ -47,7 +47,7 @@ export function AccountingClosings({currentView,onNavigate,currentUser,onLogout}
   const canView=hasSectorAccess(currentUser,'CONTABIL');const canEdit=hasSectorAccess(currentUser,'CONTABIL',true);
   const isPrivileged=currentUser?.role==='ADMIN'||currentUser?.role==='SOCIO';
   const isRowEditable=(row:Row)=>canEdit&&(isPrivileged||canUserEditCompany(currentUser,row.company,'CONTABIL'));
-  const responsible=(company:any)=>company.responsibles?.find((entry:any)=>entry.sector==='CONTABIL')||company.responsibles?.find((entry:any)=>entry.sector==='FISCAL')||null;
+  const responsible=(company:any)=>company.responsibles?.find((entry:any)=>entry.sector==='CONTABIL')||null;
   const left=(company:any)=>!!company.exitDate&&new Date(company.exitDate)<new Date(Date.UTC(year+1,0,1))&&new Date(company.exitDate)<=new Date();
   async function load(){
     const request=++sequence.current;setLoading(true);setError('');
@@ -109,7 +109,38 @@ export function AccountingClosings({currentView,onNavigate,currentUser,onLogout}
   async function changeResponsible(row:Row,userId:string){
     if(!isRowEditable(row))return;
     const capturedYear=year;setPending(total=>total+1);
-    try{const response=await fetch(`${API}/companies/${row.company.id}/responsible`,{method:'PUT',headers:installmentHeaders(currentUser),body:JSON.stringify({userId,sector:'CONTABIL',actorId:currentUser?.id,actorEmail:currentUser?.email,actorName:currentUser?.name||currentUser?.email})});const data=await response.json();if(!response.ok)throw new Error(data.error||'Erro ao salvar responsável.');const selectedUser=users.find(u=>u.id===userId);if(currentYear.current===capturedYear)setRows(previous=>previous.map(item=>item.company.id===row.company.id?{...item,company:{...item.company,responsibles:[...(item.company.responsibles||[]).filter((entry:any)=>entry.sector!=='CONTABIL'&&entry.sector!==null),...(userId?[{userId,sector:'CONTABIL',user:selectedUser}]:[])]}}:item));}
+    try{
+      const response=await fetch(`${API}/companies/${row.company.id}/responsible`,{
+        method:'PUT',
+        headers:installmentHeaders(currentUser),
+        body:JSON.stringify({
+          userId,
+          sector:'CONTABIL',
+          actorId:currentUser?.id,
+          actorEmail:currentUser?.email,
+          actorName:currentUser?.name||currentUser?.email
+        })
+      });
+      const data=await response.json();
+      if(!response.ok)throw new Error(data.error||'Erro ao salvar responsável.');
+      const selectedUser=users.find(u=>u.id===userId);
+      if(currentYear.current===capturedYear){
+        setRows(previous=>previous.map(item=>{
+          if(item.company.id!==row.company.id)return item;
+          const other=(item.company.responsibles||[]).filter((entry:any)=>entry.sector!=='CONTABIL');
+          const updated=userId
+            ? [...other, { companyId: row.company.id, userId, sector: 'CONTABIL', user: selectedUser }]
+            : other;
+          return {
+            ...item,
+            company: {
+              ...item.company,
+              responsibles: updated
+            }
+          };
+        }));
+      }
+    }
     catch(cause){setError(cause instanceof Error?cause.message:'Erro ao salvar.');}finally{setPending(total=>total-1);}
   }
 
