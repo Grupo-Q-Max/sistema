@@ -1,7 +1,7 @@
 import { latestOpenPeriod } from '../config/competenceCalendar';
 import { useCompetenceCalendar } from './useCompetenceCalendar';
 import { memo, useEffect, useMemo, useRef, useState, useDeferredValue } from 'react';
-import { Building2, CheckCircle2, ChevronLeft, ChevronRight, Eye, EyeOff, RefreshCw, Users, X, ExternalLink, AlertTriangle, Copy, Search, AlertCircle, Filter, Check, Calendar, FileText, Clock, Sparkles, History, BarChart3 } from 'lucide-react';
+import { Building2, CheckCircle2, ChevronLeft, ChevronRight, Eye, EyeOff, RefreshCw, Users, X, ExternalLink, AlertTriangle, Copy, Search, AlertCircle, Filter, Check, Calendar, FileText, Clock, Sparkles, History, BarChart3, Zap } from 'lucide-react';
 import { CompanyDetailsModal, getCertificateStatus, formatCnpj, formatRegimeLabel } from './CompanyDetailsModal';
 import { Sidebar } from './Sidebar';
 import { ClosingSectorTabs, hasSectorAccess } from './ClosingSectorTabs';
@@ -9,6 +9,7 @@ import { TableSkeleton, ButtonSpinner } from './LoadingSkeleton';
 import { CellAuditModal } from './CellAuditModal';
 import { BulkAssignResponsibleModal } from './BulkAssignResponsibleModal';
 import { ResponsibleWorkloadModal } from './ResponsibleWorkloadModal';
+import { PayrollFocusDrawer } from './PayrollFocusDrawer';
 import type { CurrentUser } from '../types/auth';
 import { API } from '../api';
 import { PAYROLL_API_VERSION, effectiveFieldConfig, resolveColumnKey } from '../config/payrollColumns';
@@ -282,6 +283,7 @@ export function PayrollClosings({ currentView, onNavigate, currentUser, onLogout
     columnKey: string;
     columnLabel: string;
   } | null>(null);
+  const [focusModeIndex, setFocusModeIndex] = useState<number | null>(null);
   const isPrivileged = currentUser?.role === 'ADMIN' || currentUser?.role === 'SOCIO';
 
   const getResponsible = (company: any) => company.responsibles?.find((r: any) => r.sector === 'DP') || null;
@@ -761,6 +763,20 @@ export function PayrollClosings({ currentView, onNavigate, currentUser, onLogout
                     <BarChart3 size={15} />
                     Carga da Equipe
                   </button>
+                  <button
+                    type="button"
+                    className={`btn-secondary-light ${focusModeIndex !== null ? 'active' : ''}`}
+                    onClick={() => setFocusModeIndex(focusModeIndex !== null ? null : (filtered.length > 0 ? 0 : null))}
+                    title="Ativar Modo Foco: preenchimento vertical empresa por empresa no DP"
+                    style={{
+                      background: focusModeIndex !== null ? 'linear-gradient(135deg, rgba(99, 102, 241, 0.25), rgba(168, 85, 247, 0.25))' : undefined,
+                      borderColor: focusModeIndex !== null ? '#818cf8' : undefined,
+                      color: focusModeIndex !== null ? '#fff' : undefined,
+                    }}
+                  >
+                    <Zap size={15} color={focusModeIndex !== null ? '#a5b4fc' : undefined} />
+                    Modo Foco
+                  </button>
                   <button className="payroll-refresh-btn" type="button" title="Atualizar fechamento DP" aria-label="Atualizar fechamento DP" disabled={pending > 0 || loading} onClick={() => { void load(); }}>
                     <RefreshCw size={16} className={loading ? 'payroll-spin' : ''} />
                   </button>
@@ -986,6 +1002,23 @@ export function PayrollClosings({ currentView, onNavigate, currentUser, onLogout
       onReload={() => { void load(); }}
       currentUser={currentUser}
     />
+    {focusModeIndex !== null && (
+      <PayrollFocusDrawer
+        isOpen={focusModeIndex !== null}
+        onClose={() => setFocusModeIndex(null)}
+        rows={filtered}
+        currentIndex={focusModeIndex}
+        onSelectIndex={setFocusModeIndex}
+        columns={columns}
+        onSaveColumn={enqueueSave}
+        onOpenCompanyInfo={setCompanyDetails}
+        users={users}
+        onResponsibleChange={changeResponsible}
+        isRowEditable={isRowEditable}
+        currentUser={currentUser}
+        monthLabel={monthLabel}
+      />
+    )}
     {notesDialog && <div className="closing-modal-backdrop" onClick={() => { if (!notesSaving) setNotesDialog(null); }}><div className="closing-modal-content" style={{ maxWidth: 500 }} onClick={e => e.stopPropagation()}><div className="closing-modal-header"><div className="closing-modal-title">Observação do DP</div><button type="button" className="closing-modal-close-btn" aria-label="Fechar observação do DP" disabled={notesSaving} onClick={() => setNotesDialog(null)}><X size={20} /></button></div><div className="closing-modal-body"><p>{notesDialog.row.company.name} · {monthLabel}</p><textarea className="payroll-note-textarea" rows={6} value={notesDraft} disabled={notesSaving || !isRowEditable(notesDialog.row) || notesDialog.column.isEditable === false} onChange={e => setNotesDraft(e.target.value)} placeholder="Observações do DP para esta competência" />{notesError && <p role="alert">{notesError}</p>}<div className="sub-modal-actions"><button type="button" className="btn-secondary-light" disabled={notesSaving} onClick={() => setNotesDialog(null)}>Fechar</button>{isRowEditable(notesDialog.row) && notesDialog.column.isEditable !== false && <button type="button" className="btn-primary-gradient" disabled={notesSaving} onClick={async () => { setNotesSaving(true); setNotesError(''); try { await enqueueSave(notesDialog.row, notesDialog.column, notesDraft); setNotesDialog(null); } catch (err) { setNotesError(err instanceof Error ? err.message : 'Erro ao salvar.'); } finally { setNotesSaving(false); } }}>{notesSaving ? 'Salvando...' : 'Salvar observação'}</button>}</div></div></div></div>}
     {reinfRow && <PayrollReinfPreview row={reinfRow} definition={reinfDefinition} monthLabel={monthLabel} onClose={() => setReinfRow(null)} />}
 
