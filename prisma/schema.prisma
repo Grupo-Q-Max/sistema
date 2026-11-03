@@ -166,7 +166,14 @@ model Company {
   obligationStartDate     DateTime?
   exitDate                DateTime? // Nulo significa que ainda é cliente ativa
   exitMonthHasObligations Boolean   @default(false)
-  targetProxyDate         DateTime? // Procuração Target
+  targetProxyIssueDate     DateTime? // Procuração Receita / Target (Emissão)
+  targetProxyDate          DateTime? // Procuração Receita / Target (Vencimento)
+  fgtsProxyIssueDate       DateTime? // Procuração FGTS (Emissão)
+  fgtsProxyDate            DateTime? // Procuração FGTS (Vencimento)
+  decProxyIssueDate        DateTime? // Procuração DEC (Emissão)
+  decProxyDate             DateTime? // Procuração DEC (Vencimento)
+  empregadorProxyIssueDate DateTime? // Procuração Empregador Web (Emissão)
+  empregadorProxyDate      DateTime? // Procuração Empregador Web (Vencimento)
 
   // Certificado Cliente
   hasClientCertificate  Boolean @default(false)
