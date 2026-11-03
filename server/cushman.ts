@@ -1,7 +1,7 @@
 import {companyExitAllowsPeriod,exitDecisionError,exitDecisionValue} from '../src/config/companyExit';
 import {resolveAuthenticatedUser} from './installments';
 import {queryClosingsBySectorAndRange} from './cleanClosingsSql';
-import {CUSHMAN_API_VERSION,CUSHMAN_COLUMNS,CUSHMAN_COMPANY_FIELDS,resolveCushmanKey,cushmanAccess,cushmanCompanyAllowed,cushmanCompanyEditable,cushmanCompanyEligible,cushmanApplicableColumns} from '../src/config/cushmanColumns';
+import {CUSHMAN_API_VERSION,CUSHMAN_COLUMNS,CUSHMAN_COMPANY_FIELDS,resolveCushmanKey,cushmanAccess,cushmanCompanyAllowed,cushmanCompanyEditable,cushmanCompanyEligible,cushmanApplicableColumns,isCushmanCompany} from '../src/config/cushmanColumns';
 import {periodIsOpen,blockedPeriodMessage} from '../src/config/competenceCalendar';
 import {isColumnActive,calculateColumnProgress} from '../src/config/columnVisibility';
 import {effectivePopup} from '../src/config/fiscalPopups';
@@ -84,7 +84,7 @@ export function registerCushman(app:any,prisma:any,options:{sync:(period:Date)=>
    void options.sync(period);
   }
   const columns=cushmanApplicableColumns(storedColumns,period);const mapped=new Map<string,any>(closings.map((closing:any)=>[closing.companyId,closing]));
-  const rows=companies.filter((company:any)=>{const cl=mapped.get(company.id);const hasLeg=Boolean(cl?.hasLegacy||cl?.columnsData?._legacy);return cushmanCompanyAllowed(user,company)&&companyExitAllowsPeriod(company,period)&&(mode==='ALL'||cushmanCompanyEligible(company,period)||hasLeg);}).map((company:any)=>{
+  const rows=companies.filter((company:any)=>{const cl=mapped.get(company.id);const hasLeg=Boolean(cl?.hasLegacy||cl?.columnsData?._legacy);const belongsToCushman=isCushmanCompany(company)||hasLeg;if(!belongsToCushman)return false;return cushmanCompanyAllowed(user,company)&&companyExitAllowsPeriod(company,period)&&(mode==='ALL'||cushmanCompanyEligible(company,period)||hasLeg);}).map((company:any)=>{
    const closing=mapped.get(company.id);const hasLeg=Boolean(closing?.hasLegacy||closing?.columnsData?._legacy);const participates=cushmanCompanyEligible(company,period)||hasLeg;const data={...(closing?.columnsData||{})};delete data._legacy;
    for(const column of columns){const key=resolveCushmanKey(column)||column.id;if(column.inputType==='PASSWORD'&&data[key])data[key]=options.decrypt(data[key]);}
    if(data.cush_observacao===undefined&&company.notesScope==='CUSHMAN')data.cush_observacao=company.notes||'';

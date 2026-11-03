@@ -452,7 +452,7 @@ export function CushmanClosings({ currentView, onNavigate, currentUser, onLogout
                 <div className="closings-filters">
                   <select className="closings-select" aria-label="Exibir empresas" disabled={pending > 0} value={mode} onChange={event => { setMode(event.target.value); setStatus('ALL'); setCity('ALL'); }}>
                     <option value="CUSHMAN">Empresas do Cushman na competência</option>
-                    <option value="ALL">Todas as empresas</option>
+                    <option value="ALL">Todas as empresas Cushman</option>
                   </select>
                   <select className="closings-select" aria-label="Filtrar status Cushman" value={status} onChange={event => setStatus(event.target.value)}>
                     <option value="ALL">Todos os status</option>

@@ -65,7 +65,9 @@ export function createRolloverEngine(prisma: any, now: () => Date = () => new Da
     const pendingUpdates: Array<{ destination: any; copy: Record<string, any>; copiedKeysCount: number; sector: string; taxRegime: any; columns: any[] }> = [];
     let replicatedColsCount = 0;
     for (const company of companies) for (const sector of SECTORS) {
-      const enabled = !company.activeSectors || company.activeSectors === 'TODOS' || company.activeSectors.split(',').map((item:string)=>item.trim()).includes(sector);
+      const enabled = sector === 'CUSHMAN'
+        ? Boolean(company.activeSectors && company.activeSectors.split(',').map((item: string) => item.trim().toUpperCase()).includes('CUSHMAN'))
+        : (!company.activeSectors || company.activeSectors === 'TODOS' || company.activeSectors.split(',').map((item: string) => item.trim()).includes(sector));
       if (!enabled) continue;
       const id = `${company.id}:${sector}`;
       const destination = current.get(id);

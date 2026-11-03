@@ -31,6 +31,13 @@ export function cushmanAccess(user:any,edit=false):boolean {
  if(!user.screenPermissions?.some((permission:any)=>permission.screen==='closings'&&permission.allowed))return false;
  const permission=user.sectorPermissions?.find((item:any)=>item.sector==='CUSHMAN');return edit?permission?.access==='EDIT':['VIEW','EDIT'].includes(permission?.access);
 }
+export function isCushmanCompany(company: any): boolean {
+  if (!company) return false;
+  const raw = (company.activeSectors || '').split(',').map((item: string) => item.trim().toUpperCase());
+  if (raw.includes('CUSHMAN')) return true;
+  if (/cushman/i.test(company.groupName || '') || /cushman/i.test(company.name || '')) return true;
+  return false;
+}
 export function cushmanCompanyAllowed(user:any,company:any):boolean {
  return canUserViewCompany(user,company,'CUSHMAN');
 }
@@ -38,8 +45,9 @@ export function cushmanCompanyEditable(user:any,company:any):boolean {
  return cushmanAccess(user,true)&&canUserEditCompany(user,company,'CUSHMAN');
 }
 export function cushmanCompanyEligible(company:any,period:Date):boolean {
- const sectors=(company.activeSectors||'TODOS').split(',').map((item:string)=>item.trim());const next=new Date(Date.UTC(period.getUTCFullYear(),period.getUTCMonth()+1,1));
- return (sectors.includes('TODOS')||sectors.includes('CUSHMAN'))&&(!company.obligationStartDate||new Date(company.obligationStartDate)<next)&&companyExitAllowsPeriod(company,period);
+ if (!isCushmanCompany(company)) return false;
+ const next=new Date(Date.UTC(period.getUTCFullYear(),period.getUTCMonth()+1,1));
+ return (!company.obligationStartDate||new Date(company.obligationStartDate)<next)&&companyExitAllowsPeriod(company,period);
 }
 export function cushmanApplicableColumns(columns:any[],period:Date):any[]{return columns.filter(column=>isColumnActive(column,period));}
 export const CUSHMAN_COMPANY_FIELDS=[
