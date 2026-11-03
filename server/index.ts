@@ -1100,7 +1100,182 @@ app.put('/api/closings/:id/column', async (req, res) => {
   }
 });
 
-// Atualizar responsável da empresa no setor (ex: FISCAL)
+// Executar ações em massa em fechamentos (concluir, marcar N/A, pendência ou limpar em lote)
+app.post('/api/closings/bulk-action', async (req, res) => {
+  try {
+    const { closingIds, columnKey, action, date, pendencyReason } = req.body;
+    if (!Array.isArray(closingIds) || !closingIds.length) {
+      return res.status(400).json({ error: 'Nenhum fechamento selecionado para a ação em massa.' });
+    }
+    if (!columnKey) {
+      return res.status(400).json({ error: 'Obrigação (columnKey) não informada.' });
+    }
+    if (!['CONCLUIDO', 'NA', 'PENDENCIA', 'CLEAR'].includes(action)) {
+      return res.status(400).json({ error: 'Ação em massa inválida.' });
+    }
+
+    const actor = await resolveAuthenticatedUser(prisma, req);
+    if (!actor || actor.active === false) {
+      return res.status(401).json({ error: 'Sessão expirada. Saia e entre novamente.' });
+    }
+
+    const [closings, allCols] = await Promise.all([
+      prisma.closing.findMany({
+        where: { id: { in: closingIds } },
+        include: { company: { include: { responsibles: true } } }
+      }),
+      cachedDepartmentColumns()
+    ]);
+
+    if (!closings.length) {
+      return res.status(404).json({ error: 'Nenhum fechamento encontrado.' });
+    }
+
+    const updatedResults: any[] = [];
+    const skipped: Array<{ id: string; reason: string }> = [];
+
+    for (const closing of closings) {
+      const company = closing.company;
+      const period = new Date(closing.referencePeriod);
+
+      if (!periodIsOpen(period)) {
+        skipped.push({ id: closing.id, reason: 'Competência fechada' });
+        continue;
+      }
+      if (!company || !companyExitAllowsPeriod(company, period)) {
+        skipped.push({ id: closing.id, reason: 'Empresa sem obrigações na competência' });
+        continue;
+      }
+      if (!canUserEditCompany(actor, company, closing.type as any)) {
+        skipped.push({ id: closing.id, reason: 'Sem permissão de edição nesta empresa' });
+        continue;
+      }
+
+      const configuredColumns = (allCols || [])
+        .filter((col: any) => col.department === closing.type)
+        .sort((a: any, b: any) => (a.orderIndex ?? 0) - (b.orderIndex ?? 0));
+      const targetColumn = configuredColumns.find((col: any) => (resolveColumnKey(col) || col.columnKey || col.id) === columnKey);
+
+      if (!targetColumn || !isColumnActive(targetColumn, period)) {
+        skipped.push({ id: closing.id, reason: 'Coluna não ativa nesta competência' });
+        continue;
+      }
+      if (targetColumn.isEditable === false || targetColumn.inputType === 'READONLY') {
+        skipped.push({ id: closing.id, reason: 'Coluna somente leitura' });
+        continue;
+      }
+
+      // Determinar o valor a gravar conforme o tipo da coluna e a ação
+      let columnValue: any = null;
+      const todayIso = new Date().toISOString();
+      const completionDate = date || todayIso;
+
+      if (action === 'CONCLUIDO') {
+        if (targetColumn.inputType === 'POPUP') {
+          const existingData = closing.columnsData?.[columnKey]?.data || {};
+          columnValue = {
+            status: 'CONCLUIDO',
+            completionDate,
+            data: { ...existingData, dataConclusao: completionDate }
+          };
+        } else if (targetColumn.inputType === 'CHECKBOX') {
+          columnValue = true;
+        } else {
+          columnValue = completionDate;
+        }
+      } else if (action === 'NA') {
+        if (targetColumn.inputType === 'POPUP') {
+          columnValue = { status: 'N/A', data: {} };
+        } else {
+          columnValue = 'N/A';
+        }
+      } else if (action === 'PENDENCIA') {
+        const reason = pendencyReason?.trim() || 'Pendência registrada em lote';
+        if (targetColumn.inputType === 'POPUP') {
+          columnValue = {
+            status: 'PENDENCIA',
+            pendingReason: reason,
+            data: { motivo: reason }
+          };
+        } else {
+          columnValue = 'PENDÊNCIA';
+        }
+      } else if (action === 'CLEAR') {
+        if (targetColumn.inputType === 'POPUP') {
+          columnValue = { status: 'PENDENTE', data: {} };
+        } else {
+          columnValue = null;
+        }
+      }
+
+      const currentData = (closing.columnsData as Record<string, any>) || {};
+      const updatedData: Record<string, any> = { ...currentData };
+      if (action === 'CLEAR' && targetColumn.inputType !== 'POPUP') {
+        delete updatedData[columnKey];
+      } else {
+        updatedData[columnKey] = columnValue;
+      }
+
+      const activeColumns = configuredColumns.filter((col: any) => isColumnActive(col, period));
+      const progressColumns = configuredColumns.length ? activeColumns.filter((col: any) => col.countsProgress) : Object.keys(FISCAL_POPUPS).map(k => ({ columnKey: k, inputType: 'POPUP' }));
+      const progress = calculateColumnProgress(progressColumns, updatedData, col => resolveColumnKey(col) || col.columnKey || col.id);
+      const nextStatus = progress.calculatedStatus;
+
+      const updated = await prisma.closing.update({
+        where: { id: closing.id },
+        data: {
+          columnsData: updatedData,
+          status: nextStatus as any,
+          ...(closing.type === 'DP' && columnKey === 'dp_qtde_funcionarios' ? { dashboardMetrics: { ...(closing.dashboardMetrics || {}), employees: columnValue === '' || columnValue === null ? 0 : Number(columnValue) } } : {})
+        }
+      });
+
+      void logAction(
+        actor.id,
+        actor.email,
+        actor.name,
+        'BULK_ACTION_OBRIGACAO',
+        closing.type,
+        closing.companyId,
+        {
+          companyCode: company.code,
+          companyName: company.name,
+          columnKey,
+          action,
+          status: nextStatus
+        },
+        req.ip
+      );
+
+      const responseData = sanitizeColumnsData(updated.columnsData);
+      updatedResults.push({
+        id: updated.id,
+        columnsData: responseData,
+        calculatedStatus: nextStatus,
+        progressPercent: progress.progressPercent,
+        completedCount: progress.completedCount,
+        totalProgressCount: progress.totalProgressCount
+      });
+    }
+
+    if (updatedResults.length > 0) {
+      invalidateDashboardCache();
+    }
+
+    res.json({
+      success: true,
+      totalRequested: closingIds.length,
+      updatedCount: updatedResults.length,
+      skippedCount: skipped.length,
+      skipped,
+      updatedResults,
+      message: `${updatedResults.length} empresa(s) atualizada(s) com sucesso em lote!`
+    });
+  } catch (error: any) {
+    console.error('Erro ao executar ação em massa:', error);
+    res.status(500).json({ error: error.message || 'Erro ao processar ação em massa.' });
+  }
+});
 app.put('/api/companies/:id/responsible', async (req, res) => {
   try {
     const { id } = req.params;

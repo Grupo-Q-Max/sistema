@@ -30,6 +30,7 @@ import {
   Info,
   Send,
   History,
+  Zap,
 } from 'lucide-react';
 import type { CurrentUser } from '../types/auth';
 import { API } from '../api';
@@ -40,6 +41,7 @@ import { CompanyDetailsModal, getCertificateStatus, formatCnpj, formatRegimeLabe
 import { ManualCompetenceModal } from './ManualCompetenceModal';
 import { ClosingSectorTabs, hasSectorAccess } from './ClosingSectorTabs';
 import { CellAuditModal } from './CellAuditModal';
+import { BulkActionModal } from './BulkActionModal';
 import './FiscalPopup.css';
 import { visibilitySummary, isColumnComplete } from '../config/columnVisibility';
 import { FISCAL_POPUPS, effectivePopup, type PopupAction } from '../config/fiscalPopups';
@@ -258,6 +260,7 @@ export function Closings({ currentView, onNavigate, currentUser, onLogout }: Clo
           columnsData: applyFiscalRegimeRules(r.company?.taxRegime, r.columnsData || {}),
         }));
         setRows(normalizedRows);
+        setSelectedClosingIds(new Set());
         if (viewInstallments) void loadInstallmentSummaries(normalizedRows, requestId);
         if (Array.isArray(data.popupColumns)) setPopupColumns(data.popupColumns);
         setFiscalUsers(data.fiscalUsers || []);
@@ -743,6 +746,59 @@ export function Closings({ currentView, onNavigate, currentUser, onLogout }: Clo
     return list;
   }, [scopedRows, deferredSearchTerm, statusFilter, regimeFilter, responsibleFilter, obligationFilters, sortConfig, popupColumns, installmentFilter, installmentSummaries, viewInstallments]);
 
+  // Ações em Massa (Bulk Actions)
+  const [selectedClosingIds, setSelectedClosingIds] = useState<Set<string>>(new Set());
+  const [bulkModalOpen, setBulkModalOpen] = useState(false);
+  const [bulkFeedback, setBulkFeedback] = useState<string | null>(null);
+
+  const editableFilteredRows = useMemo(() => {
+    return filteredRows.filter(r => isRowEditable(r));
+  }, [filteredRows, canEditFiscal, isPrivileged, currentUser]);
+
+  const allFilteredSelected = editableFilteredRows.length > 0 && editableFilteredRows.every(r => selectedClosingIds.has(r.id));
+
+  const handleToggleSelectAll = () => {
+    if (allFilteredSelected) {
+      setSelectedClosingIds(new Set());
+    } else {
+      setSelectedClosingIds(new Set(editableFilteredRows.map(r => r.id)));
+    }
+  };
+
+  const handleToggleSelectRow = (closingId: string) => {
+    setSelectedClosingIds(prev => {
+      const next = new Set(prev);
+      if (next.has(closingId)) next.delete(closingId);
+      else next.add(closingId);
+      return next;
+    });
+  };
+
+  const selectedRowsList = useMemo(() => {
+    return rows.filter(r => selectedClosingIds.has(r.id));
+  }, [rows, selectedClosingIds]);
+
+  const handleBulkSuccess = (updatedResults: any[], message: string) => {
+    if (Array.isArray(updatedResults) && updatedResults.length > 0) {
+      const byId = new Map(updatedResults.map(u => [u.id, u]));
+      setRows(prevRows => prevRows.map(row => {
+        const upd = byId.get(row.id);
+        if (!upd) return row;
+        return {
+          ...row,
+          columnsData: applyFiscalRegimeRules(row.company?.taxRegime, upd.columnsData || {}),
+          calculatedStatus: upd.calculatedStatus,
+          progressPercent: upd.progressPercent,
+          completedCount: upd.completedCount,
+          totalProgressCount: upd.totalProgressCount,
+        };
+      }));
+    }
+    setSelectedClosingIds(new Set());
+    setBulkFeedback(message);
+    setTimeout(() => setBulkFeedback(null), 5000);
+  };
+
   const renderObligationCell = (row: any, colKey: string) => {
     const val = row.columnsData?.[colKey];
     const definition = popupColumns.find(col => col.columnKey === colKey);
@@ -1181,12 +1237,21 @@ export function Closings({ currentView, onNavigate, currentUser, onLogout }: Clo
                   <table className="closings-table">
                   <thead>
                     <tr>
-                      {/* 1. Código com Ordenação */}
+                      {/* 1. Código com Ordenação e Checkbox de Ações em Massa */}
                       <th className="sticky-col-code">
-                        <button type="button" className="payroll-sort-btn" onClick={() => handleSort('code')} title="Clique para ordenar por código">
-                          Código
-                          <span>{sortConfig.key === 'code' ? (sortConfig.direction === 'asc' ? '▲' : '▼') : '⇅'}</span>
-                        </button>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          <input
+                            type="checkbox"
+                            checked={allFilteredSelected}
+                            onChange={handleToggleSelectAll}
+                            title={allFilteredSelected ? "Desmarcar todas" : "Selecionar todas as empresas filtradas"}
+                            className="bulk-header-checkbox"
+                          />
+                          <button type="button" className="payroll-sort-btn" onClick={() => handleSort('code')} title="Clique para ordenar por código">
+                            Código
+                            <span>{sortConfig.key === 'code' ? (sortConfig.direction === 'asc' ? '▲' : '▼') : '⇅'}</span>
+                          </button>
+                        </div>
                       </th>
 
                       {/* 2. Empresa com Ordenação */}
@@ -1427,9 +1492,19 @@ export function Closings({ currentView, onNavigate, currentUser, onLogout }: Clo
 
                         return (
                           <tr key={c.id}>
-                            {/* 1. Código */}
+                            {/* 1. Código com Checkbox de Seleção */}
                             <td className="sticky-col-code">
-                              <span style={{ fontWeight: 600, color: '#94a3b8' }}>{formatCompanyCode(c.code) || '—'}</span>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                <input
+                                  type="checkbox"
+                                  checked={selectedClosingIds.has(r.id)}
+                                  onChange={() => handleToggleSelectRow(r.id)}
+                                  disabled={!isRowEditable(r)}
+                                  title={isRowEditable(r) ? 'Selecionar para ação em massa' : 'Empresa somente leitura'}
+                                  className="bulk-row-checkbox"
+                                />
+                                <span style={{ fontWeight: 600, color: '#94a3b8' }}>{formatCompanyCode(c.code) || '—'}</span>
+                              </div>
                             </td>
 
                             {/* 2. Empresa Interativa com ícone, link explícito e alerta de certificado */}
@@ -1947,6 +2022,69 @@ export function Closings({ currentView, onNavigate, currentUser, onLogout }: Clo
             sector="FISCAL"
           />
         )}
+
+        {/* Barra Flutuante de Ações em Massa */}
+        {selectedClosingIds.size > 0 && (
+          <div className="bulk-floating-bar">
+            <div className="bulk-bar-info">
+              <span className="bulk-bar-badge">{selectedClosingIds.size}</span>
+              <span>empresa(s) selecionada(s)</span>
+            </div>
+            <div className="bulk-bar-actions">
+              <button
+                type="button"
+                className="bulk-btn-clear"
+                onClick={() => setSelectedClosingIds(new Set())}
+              >
+                Desmarcar
+              </button>
+              <button
+                type="button"
+                className="bulk-btn-trigger"
+                onClick={() => setBulkModalOpen(true)}
+              >
+                <Zap size={15} />
+                Ações em Massa
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Toast de Feedback de Ações em Massa */}
+        {bulkFeedback && (
+          <div style={{
+            position: 'fixed',
+            bottom: '24px',
+            right: '24px',
+            background: 'linear-gradient(135deg, #10b981, #059669)',
+            color: '#fff',
+            padding: '12px 20px',
+            borderRadius: '10px',
+            boxShadow: '0 10px 25px -5px rgba(16, 185, 129, 0.4)',
+            zIndex: 10001,
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px',
+            fontWeight: 600,
+            fontSize: '0.88rem',
+            animation: 'bulkSlideUp 0.3s ease'
+          }}>
+            <CheckCircle2 size={18} />
+            {bulkFeedback}
+          </div>
+        )}
+
+        {/* Modal de Ações em Massa */}
+        <BulkActionModal
+          open={bulkModalOpen}
+          onClose={() => setBulkModalOpen(false)}
+          selectedRows={selectedRowsList}
+          columns={popupColumns}
+          sector="FISCAL"
+          period={new Date(Date.UTC(selectedYear, selectedMonth - 1, 1))}
+          currentUser={currentUser}
+          onSuccess={handleBulkSuccess}
+        />
       </main>
     </div>
   );
