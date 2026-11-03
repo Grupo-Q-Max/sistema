@@ -16,7 +16,7 @@ import { defaultPopup, effectivePopup, type PopupConfig } from '../config/fiscal
 import { visibilitySummary } from '../config/columnVisibility';
 import { exportToCsv } from '../utils/exportCsv';
 import { compareCodes, formatCompanyCode } from '../utils/codeSort';
-import { canUserEditCompany, canUserViewCompany, isUserResponsibleForCompany } from '../config/companyPermissions';
+import { canUserEditCompany, canUserViewCompany, isUserResponsibleForCompany, companyBelongsToSector } from '../config/companyPermissions';
 import { installmentHeaders } from '../config/installments';
 import './Closings.css';
 import './PayrollClosings.css';
@@ -293,6 +293,7 @@ export function PayrollClosings({ currentView, onNavigate, currentUser, onLogout
   };
 
   const scopedRows = useMemo(() => rows.filter(row => {
+    if (!companyBelongsToSector(row.company, 'DP')) return false;
     if (onlyMyCompanies) return isUserResponsibleForCompany(currentUser, row.company, 'DP');
     if (!currentUser || isPrivileged) return true;
     return canUserViewCompany(currentUser, row.company, 'DP');

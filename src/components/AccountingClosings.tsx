@@ -16,7 +16,7 @@ import {resolveColumnKey} from '../config/payrollColumns';
 import {visibilitySummary} from '../config/columnVisibility';
 import {exportToCsv} from '../utils/exportCsv';
 import {compareCodes,formatCompanyCode} from '../utils/codeSort';
-import {canUserEditCompany,canUserViewCompany,isUserResponsibleForCompany} from '../config/companyPermissions';
+import {canUserEditCompany,canUserViewCompany,isUserResponsibleForCompany,companyBelongsToSector} from '../config/companyPermissions';
 import {installmentHeaders} from '../config/installments';
 import type {CurrentUser} from '../types/auth';
 import {API_URL as API} from '../api';
@@ -63,6 +63,7 @@ export function AccountingClosings({currentView,onNavigate,currentUser,onLogout}
   useEffect(()=>{if(!copied)return;const timer=window.setTimeout(()=>setCopied(''),2500);return()=>window.clearTimeout(timer);},[copied]);
   useEffect(()=>{const table=tableScroll.current?.querySelector('table');if(!table)return;const update=()=>setScrollWidth(table.scrollWidth);update();const observer=new ResizeObserver(update);observer.observe(table);return()=>observer.disconnect();},[loading,columns]);
   const scopedRows=useMemo(()=>rows.filter(row=>{
+    if(!companyBelongsToSector(row.company,'CONTABIL')) return false;
     if(onlyMyCompanies)return isUserResponsibleForCompany(currentUser,row.company,'CONTABIL');
     if(!currentUser||isPrivileged)return true;
     return canUserViewCompany(currentUser,row.company,'CONTABIL');

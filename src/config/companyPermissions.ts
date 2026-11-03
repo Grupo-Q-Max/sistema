@@ -102,6 +102,51 @@ export function canUserEditCompany(
 }
 
 /**
+ * Determina com precisão se uma empresa pertence a um determinado setor operacional.
+ * - 'CUSHMAN': apenas se CUSHMAN estiver explicitamente listado em activeSectors.
+ * - 'PARCELAMENTO': apenas para empresas com escopo de parcelamento.
+ * - 'FISCAL' | 'DP' | 'CONTABIL': se activeSectors for nulo, vazio ou 'TODOS', pertence a todos os 3.
+ *   Se for uma lista específica (ex: 'FISCAL,DP' ou 'CONTABIL'), valida se contém o setor.
+ */
+export function companyBelongsToSector(
+  company: { activeSectors?: string | null } | null | undefined,
+  sector: SectorKey
+): boolean {
+  if (!company) return false;
+  const raw = (company.activeSectors || '').trim();
+
+  // Setor CUSHMAN: apenas se 'CUSHMAN' estiver expressamente marcado
+  if (sector === 'CUSHMAN') {
+    if (!raw) return false;
+    const parts = raw.split(',').map(s => s.trim().toUpperCase());
+    return parts.includes('CUSHMAN');
+  }
+
+  // Se for empresa de parcelamento externo, não pertence aos fechamentos operacionais padrão
+  if (raw.toUpperCase() === 'PARCELAMENTO' || raw.includes('PARCELAMENTO')) {
+    return sector === 'PARCELAMENTO';
+  }
+
+  // Se for empresa marcada exclusivamente para CUSHMAN
+  if (raw.toUpperCase() === 'CUSHMAN') {
+    return false;
+  }
+
+  // Se não tem activeSectors ou é TODOS: pertence aos 3 setores operacionais padrão
+  if (!raw || raw.toUpperCase() === 'TODOS') {
+    return sector === 'FISCAL' || sector === 'DP' || sector === 'CONTABIL';
+  }
+
+  // Lista com múltiplos setores (ex: 'FISCAL,DP', 'CONTABIL', etc.)
+  const parts = raw.split(',').map(s => s.trim().toUpperCase());
+  if (parts.includes('TODOS')) {
+    return sector === 'FISCAL' || sector === 'DP' || sector === 'CONTABIL';
+  }
+
+  return parts.includes(sector);
+}
+
+/**
  * Filtro Prisma para consultas agregadas (Dashboard / Analytics) respeitando fielmente companyScope
  */
 export function buildUserCompanyPrismaFilter(user: any): Record<string, any> {

@@ -20,7 +20,7 @@ import { isColumnActive, validateVisibility, calculateColumnProgress, isColumnCo
 import { validatePopup, effectivePopup, FISCAL_POPUPS } from '../src/config/fiscalPopups';
 import { applyFiscalRegimeRules, normalizeFiscalRegimeRules, setActiveFiscalRegimeRules, type FiscalRegimeNaMap } from '../src/config/fiscalRegimeRules';
 import { computeInstallmentsProgress } from '../src/config/installments';
-import { buildUserCompanyPrismaFilter, canUserEditCompany, isPrivilegedUser } from '../src/config/companyPermissions';
+import { buildUserCompanyPrismaFilter, canUserEditCompany, isPrivilegedUser, companyBelongsToSector } from '../src/config/companyPermissions';
 import { normalizeCompanyCatalog, type CompanyCatalogConfig } from '../src/config/systemCatalogs';
 import express from 'express';
 import cors from 'cors';
@@ -660,13 +660,14 @@ app.get('/api/accounting-closings', async (req,res)=>{
     if(!Number.isInteger(year)||year<1900||year>accountingYear())return res.status(400).json({error:'Ano contábil inválido ou ainda não liberado.'});
     const result=await accountingEngine.sync(year);
     const columns=result.columns.filter((column:any)=>annualColumnActive(column,year));
+    const contabilCompanies = (result.companies || []).filter((c: any) => companyBelongsToSector(c, 'CONTABIL'));
     const map=new Map<string,any>(result.closings.map((closing:any)=>[closing.companyId,closing]));
-    const rows=result.companies.map((company:any)=>{
+    const rows=contabilCompanies.map((company:any)=>{
       const closing=map.get(company.id);const data=sanitizeColumnsData(annualValues(company,year,result.columns,closing?.columnsData||{}));
       for(const column of result.columns)if(column.inputType==='PASSWORD'){const key=resolveColumnKey(column)||column.id;if(data[key])data[key]=decryptPassword(data[key]);}
       return {company:{...company,code:formatCompanyCode(company.code)||null,certificatePasswordDecrypted:decryptPassword(company.certificatePassword),ginfessPasswordDecrypted:decryptPassword(company.ginfessPassword),gissOnlinePasswordDecrypted:decryptPassword(company.gissOnlinePassword),sdPasswordDecrypted:decryptPassword(company.sdPassword),nfPasswordDecrypted:decryptPassword(company.nfPassword)},closingId:closing?.id,columnsData:data,...accountingProgress(company,year,result.columns,data)};
     });
-    const users=await getSectorResponsibleUsers('CONTABIL',result.companies);
+    const users=await getSectorResponsibleUsers('CONTABIL',contabilCompanies);
     res.json({accountingApiVersion:ACCOUNTING_API_VERSION,year,latestYear:accountingYear(),rows,columns,users,configured:result.columns.some((column:any)=>column.columnKey?.startsWith('cont_'))});
   }catch(error){console.error('Erro no Contábil anual:',error);res.status(500).json({error:'Não foi possível carregar o Contábil anual.'});}
 });
@@ -790,6 +791,8 @@ app.get('/api/closings', async (req, res) => {
       sector === 'DP' ? queryFiscalReinfMap(pool, prisma, monthStart, nextMonthStart) : Promise.resolve(new Map<string, any>()),
       getAppConfigPayload(),
     ]);
+
+    companies = companies.filter((c: any) => companyBelongsToSector(c, sector as any));
 
     if (closings.length === 0) {
       await syncMonthClosingsAndReplicate(monthStart);

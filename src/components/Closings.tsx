@@ -55,7 +55,7 @@ import { FISCAL_POPUPS, effectivePopup, type PopupAction } from '../config/fisca
 import { exportToCsv } from '../utils/exportCsv';
 import { compareCodes, formatCompanyCode } from '../utils/codeSort';
 import { applyFiscalRegimeRules, isFiscalObligationNA, setActiveFiscalRegimeRules } from '../config/fiscalRegimeRules';
-import { canUserEditCompany, canUserViewCompany, isUserResponsibleForCompany } from '../config/companyPermissions';
+import { canUserEditCompany, canUserViewCompany, isUserResponsibleForCompany, companyBelongsToSector } from '../config/companyPermissions';
 
 function brDateToIso(val: string): string {
   const m = String(val || '').trim().match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
@@ -73,10 +73,7 @@ export function getFiscalResponsible(company: any) {
 }
 
 export function companyBelongsToFiscal(company: any): boolean {
-  if (!company) return false;
-  const s = company.activeSectors;
-  if (!s || s === 'TODOS' || s.trim() === '') return true;
-  return s.split(',').map((x: string) => x.trim().toUpperCase()).includes('FISCAL');
+  return companyBelongsToSector(company, 'FISCAL');
 }
 
 interface ClosingsProps {

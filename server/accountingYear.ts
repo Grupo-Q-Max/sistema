@@ -2,10 +2,20 @@ import {latestOpenPeriod} from '../src/config/competenceCalendar';
 import {externalCompaniesExcluded} from '../src/config/installmentCompanies';
 import { annualValues, accountingYear, accountingProgress } from '../src/config/accountingColumns';
 import { queryClosingsBySectorAndRange } from './cleanClosingsSql';
+import { companyBelongsToSector } from '../src/config/companyPermissions';
 
 export function createAccountingYearEngine(prisma:any,now:()=>Date=()=>new Date(),pool?:any) {
   let queue:Promise<any>=Promise.resolve();
   const syncedYears = new Map<number, number>();
+
+  const sectorCondition = {
+    OR: [
+      { activeSectors: null },
+      { activeSectors: 'TODOS' },
+      { activeSectors: '' },
+      { activeSectors: { contains: 'CONTABIL' } },
+    ],
+  };
 
   async function synchronize(year:number){
     if(!Number.isInteger(year)||year<1900||year>accountingYear(now()))throw new Error('Ano contábil inválido ou ainda não liberado.');
@@ -19,7 +29,7 @@ export function createAccountingYearEngine(prisma:any,now:()=>Date=()=>new Date(
       const [companies, columns, closings] = await Promise.all([
         prisma.company.findMany({
           where: {
-            AND: [externalCompaniesExcluded],
+            AND: [externalCompaniesExcluded, sectorCondition],
             OR: [
               { obligationStartDate: { lt: endCached }, OR: [{ exitDate: null }, { exitDate: { gte: startCached } }] },
               { closings: { some: { type: 'CONTABIL', referencePeriod: startCached } } },
@@ -36,21 +46,19 @@ export function createAccountingYearEngine(prisma:any,now:()=>Date=()=>new Date(
         prisma.departmentColumn.findMany({where:{department:'CONTABIL'},orderBy:{orderIndex:'asc'}}),
         queryClosingsBySectorAndRange(pool, prisma, 'CONTABIL', startCached, nextJanCached),
       ]);
-      const historicCached = new Set(closings.map((row: any) => row.companyId));
-      const eligibleCached = companies.filter((company: any) => !company.activeSectors || company.activeSectors === 'TODOS' || company.activeSectors.split(',').map((item: string) => item.trim()).includes('CONTABIL') || historicCached.has(company.id));
+      const eligibleCached = companies.filter((company: any) => companyBelongsToSector(company, 'CONTABIL'));
       return { createdCount: 0, companies: eligibleCached, columns, closings };
     }
 
     const start=new Date(Date.UTC(year,0,1));const nextJan=new Date(Date.UTC(year,1,1));const end=new Date(Date.UTC(year+1,0,1));
     const [companies,columns,existing]=await Promise.all([
-      prisma.company.findMany({where:{AND:[externalCompaniesExcluded],OR:[{obligationStartDate:{lt:end},OR:[{exitDate:null},{exitDate:{gte:start}}]},{closings:{some:{type:'CONTABIL',referencePeriod:start}}}]},omit:{legacyData:true},include:{responsibles:{where:{sector:{in:['CONTABIL','FISCAL']}},include:{user:{select:{id:true,name:true,email:true,role:true,active:true}}}}}}),
+      prisma.company.findMany({where:{AND:[externalCompaniesExcluded, sectorCondition],OR:[{obligationStartDate:{lt:end},OR:[{exitDate:null},{exitDate:{gte:start}}]},{closings:{some:{type:'CONTABIL',referencePeriod:start}}}]},omit:{legacyData:true},include:{responsibles:{where:{sector:{in:['CONTABIL','FISCAL']}},include:{user:{select:{id:true,name:true,email:true,role:true,active:true}}}}}}),
       prisma.departmentColumn.findMany({where:{department:'CONTABIL'},orderBy:{orderIndex:'asc'}}),
       queryClosingsBySectorAndRange(pool, prisma, 'CONTABIL', start, end),
     ]);
     const annual=existing.filter((row:any)=>new Date(row.referencePeriod).getTime()===start.getTime());
-    const historic=new Set(existing.map((row:any)=>row.companyId));
     const mapped=new Map<string,any>(annual.map((row:any)=>[row.companyId,row]));
-    const eligible=companies.filter((company:any)=>!company.activeSectors||company.activeSectors==='TODOS'||company.activeSectors.split(',').map((item:string)=>item.trim()).includes('CONTABIL')||historic.has(company.id));
+    const eligible=companies.filter((company:any)=>companyBelongsToSector(company, 'CONTABIL'));
     const newRows=eligible.filter((company:any)=>!mapped.has(company.id)).map((company:any)=>({companyId:company.id,type:'CONTABIL',referencePeriod:start,status:'PENDING',columnsData:annualValues(company,year,columns,{})}));
     const result=newRows.length?await prisma.closing.createMany({data:newRows,skipDuplicates:true}):{count:0};
     const closings=result.count?await queryClosingsBySectorAndRange(pool, prisma, 'CONTABIL', start, nextJan):annual;
