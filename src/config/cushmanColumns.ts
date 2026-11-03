@@ -34,9 +34,14 @@ export function cushmanAccess(user:any,edit=false):boolean {
 export function isCushmanCompany(company: any): boolean {
   if (!company) return false;
   const raw = (company.activeSectors || '').split(',').map((item: string) => item.trim().toUpperCase());
-  if (raw.includes('CUSHMAN')) return true;
-  if (/cushman/i.test(company.groupName || '') || /cushman/i.test(company.name || '')) return true;
-  return false;
+  if (!raw.includes('CUSHMAN')) return false;
+
+  // No Cushman só entram Condomínios e Associações (ou empresas explicitamente identificadas como 05xxx ou Cushman)
+  const isCondoOrAssoc = company.taxRegime === 'CONDOMINIOS' || company.taxRegime === 'ASSOCIACOES';
+  const isCode05 = String(company.code || '').startsWith('05');
+  const isCushmanNamed = /cushman/i.test(company.groupName || '') || /cushman/i.test(company.name || '');
+
+  return isCondoOrAssoc || isCode05 || isCushmanNamed;
 }
 export function cushmanCompanyAllowed(user:any,company:any):boolean {
  return canUserViewCompany(user,company,'CUSHMAN');

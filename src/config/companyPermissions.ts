@@ -109,17 +109,23 @@ export function canUserEditCompany(
  *   Se for uma lista específica (ex: 'FISCAL,DP' ou 'CONTABIL'), valida se contém o setor.
  */
 export function companyBelongsToSector(
-  company: { activeSectors?: string | null } | null | undefined,
+  company: { activeSectors?: string | null; taxRegime?: string | null; code?: string | null; groupName?: string | null; name?: string | null } | null | undefined,
   sector: SectorKey
 ): boolean {
   if (!company) return false;
   const raw = (company.activeSectors || '').trim();
 
-  // Setor CUSHMAN: apenas se 'CUSHMAN' estiver expressamente marcado
+  // Setor CUSHMAN: apenas se 'CUSHMAN' estiver expressamente marcado e for entidade legítima de condomínio/associação/cushman
   if (sector === 'CUSHMAN') {
     if (!raw) return false;
     const parts = raw.split(',').map(s => s.trim().toUpperCase());
-    return parts.includes('CUSHMAN');
+    if (!parts.includes('CUSHMAN')) return false;
+
+    const isCondoOrAssoc = company.taxRegime === 'CONDOMINIOS' || company.taxRegime === 'ASSOCIACOES';
+    const isCode05 = String(company.code || '').startsWith('05');
+    const isCushmanNamed = /cushman/i.test(company.groupName || '') || /cushman/i.test(company.name || '');
+
+    return isCondoOrAssoc || isCode05 || isCushmanNamed;
   }
 
   // Se for empresa de parcelamento externo, não pertence aos fechamentos operacionais padrão
