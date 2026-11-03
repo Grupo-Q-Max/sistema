@@ -1,0 +1,770 @@
+/* FiscalFocusDrawer.css - Painel Lateral de Modo Foco */
+
+.focus-drawer-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(3, 7, 18, 0.65);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  z-index: 9998;
+  display: flex;
+  justify-content: flex-end;
+  animation: focusOverlayFadeIn 0.2s ease-out;
+}
+
+@keyframes focusOverlayFadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.focus-drawer {
+  width: 100%;
+  max-width: 580px;
+  height: 100vh;
+  height: 100dvh;
+  background: #0b1120;
+  border-left: 1px solid rgba(255, 255, 255, 0.12);
+  box-shadow: -15px 0 35px rgba(0, 0, 0, 0.7);
+  display: flex;
+  flex-direction: column;
+  animation: focusDrawerSlideIn 0.26s cubic-bezier(0.16, 1, 0.3, 1);
+  overflow: hidden;
+}
+
+@keyframes focusDrawerSlideIn {
+  from {
+    transform: translateX(100%);
+  }
+  to {
+    transform: translateX(0);
+  }
+}
+
+/* Header */
+.focus-drawer-header {
+  padding: 18px 24px;
+  background: linear-gradient(180deg, #131d33 0%, #0f172a 100%);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  flex-shrink: 0;
+}
+
+.focus-header-brand {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.focus-brand-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 10px;
+  border-radius: 9999px;
+  background: linear-gradient(135deg, rgba(217, 15, 129, 0.25), rgba(129, 140, 248, 0.25));
+  border: 1px solid rgba(217, 15, 129, 0.45);
+  color: #f472b6;
+  font-size: 0.74rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  width: fit-content;
+}
+
+.focus-counter {
+  font-size: 0.88rem;
+  color: #94a3b8;
+}
+
+.focus-counter strong {
+  color: #f1f5f9;
+}
+
+.focus-nav-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.focus-nav-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 7px 12px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: #cbd5e1;
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.focus-nav-btn:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.12);
+  color: #fff;
+}
+
+.focus-nav-btn.highlight {
+  background: rgba(129, 140, 248, 0.18);
+  border-color: rgba(129, 140, 248, 0.35);
+  color: #c7d2fe;
+}
+
+.focus-nav-btn.highlight:hover:not(:disabled) {
+  background: rgba(129, 140, 248, 0.28);
+}
+
+.focus-nav-btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.focus-close-btn {
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  color: #94a3b8;
+  width: 34px;
+  height: 34px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  margin-left: 4px;
+}
+
+.focus-close-btn:hover {
+  background: rgba(239, 68, 68, 0.15);
+  border-color: rgba(239, 68, 68, 0.3);
+  color: #f87171;
+}
+
+/* Área de Rolagem */
+.focus-drawer-scroll {
+  padding: 20px 24px;
+  overflow-y: auto;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  scrollbar-width: thin;
+  scrollbar-color: #334155 transparent;
+}
+
+/* Card da Empresa */
+.focus-company-card {
+  background: #111a2e;
+  border: 1px solid rgba(129, 140, 248, 0.2);
+  border-radius: 14px;
+  padding: 18px 20px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.35);
+}
+
+.focus-company-top {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.focus-code-badge {
+  background: rgba(129, 140, 248, 0.15);
+  border: 1px solid rgba(129, 140, 248, 0.3);
+  color: #c7d2fe;
+  font-weight: 800;
+  font-size: 0.95rem;
+  padding: 5px 10px;
+  border-radius: 8px;
+  flex-shrink: 0;
+  letter-spacing: 0.03em;
+}
+
+.focus-company-title {
+  flex: 1;
+  min-width: 0;
+}
+
+.focus-company-title h3 {
+  margin: 0 0 2px 0;
+  font-size: 1.15rem;
+  font-weight: 800;
+  color: #f8fafc;
+  line-height: 1.35;
+}
+
+.focus-company-title span {
+  font-size: 0.82rem;
+  color: #94a3b8;
+  display: block;
+}
+
+.focus-details-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: #c7d2fe;
+  font-size: 0.78rem;
+  font-weight: 600;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: all 0.15s ease;
+}
+
+.focus-details-btn:hover {
+  background: rgba(129, 140, 248, 0.18);
+  border-color: rgba(129, 140, 248, 0.4);
+}
+
+.focus-meta-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.focus-meta-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.focus-meta-item label {
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: #64748b;
+  letter-spacing: 0.04em;
+}
+
+.focus-copy-cnpj {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 8px;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  color: #e2e8f0;
+  font-size: 0.82rem;
+  font-family: monospace;
+  cursor: pointer;
+  width: fit-content;
+}
+
+.focus-copy-cnpj:hover {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.18);
+}
+
+.focus-copy-cnpj small {
+  color: #10b981;
+  font-weight: 700;
+  font-size: 0.72rem;
+}
+
+.focus-regime-tag {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #93c5fd;
+  background: rgba(59, 130, 246, 0.12);
+  border: 1px solid rgba(59, 130, 246, 0.25);
+  padding: 4px 8px;
+  border-radius: 6px;
+  width: fit-content;
+}
+
+.focus-select {
+  padding: 6px 10px;
+  border-radius: 8px;
+  background: #0f172a;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  color: #e2e8f0;
+  font-size: 0.82rem;
+  outline: none;
+  cursor: pointer;
+}
+
+.focus-cert-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.78rem;
+  padding: 4px 8px;
+  border-radius: 6px;
+  width: fit-content;
+}
+
+.focus-cert-badge.expired {
+  background: rgba(239, 68, 68, 0.18);
+  border: 1px solid rgba(239, 68, 68, 0.35);
+  color: #fca5a5;
+}
+
+.focus-cert-badge.warning {
+  background: rgba(245, 158, 11, 0.18);
+  border: 1px solid rgba(245, 158, 11, 0.35);
+  color: #fcd34d;
+}
+
+.focus-cert-badge.ok {
+  background: rgba(16, 185, 129, 0.12);
+  border: 1px solid rgba(16, 185, 129, 0.25);
+  color: #6ee7b7;
+}
+
+/* Barra de Progresso */
+.focus-progress-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  padding-top: 12px;
+}
+
+.focus-progress-labels {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.8rem;
+  color: #94a3b8;
+}
+
+.focus-progress-labels strong {
+  color: #f8fafc;
+  font-weight: 700;
+}
+
+.focus-progress-track {
+  height: 8px;
+  border-radius: 9999px;
+  background: rgba(255, 255, 255, 0.08);
+  overflow: hidden;
+}
+
+.focus-progress-fill {
+  height: 100%;
+  border-radius: 9999px;
+  transition: width 0.3s ease;
+}
+
+/* Seções */
+.focus-section-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.88rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #cbd5e1;
+  margin-top: 8px;
+}
+
+.focus-section-title small {
+  color: #64748b;
+  font-weight: 500;
+  text-transform: none;
+}
+
+/* Cards das Obrigações */
+.focus-obligations-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.focus-ob-card {
+  background: #111a2e;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 12px;
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  transition: all 0.15s ease;
+}
+
+.focus-ob-card:hover {
+  border-color: rgba(255, 255, 255, 0.16);
+  background: #132039;
+}
+
+.focus-ob-card.completed {
+  border-left: 3px solid #10b981;
+}
+
+.focus-ob-card.pending {
+  border-left: 3px solid #f59e0b;
+}
+
+.focus-ob-card.issue {
+  border-left: 3px solid #ef4444;
+  background: rgba(239, 68, 68, 0.05);
+}
+
+.focus-ob-card.no-movement {
+  border-left: 3px solid #64748b;
+}
+
+.focus-ob-card.na {
+  border-left: 3px solid #8b5cf6;
+  opacity: 0.82;
+}
+
+.focus-ob-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.focus-ob-name h4 {
+  margin: 0 0 4px 0;
+  font-size: 0.96rem;
+  font-weight: 700;
+  color: #f1f5f9;
+}
+
+.focus-deadline-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.72rem;
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+
+.focus-deadline-tag.overdue {
+  background: rgba(239, 68, 68, 0.2);
+  color: #fca5a5;
+  font-weight: 700;
+}
+
+.focus-deadline-tag.urgent {
+  background: rgba(245, 158, 11, 0.2);
+  color: #fcd34d;
+  font-weight: 700;
+}
+
+.focus-deadline-tag.normal {
+  background: rgba(255, 255, 255, 0.05);
+  color: #94a3b8;
+}
+
+.focus-status-badge {
+  font-size: 0.76rem;
+  font-weight: 700;
+  padding: 3px 8px;
+  border-radius: 6px;
+  white-space: nowrap;
+}
+
+.focus-status-badge.completed {
+  background: rgba(16, 185, 129, 0.15);
+  border: 1px solid rgba(16, 185, 129, 0.3);
+  color: #34d399;
+}
+
+.focus-status-badge.pending {
+  background: rgba(245, 158, 11, 0.15);
+  border: 1px solid rgba(245, 158, 11, 0.3);
+  color: #fbbf24;
+}
+
+.focus-status-badge.issue {
+  background: rgba(239, 68, 68, 0.18);
+  border: 1px solid rgba(239, 68, 68, 0.35);
+  color: #f87171;
+}
+
+.focus-status-badge.no-movement {
+  background: rgba(100, 116, 139, 0.18);
+  border: 1px solid rgba(100, 116, 139, 0.35);
+  color: #cbd5e1;
+}
+
+.focus-status-badge.na {
+  background: rgba(139, 92, 246, 0.15);
+  border: 1px solid rgba(139, 92, 246, 0.3);
+  color: #c084fc;
+}
+
+/* Ações Rápidas nas Obrigações */
+.focus-ob-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.focus-action-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 6px 10px;
+  border-radius: 7px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  cursor: pointer;
+  border: 1px solid transparent;
+  transition: all 0.15s ease;
+}
+
+.focus-action-btn:hover:not(:disabled) {
+  transform: translateY(-1px);
+}
+
+.focus-action-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.focus-action-btn.ok {
+  background: rgba(16, 185, 129, 0.16);
+  border-color: rgba(16, 185, 129, 0.35);
+  color: #6ee7b7;
+}
+
+.focus-action-btn.ok:hover:not(:disabled) {
+  background: #10b981;
+  color: #fff;
+}
+
+.focus-action-btn.sem-mov {
+  background: rgba(100, 116, 139, 0.16);
+  border-color: rgba(100, 116, 139, 0.3);
+  color: #cbd5e1;
+}
+
+.focus-action-btn.sem-mov:hover:not(:disabled) {
+  background: #475569;
+  color: #fff;
+}
+
+.focus-action-btn.pendencia {
+  background: rgba(239, 68, 68, 0.14);
+  border-color: rgba(239, 68, 68, 0.3);
+  color: #fca5a5;
+}
+
+.focus-action-btn.pendencia:hover:not(:disabled) {
+  background: #ef4444;
+  color: #fff;
+}
+
+.focus-action-btn.na {
+  background: rgba(139, 92, 246, 0.14);
+  border-color: rgba(139, 92, 246, 0.3);
+  color: #d8b4fe;
+}
+
+.focus-action-btn.na:hover:not(:disabled) {
+  background: #8b5cf6;
+  color: #fff;
+}
+
+.focus-action-btn.details {
+  background: rgba(255, 255, 255, 0.05);
+  border-color: rgba(255, 255, 255, 0.12);
+  color: #94a3b8;
+}
+
+.focus-action-btn.details:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.12);
+  color: #fff;
+}
+
+.focus-action-btn.clear {
+  padding: 6px 8px;
+  background: transparent;
+  border-color: rgba(255, 255, 255, 0.08);
+  color: #64748b;
+}
+
+.focus-action-btn.clear:hover:not(:disabled) {
+  color: #fca5a5;
+  border-color: rgba(239, 68, 68, 0.3);
+}
+
+/* Caixa de Pendência Inline */
+.focus-pendency-box {
+  background: #0f172a;
+  border: 1px solid rgba(239, 68, 68, 0.35);
+  border-radius: 8px;
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.focus-pendency-box label {
+  font-size: 0.74rem;
+  font-weight: 700;
+  color: #f87171;
+}
+
+.focus-pendency-box input {
+  padding: 7px 10px;
+  border-radius: 6px;
+  background: #1e293b;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  color: #fff;
+  font-size: 0.84rem;
+  outline: none;
+}
+
+.focus-pendency-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.focus-pendency-actions .btn-cancel {
+  background: transparent;
+  border: none;
+  color: #94a3b8;
+  font-size: 0.76rem;
+  cursor: pointer;
+  padding: 4px 8px;
+}
+
+.focus-pendency-actions .btn-confirm {
+  background: #ef4444;
+  border: none;
+  border-radius: 6px;
+  color: #fff;
+  font-size: 0.76rem;
+  font-weight: 700;
+  padding: 5px 12px;
+  cursor: pointer;
+}
+
+/* Observações da Empresa */
+.focus-notes-card {
+  background: #111a2e;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 12px;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.focus-notes-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.focus-stamp-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px;
+  border-radius: 6px;
+  background: rgba(139, 92, 246, 0.15);
+  border: 1px solid rgba(139, 92, 246, 0.35);
+  color: #c084fc;
+  font-size: 0.76rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.focus-stamp-btn:hover:not(:disabled) {
+  background: rgba(139, 92, 246, 0.28);
+}
+
+.focus-success-toast {
+  font-size: 0.78rem;
+  color: #34d399;
+  font-weight: 600;
+}
+
+.focus-notes-card textarea {
+  width: 100%;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: #0f172a;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  color: #f1f5f9;
+  font-size: 0.85rem;
+  outline: none;
+  resize: vertical;
+  line-height: 1.45;
+}
+
+.focus-save-notes-btn {
+  align-self: flex-end;
+  background: linear-gradient(135deg, var(--accent, #d90f81), #8b5cf6);
+  border: none;
+  border-radius: 8px;
+  color: #fff;
+  font-size: 0.82rem;
+  font-weight: 700;
+  padding: 7px 16px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.focus-save-notes-btn:hover:not(:disabled) {
+  filter: brightness(1.08);
+}
+
+/* Rodapé Fixo */
+.focus-drawer-footer {
+  padding: 14px 24px;
+  background: #0f172a;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-shrink: 0;
+}
+
+.focus-footer-hint {
+  font-size: 0.76rem;
+  color: #64748b;
+}
+
+.focus-footer-hint strong {
+  color: #94a3b8;
+}
+
+.focus-btn-next-company {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 20px;
+  border-radius: 10px;
+  background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%);
+  border: none;
+  color: #ffffff;
+  font-size: 0.88rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  box-shadow: 0 4px 15px rgba(79, 70, 229, 0.4);
+}
+
+.focus-btn-next-company:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 20px rgba(79, 70, 229, 0.55);
+}
+
+.focus-btn-next-company:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  box-shadow: none;
+}

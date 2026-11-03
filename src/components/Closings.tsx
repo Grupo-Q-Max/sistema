@@ -41,6 +41,7 @@ import './Closings.css';
 import './PayrollClosings.css';
 import { CompanyDetailsModal, getCertificateStatus, formatCnpj, formatRegimeLabel, formatDateBr } from './CompanyDetailsModal';
 import { ResponsibleWorkloadModal } from './ResponsibleWorkloadModal';
+import { FiscalFocusDrawer } from './FiscalFocusDrawer';
 import { ManualCompetenceModal } from './ManualCompetenceModal';
 import { ClosingSectorTabs, hasSectorAccess } from './ClosingSectorTabs';
 import { CellAuditModal } from './CellAuditModal';
@@ -152,6 +153,7 @@ export function Closings({ currentView, onNavigate, currentUser, onLogout }: Clo
   const [responsibleFilter, setResponsibleFilter] = useState('ALL');
   const [certFilter, setCertFilter] = useState('ALL');
   const [workloadOpen, setWorkloadOpen] = useState(false);
+  const [focusModeIndex, setFocusModeIndex] = useState<number | null>(null);
 
   // Senhas reveladas
 
@@ -1217,6 +1219,21 @@ export function Closings({ currentView, onNavigate, currentUser, onLogout }: Clo
 
               <button
                 type="button"
+                className={`btn-secondary-light ${focusModeIndex !== null ? 'active' : ''}`}
+                onClick={() => setFocusModeIndex(focusModeIndex !== null ? null : (filteredRows.length > 0 ? 0 : null))}
+                title="Ativar Modo Foco: preenchimento vertical empresa por empresa"
+                style={{
+                  background: focusModeIndex !== null ? 'linear-gradient(135deg, rgba(217, 15, 129, 0.25), rgba(129, 140, 248, 0.25))' : undefined,
+                  borderColor: focusModeIndex !== null ? '#d90f81' : undefined,
+                  color: focusModeIndex !== null ? '#fff' : undefined,
+                }}
+              >
+                <Zap size={15} color={focusModeIndex !== null ? '#f472b6' : undefined} />
+                Modo Foco
+              </button>
+
+              <button
+                type="button"
                 className={`btn-density-toggle ${tableDensity === 'compact' ? 'active' : ''}`}
                 onClick={toggleDensity}
                 title={tableDensity === 'compact' ? 'Mudar para modo Espaçoso' : 'Mudar para modo Compacto'}
@@ -1641,20 +1658,49 @@ export function Closings({ currentView, onNavigate, currentUser, onLogout }: Clo
                             {/* 2. Empresa Interativa com ícone, link explícito e alerta de certificado */}
                             <td className="sticky-col-company">
                               <div className="company-cell-wrapper">
-                                <button
-                                  className="company-interactive-link"
-                                  onClick={() => setActiveModal({ type: 'COMPANY_INFO', row: r })}
-                                  title="Clique para ver dados cadastrais, senhas descriptografadas e certificados"
-                                >
-                                  <div className="company-link-left">
-                                    <Building2 size={16} color="#818cf8" style={{ flexShrink: 0 }} />
-                                    <span>{c.name}</span>
-                                  </div>
-                                  <div className="company-link-icon-chip">
-                                    <span>Ver Dados</span>
-                                    <ExternalLink size={10} />
-                                  </div>
-                                </button>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                  <button
+                                    className="company-interactive-link"
+                                    onClick={() => setActiveModal({ type: 'COMPANY_INFO', row: r })}
+                                    title="Clique para ver dados cadastrais, senhas descriptografadas e certificados"
+                                  >
+                                    <div className="company-link-left">
+                                      <Building2 size={16} color="#818cf8" style={{ flexShrink: 0 }} />
+                                      <span>{c.name}</span>
+                                    </div>
+                                    <div className="company-link-icon-chip">
+                                      <span>Ver Dados</span>
+                                      <ExternalLink size={10} />
+                                    </div>
+                                  </button>
+                                  <button
+                                    type="button"
+                                    className="focus-trigger-row-btn"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      const idx = filteredRows.findIndex(item => item.id === r.id);
+                                      if (idx !== -1) setFocusModeIndex(idx);
+                                    }}
+                                    title="Abrir no Modo Foco (Preenchimento Rápido Vertical)"
+                                    style={{
+                                      background: 'rgba(217, 15, 129, 0.1)',
+                                      border: '1px solid rgba(217, 15, 129, 0.25)',
+                                      color: '#f472b6',
+                                      borderRadius: '6px',
+                                      padding: '4px 6px',
+                                      cursor: 'pointer',
+                                      display: 'inline-flex',
+                                      alignItems: 'center',
+                                      gap: '3px',
+                                      fontSize: '11px',
+                                      fontWeight: 600,
+                                      flexShrink: 0,
+                                    }}
+                                  >
+                                    <Zap size={11} />
+                                    <span>Foco</span>
+                                  </button>
+                                </div>
                                 {c.tradeName && <div className="company-cell-trade">{c.tradeName}</div>}
 
                                 {/* Alerta Visual de Vencimento de Certificado Digital */}
@@ -2033,6 +2079,27 @@ export function Closings({ currentView, onNavigate, currentUser, onLogout }: Clo
           sector="FISCAL"
           onSelectResponsible={(userId) => setResponsibleFilter(userId || 'ALL')}
         />
+
+        {focusModeIndex !== null && (
+          <FiscalFocusDrawer
+            isOpen={focusModeIndex !== null}
+            onClose={() => setFocusModeIndex(null)}
+            rows={filteredRows}
+            currentIndex={focusModeIndex}
+            onSelectIndex={setFocusModeIndex}
+            popupColumns={popupColumns}
+            onSaveColumn={saveColumnValue}
+            onOpenObligationModal={handleOpenObligationModal}
+            onOpenCompanyInfo={(row) => setActiveModal({ type: 'COMPANY_INFO', row })}
+            fiscalUsers={fiscalUsers}
+            onResponsibleChange={handleResponsibleChange}
+            isRowEditable={isRowEditable}
+            currentUser={currentUser}
+            selectedYear={selectedYear}
+            selectedMonth={selectedMonth}
+            monthLabel={monthLabel}
+          />
+        )}
 
         <ManualCompetenceModal
           isOpen={isManualModalOpen}
