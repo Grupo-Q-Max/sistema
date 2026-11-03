@@ -4,6 +4,7 @@ export type PopupConfig = {
   version: 1; title: string; description: string; fields: PopupField[];
   actions: { id: PopupAction; label: string; enabled: boolean }[];
   askApiOnSave: boolean; askApiOnNoMovement: boolean; askDate: boolean;
+  deadlineDay?: number;
 };
 const labels: Record<PopupAction, string> = { NA: 'N/A', PENDENCIA: 'Pendência', SEM_MOV: 'OK - SEM MOVIMENTO', SALVAR: 'Salvar', OK_DATA: 'OK - DATA', LIMPAR: 'LIMPAR / VOLTAR PARA PENDENTE' };
 export const ACTION_IDS = Object.keys(labels) as PopupAction[];
@@ -54,5 +55,6 @@ export function validatePopup(config: unknown): string | null {
   }
   if (!c.actions.some(a => a.enabled)) return 'Habilite pelo menos um botão.';
   if ([c.askApiOnSave, c.askApiOnNoMovement, c.askDate].some(v => typeof v !== 'boolean')) return 'Regras de API/data inválidas.';
+  if (c.deadlineDay !== undefined && (!Number.isInteger(c.deadlineDay) || c.deadlineDay < 1 || c.deadlineDay > 31)) return 'O dia de vencimento legal deve ser entre 1 e 31.';
   return null;
 }

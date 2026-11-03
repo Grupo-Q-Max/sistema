@@ -173,6 +173,7 @@ export function Settings({ currentView, onNavigate, currentUser, onLogout }: Set
   const [colReplicates, setColReplicates] = useState(false);
   const [colCountsProgress, setColCountsProgress] = useState(false);
   const [colIsEditable, setColIsEditable] = useState(true);
+  const [colDeadlineDay, setColDeadlineDay] = useState<number | ''>('');
   const [colOrderIndex, setColOrderIndex] = useState<number | ''>('');
   const [draggedColId, setDraggedColId] = useState<string | null>(null);
   const [dragOverColId, setDragOverColId] = useState<string | null>(null);
@@ -534,6 +535,7 @@ export function Settings({ currentView, onNavigate, currentUser, onLogout }: Set
     setColReplicates(false);
     setColCountsProgress(false);
     setColIsEditable(true);
+    setColDeadlineDay('');
     const count = columns.filter(c => c.department === departmentKey).length;
     setColOrderIndex(count + 1);
     setIsColumnModalOpen(true);
@@ -551,6 +553,7 @@ export function Settings({ currentView, onNavigate, currentUser, onLogout }: Set
     setColReplicates(col.replicates);
     setColCountsProgress(col.countsProgress ?? false);
     setColIsEditable(col.isEditable);
+    setColDeadlineDay(col.fieldConfig?.deadlineDay || col.popupConfig?.deadlineDay || '');
     const pos = displayColumns.findIndex(c => c.id === col.id);
     setColOrderIndex(pos >= 0 ? pos + 1 : (col.orderIndex || 1));
     setIsColumnModalOpen(true);
@@ -567,7 +570,11 @@ export function Settings({ currentView, onNavigate, currentUser, onLogout }: Set
       ...colFieldConfig,
       options: (colFieldConfig.options || []).map(o => o.trim()).filter(Boolean),
       ...(colFieldConfig.pendingOptions ? { pendingOptions: colFieldConfig.pendingOptions.map(o => o.trim()).filter(Boolean) } : {}),
+      ...(colDeadlineDay !== '' ? { deadlineDay: Number(colDeadlineDay) } : {}),
     };
+    if (colDeadlineDay !== '' && colInputType === 'POPUP') {
+      colPopupConfig.deadlineDay = Number(colDeadlineDay);
+    }
     const fieldError = validateFieldConfig(cleanedFieldConfig);
     if (fieldError) { showToast(fieldError, 'error'); return; }
     if ((colInputType === 'SELECT' || (colInputType === 'MULTISELECT' && colDepartment === 'FISCAL' && !editingColumn)) && !cleanedFieldConfig.options.length) { showToast('Informe as opções da lista.', 'error'); return; }
@@ -1567,6 +1574,25 @@ export function Settings({ currentView, onNavigate, currentUser, onLogout }: Set
                       <span>Define se a conclusão desta etapa conta para a barra e porcentagem de andamento do setor</span>
                     </div>
                   </label>
+                </div>
+
+                <div className="form-group full-width">
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 600, color: '#f8fafc', marginBottom: '6px' }}>
+                    <CalendarClock size={16} color="#818cf8" />
+                    Dia de Vencimento Legal (1 a 31 do mês subsequente)
+                  </label>
+                  <input
+                    type="number"
+                    min="1"
+                    max="31"
+                    placeholder="Ex: 15 ou 20 — Deixe em branco para usar o prazo padrão legal da obrigação"
+                    value={colDeadlineDay}
+                    onChange={(e) => setColDeadlineDay(e.target.value === '' ? '' : Math.min(31, Math.max(1, Number(e.target.value))))}
+                    style={{ width: '100%', padding: '9px 12px', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.12)', background: '#1e293b', color: '#fff', boxSizing: 'border-box' }}
+                  />
+                  <small style={{ color: '#94a3b8', fontSize: '0.75rem', marginTop: '4px', display: 'block' }}>
+                    Utilizado para contagem regressiva e alertas de atraso legal na linha do tempo e cabeçalho da tabela.
+                  </small>
                 </div>
 
                 <div className="form-group full-width">

@@ -3,7 +3,7 @@ import { ACCOUNTING_COLUMNS, resolveAccountingKey } from './accountingColumns';
 export const PAYROLL_API_VERSION = 2;
 import { resolveFiscalKey } from './fiscalPopups';
 export type PayrollInputType = 'TEXT' | 'NUMBER' | 'SELECT' | 'TEXTAREA' | 'PASSWORD' | 'READONLY';
-export type FieldConfig = { version: 1; placeholder: string; options: string[]; pendingOptions?: string[] };
+export type FieldConfig = { version: 1; placeholder: string; options: string[]; pendingOptions?: string[]; deadlineDay?: number };
 export const MONTH_OPTIONS = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro', 'N/A'];
 export const PAYROLL_COLUMNS: { key: string; name: string; inputType: PayrollInputType; options: string[]; replicates: boolean; countsProgress: boolean; isEditable: boolean; aliases: string[] }[] = [
   { key:'dp_observacao',name:'Observação do DP',inputType:'TEXTAREA',options:[],replicates:true,countsProgress:false,isEditable:true,aliases:['Observações DP','Observacao DP'] },
@@ -55,6 +55,7 @@ export function validateFieldConfig(value: unknown): string | null {
   const c=value as FieldConfig;
   if(c.version!==1 || typeof c.placeholder!=='string' || !Array.isArray(c.options) || c.options.some(o=>typeof o!=='string'||!o.trim()) || new Set(c.options).size!==c.options.length) return 'Informe opções únicas e não vazias.';
   if(c.pendingOptions !== undefined && (!Array.isArray(c.pendingOptions) || c.pendingOptions.some(o=>typeof o!=='string'||!o.trim()))) return 'Opções pendentes inválidas.';
+  if(c.deadlineDay !== undefined && (!Number.isInteger(c.deadlineDay) || c.deadlineDay < 1 || c.deadlineDay > 31)) return 'O dia de vencimento legal deve ser entre 1 e 31.';
   return null;
 }
 export function validatePayrollValue(column:any,value:any):string|null {

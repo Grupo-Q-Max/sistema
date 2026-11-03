@@ -42,6 +42,8 @@ import { ManualCompetenceModal } from './ManualCompetenceModal';
 import { ClosingSectorTabs, hasSectorAccess } from './ClosingSectorTabs';
 import { CellAuditModal } from './CellAuditModal';
 import { BulkActionModal } from './BulkActionModal';
+import { DeadlineTimelineWidget } from './DeadlineTimelineWidget';
+import { getColumnDeadlineDay, getDeadlineDate, getDeadlineUrgency } from '../config/legalDeadlines';
 import './FiscalPopup.css';
 import { visibilitySummary, isColumnComplete } from '../config/columnVisibility';
 import { FISCAL_POPUPS, effectivePopup, type PopupAction } from '../config/fiscalPopups';
@@ -799,6 +801,10 @@ export function Closings({ currentView, onNavigate, currentUser, onLogout }: Clo
     setTimeout(() => setBulkFeedback(null), 5000);
   };
 
+  const handleFilterColumnPending = (columnKey: string) => {
+    handleObligationFilterChange(columnKey, 'PENDENTE');
+  };
+
   const renderObligationCell = (row: any, colKey: string) => {
     const val = row.columnsData?.[colKey];
     const definition = popupColumns.find(col => col.columnKey === colKey);
@@ -1096,6 +1102,15 @@ export function Closings({ currentView, onNavigate, currentUser, onLogout }: Clo
           </div>
 
           <ClosingProgressDetails rows={rows} columns={popupColumns} sector="FISCAL" period={new Date(Date.UTC(selectedYear, selectedMonth - 1, 1))} latest={latestPeriod} open={progressOpen} onToggle={() => setProgressOpen(value => !value)} loading={loading} />
+
+          {/* Cronograma de Prazos Legais das Obrigações */}
+          <DeadlineTimelineWidget
+            columns={popupColumns}
+            rows={scopedRows}
+            period={new Date(Date.UTC(selectedYear, selectedMonth - 1, 1))}
+            onFilterPending={handleFilterColumnPending}
+          />
+
           {/* Barra de Filtros e Busca */}
           <div className="closings-toolbar">
             <div className="closings-search-box">
@@ -1427,7 +1442,26 @@ export function Closings({ currentView, onNavigate, currentUser, onLogout }: Clo
                         return (
                           <th key={ob.key} style={{ color: ob.color, borderBottomColor: ob.color, minWidth: '120px' }}>
                             <div className="th-header-cell">
-                              <span title={visibilitySummary(column)}>{ob.label}</span>
+                              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: '2px' }}>
+                                <span title={visibilitySummary(column)}>{ob.label}</span>
+                                {(() => {
+                                  const day = getColumnDeadlineDay(column);
+                                  if (!day) return null;
+                                  const dDate = getDeadlineDate(day, new Date(Date.UTC(selectedYear, selectedMonth - 1, 1)));
+                                  const hasPending = scopedRows.some(r => {
+                                    const v = r.columnsData?.[column.columnKey];
+                                    const st = typeof v === 'object' && v ? v.status : (v ? 'CONCLUIDO' : 'PENDENTE');
+                                    return st === 'PENDENTE';
+                                  });
+                                  const urg = getDeadlineUrgency(dDate, !hasPending);
+                                  const cls = urg.type === 'OVERDUE' ? 'overdue' : (urg.type === 'DUE_TODAY' || urg.type === 'DUE_SOON') ? 'urgent' : 'normal';
+                                  return (
+                                    <span className={`th-deadline-badge ${cls}`} title={`Prazo legal: Dia ${day} (${urg.formattedDate}) • ${urg.label}`}>
+                                      Dia {day}
+                                    </span>
+                                  );
+                                })()}
+                              </div>
                               <div className="th-filter-wrapper">
                                 <button
                                   className={`th-filter-icon-btn ${currentObFilter !== 'ALL' ? 'has-filter' : ''}`}

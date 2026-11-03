@@ -1,0 +1,266 @@
+/* Container da Linha do Tempo de Prazos */
+.deadline-timeline-container {
+  background: rgba(15, 23, 42, 0.7);
+  backdrop-filter: blur(8px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 14px;
+  margin-bottom: 20px;
+  overflow: hidden;
+  transition: all 0.25s ease;
+}
+
+.deadline-timeline-container.has-urgent {
+  border-color: rgba(245, 158, 11, 0.35);
+  box-shadow: 0 4px 20px -2px rgba(245, 158, 11, 0.12);
+}
+
+.deadline-timeline-container.has-overdue {
+  border-color: rgba(239, 68, 68, 0.35);
+  box-shadow: 0 4px 20px -2px rgba(239, 68, 68, 0.15);
+}
+
+/* Header do Widget */
+.deadline-timeline-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 18px;
+  cursor: pointer;
+  user-select: none;
+  background: rgba(30, 41, 59, 0.4);
+  transition: background 0.2s ease;
+}
+
+.deadline-timeline-header:hover {
+  background: rgba(30, 41, 59, 0.7);
+}
+
+.deadline-timeline-title-area {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.deadline-timeline-icon-box {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  background: rgba(99, 102, 241, 0.15);
+  color: #818cf8;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.deadline-timeline-icon-box.urgent {
+  background: rgba(245, 158, 11, 0.15);
+  color: #f59e0b;
+}
+
+.deadline-timeline-icon-box.overdue {
+  background: rgba(239, 68, 68, 0.15);
+  color: #ef4444;
+}
+
+.deadline-timeline-titles h3 {
+  margin: 0;
+  font-size: 0.92rem;
+  font-weight: 700;
+  color: #f8fafc;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.deadline-timeline-titles p {
+  margin: 2px 0 0;
+  font-size: 0.76rem;
+  color: #94a3b8;
+}
+
+.deadline-summary-pills {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.deadline-summary-pill {
+  font-size: 0.74rem;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 9999px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.deadline-summary-pill.overdue {
+  background: rgba(239, 68, 68, 0.18);
+  color: #f87171;
+  border: 1px solid rgba(239, 68, 68, 0.3);
+}
+
+.deadline-summary-pill.urgent {
+  background: rgba(245, 158, 11, 0.18);
+  color: #fbbf24;
+  border: 1px solid rgba(245, 158, 11, 0.3);
+}
+
+.deadline-summary-pill.ok {
+  background: rgba(16, 185, 129, 0.18);
+  color: #34d399;
+  border: 1px solid rgba(16, 185, 129, 0.3);
+}
+
+/* Corpo / Grade de Prazos */
+.deadline-timeline-body {
+  padding: 14px 18px 18px;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+  gap: 12px;
+  border-top: 1px solid rgba(255, 255, 255, 0.05);
+  animation: deadlineFadeIn 0.2s ease;
+}
+
+@keyframes deadlineFadeIn {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* Card Individual de Obrigação */
+.deadline-card {
+  background: rgba(30, 41, 59, 0.5);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 10px;
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  position: relative;
+  overflow: hidden;
+}
+
+.deadline-card:hover {
+  background: rgba(30, 41, 59, 0.85);
+  border-color: rgba(99, 102, 241, 0.4);
+  transform: translateY(-1px);
+  box-shadow: 0 6px 14px -2px rgba(0, 0, 0, 0.4);
+}
+
+.deadline-card.is-overdue {
+  border-color: rgba(239, 68, 68, 0.4);
+  background: rgba(239, 68, 68, 0.06);
+}
+
+.deadline-card.is-overdue:hover {
+  background: rgba(239, 68, 68, 0.12);
+}
+
+.deadline-card.is-urgent {
+  border-color: rgba(245, 158, 11, 0.4);
+  background: rgba(245, 158, 11, 0.06);
+}
+
+.deadline-card.is-urgent:hover {
+  background: rgba(245, 158, 11, 0.12);
+}
+
+.deadline-card.is-completed {
+  border-color: rgba(16, 185, 129, 0.25);
+  opacity: 0.85;
+}
+
+.deadline-card-top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.deadline-card-title {
+  font-size: 0.84rem;
+  font-weight: 700;
+  color: #f8fafc;
+  line-height: 1.2;
+}
+
+.deadline-card-date {
+  font-size: 0.72rem;
+  font-weight: 700;
+  background: rgba(255, 255, 255, 0.08);
+  color: #cbd5e1;
+  padding: 2px 6px;
+  border-radius: 6px;
+  white-space: nowrap;
+}
+
+.deadline-card-progress {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.deadline-progress-bar-bg {
+  width: 100%;
+  height: 5px;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 9999px;
+  overflow: hidden;
+}
+
+.deadline-progress-bar-fill {
+  height: 100%;
+  border-radius: 9999px;
+  transition: width 0.3s ease;
+}
+
+.deadline-card-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 0.72rem;
+  color: #94a3b8;
+}
+
+.deadline-badge-status {
+  font-size: 0.7rem;
+  font-weight: 700;
+  padding: 1px 7px;
+  border-radius: 9999px;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+}
+
+/* Badge no Cabeçalho de Coluna (Th) */
+.th-deadline-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 0.65rem;
+  font-weight: 700;
+  padding: 1px 5px;
+  border-radius: 4px;
+  margin-top: 2px;
+  line-height: 1.1;
+  cursor: help;
+}
+
+.th-deadline-badge.overdue {
+  background: rgba(239, 68, 68, 0.22);
+  color: #fca5a5;
+  border: 1px solid rgba(239, 68, 68, 0.4);
+}
+
+.th-deadline-badge.urgent {
+  background: rgba(245, 158, 11, 0.22);
+  color: #fde047;
+  border: 1px solid rgba(245, 158, 11, 0.4);
+}
+
+.th-deadline-badge.normal {
+  background: rgba(129, 140, 248, 0.15);
+  color: #a5b4fc;
+}
