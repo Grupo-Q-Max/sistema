@@ -28,7 +28,7 @@ export function createAccountingYearEngine(prisma:any,now:()=>Date=()=>new Date(
           omit: { legacyData: true },
           include: {
             responsibles: {
-              where: { sector: 'CONTABIL' },
+              where: { sector: { in: ['CONTABIL', 'FISCAL'] } },
               include: { user: { select: { id: true, name: true, email: true, role: true, active: true } } },
             },
           },
@@ -43,7 +43,7 @@ export function createAccountingYearEngine(prisma:any,now:()=>Date=()=>new Date(
 
     const start=new Date(Date.UTC(year,0,1));const nextJan=new Date(Date.UTC(year,1,1));const end=new Date(Date.UTC(year+1,0,1));
     const [companies,columns,existing]=await Promise.all([
-      prisma.company.findMany({where:{AND:[externalCompaniesExcluded],OR:[{obligationStartDate:{lt:end},OR:[{exitDate:null},{exitDate:{gte:start}}]},{closings:{some:{type:'CONTABIL',referencePeriod:start}}}]},omit:{legacyData:true},include:{responsibles:{where:{sector:'CONTABIL'},include:{user:{select:{id:true,name:true,email:true,role:true,active:true}}}}}}),
+      prisma.company.findMany({where:{AND:[externalCompaniesExcluded],OR:[{obligationStartDate:{lt:end},OR:[{exitDate:null},{exitDate:{gte:start}}]},{closings:{some:{type:'CONTABIL',referencePeriod:start}}}]},omit:{legacyData:true},include:{responsibles:{where:{sector:{in:['CONTABIL','FISCAL']}},include:{user:{select:{id:true,name:true,email:true,role:true,active:true}}}}}}),
       prisma.departmentColumn.findMany({where:{department:'CONTABIL'},orderBy:{orderIndex:'asc'}}),
       queryClosingsBySectorAndRange(pool, prisma, 'CONTABIL', start, end),
     ]);

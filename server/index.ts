@@ -607,8 +607,9 @@ async function getCachedBaseSectorUsers(sector: 'FISCAL' | 'DP' | 'CONTABIL'): P
       active: true,
       OR: [
         { role: sector as any },
+        { role: 'ADMIN' as any },
+        { role: 'SOCIO' as any },
         {
-          role: { notIn: ['ADMIN', 'SOCIO', 'FISCAL', 'DP', 'CONTABIL'] as any },
           sectorPermissions: { some: { sector: sector as any, access: 'EDIT' } },
         },
         {

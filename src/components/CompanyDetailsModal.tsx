@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Building2, AlertTriangle, Copy, Eye, EyeOff, ExternalLink } from 'lucide-react';
+import { Building2, AlertTriangle, Copy, Eye, EyeOff, ExternalLink, CheckCircle2 } from 'lucide-react';
 import { formatCompanyCode } from '../utils/codeSort';
 import './Closings.css';
 
@@ -105,15 +105,55 @@ export function formatRegimeLabel(regime: string) {
     return map[regime] || regime;
   };
 
-export function CompanyDetailsModal({company:c,onClose,notesLabel='Observações do Fiscal'}:{company:any;onClose:()=>void;notesLabel?:string}) {
-  const [revealedPasswords,setRevealedPasswords]=useState<Record<string,boolean>>({});
-  const [copyMessage,setCopyMessage]=useState('');
-  const certInfo=c.hasClientCertificate?getCertificateStatus(c.certificateExpiration):null;
-  const togglePasswordReveal=(key:string)=>setRevealedPasswords(prev=>({...prev,[key]:!prev[key]}));
-  const handleCopy=async(text:string,label:string)=>{
-    try{await navigator.clipboard.writeText(text);setCopyMessage(`${label} copiado!`);}catch{setCopyMessage('Não foi possível copiar.');}
+export interface CompanyDetailsModalProps {
+  company: any;
+  onClose: () => void;
+  notesLabel?: string;
+  initialNotes?: string;
+  canEditNotes?: boolean;
+  onSaveNotes?: (newNotes: string) => Promise<void>;
+}
+
+export function CompanyDetailsModal({
+  company: c,
+  onClose,
+  notesLabel = 'Observações do Fiscal',
+  initialNotes,
+  canEditNotes = true,
+  onSaveNotes,
+}: CompanyDetailsModalProps) {
+  const [revealedPasswords, setRevealedPasswords] = useState<Record<string, boolean>>({});
+  const [copyMessage, setCopyMessage] = useState('');
+  const [notesText, setNotesText] = useState(initialNotes !== undefined ? initialNotes : (c.notes || ''));
+  const [isSavingNotes, setIsSavingNotes] = useState(false);
+  const [notesSavedSuccess, setNotesSavedSuccess] = useState(false);
+  const [notesError, setNotesError] = useState('');
+
+  useEffect(() => {
+    if (initialNotes !== undefined) {
+      setNotesText(initialNotes);
+    } else {
+      setNotesText(c.notes || '');
+    }
+  }, [initialNotes, c.notes]);
+
+  const certInfo = c.hasClientCertificate ? getCertificateStatus(c.certificateExpiration) : null;
+  const togglePasswordReveal = (key: string) => setRevealedPasswords(prev => ({ ...prev, [key]: !prev[key] }));
+  const handleCopy = async (text: string, label: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopyMessage(`${label} copiado!`);
+    } catch {
+      setCopyMessage('Não foi possível copiar.');
+    }
   };
-  useEffect(()=>{const keydown=(e:KeyboardEvent)=>{if(e.key==='Escape')onClose();};window.addEventListener('keydown',keydown);return()=>window.removeEventListener('keydown',keydown);},[onClose]);
+  useEffect(() => {
+    const keydown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', keydown);
+    return () => window.removeEventListener('keydown', keydown);
+  }, [onClose]);
   return (
             <div className="closing-modal-backdrop" onClick={onClose}>
               <div
@@ -581,22 +621,83 @@ export function CompanyDetailsModal({company:c,onClose,notesLabel='Observações
                           )}
                         </span>
                       </div>
-                      <div style={{ marginTop: '6px' }}>
-                        <span className="label" style={{ display: 'block', marginBottom: '4px' }}>
-                          {notesLabel}:
-                        </span>
-                        <div
-                          style={{
-                            background: '#e2e8f0',
-                            padding: '8px 10px',
-                            borderRadius: '6px',
-                            fontSize: '0.85rem',
-                            color: '#334155',
-                            minHeight: '40px',
-                          }}
-                        >
-                          {c.notes || 'Nenhuma observação cadastrada.'}
+                      <div style={{ marginTop: '10px' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                          <span className="label" style={{ fontWeight: 600, color: '#334155' }}>
+                            {notesLabel}:
+                          </span>
+                          {notesSavedSuccess && (
+                            <span style={{ fontSize: '0.8rem', color: '#16a34a', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                              <CheckCircle2 size={14} /> Salvo com sucesso!
+                            </span>
+                          )}
                         </div>
+                        {onSaveNotes ? (
+                          <div>
+                            <textarea
+                              value={notesText}
+                              onChange={(e) => {
+                                setNotesText(e.target.value);
+                                setNotesSavedSuccess(false);
+                              }}
+                              disabled={!canEditNotes || isSavingNotes}
+                              placeholder="Digite observações sobre a empresa..."
+                              rows={4}
+                              style={{
+                                width: '100%',
+                                padding: '8px 10px',
+                                borderRadius: '6px',
+                                border: '1px solid #cbd5e1',
+                                fontSize: '0.85rem',
+                                color: '#1e293b',
+                                backgroundColor: canEditNotes ? '#ffffff' : '#f8fafc',
+                                resize: 'vertical',
+                                boxSizing: 'border-box',
+                                outline: 'none',
+                              }}
+                            />
+                            {notesError && <p style={{ color: '#ef4444', fontSize: '0.8rem', margin: '4px 0 0' }}>{notesError}</p>}
+                            {canEditNotes && (
+                              <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '6px' }}>
+                                <button
+                                  type="button"
+                                  className="btn-primary-gradient"
+                                  style={{ fontSize: '0.8rem', padding: '5px 12px' }}
+                                  disabled={isSavingNotes}
+                                  onClick={async () => {
+                                    setIsSavingNotes(true);
+                                    setNotesError('');
+                                    try {
+                                      await onSaveNotes(notesText);
+                                      setNotesSavedSuccess(true);
+                                      setTimeout(() => setNotesSavedSuccess(false), 3000);
+                                    } catch (err: any) {
+                                      setNotesError(err?.message || 'Erro ao salvar observação.');
+                                    } finally {
+                                      setIsSavingNotes(false);
+                                    }
+                                  }}
+                                >
+                                  {isSavingNotes ? 'Salvando...' : 'Salvar Observações'}
+                                </button>
+                              </div>
+                            )}
+                          </div>
+                        ) : (
+                          <div
+                            style={{
+                              background: '#e2e8f0',
+                              padding: '8px 10px',
+                              borderRadius: '6px',
+                              fontSize: '0.85rem',
+                              color: '#334155',
+                              minHeight: '40px',
+                              whiteSpace: 'pre-wrap',
+                            }}
+                          >
+                            {notesText || 'Nenhuma observação cadastrada.'}
+                          </div>
+                        )}
                       </div>
                     </div>
                   </div>
