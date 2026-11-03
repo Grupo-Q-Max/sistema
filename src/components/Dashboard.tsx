@@ -28,6 +28,7 @@ import { ManualCompetenceModal } from './ManualCompetenceModal';
 import { DashboardSkeleton, LoadingSpinner } from './LoadingSkeleton';
 import { SmartAlertDrawer } from './SmartAlertDrawer';
 import { ExecutiveReportModal } from './ExecutiveReportModal';
+import { RiskRadarWidget } from './RiskRadarWidget';
 import type { CurrentUser } from '../types/auth';
 import { API } from '../api';
 
@@ -628,6 +629,15 @@ export function Dashboard({ currentView, onNavigate, currentUser, onLogout }: Da
                   })}
                 </div>
               </div>
+
+              {/* Termômetro de Risco & Predição de Atraso */}
+              <RiskRadarWidget
+                year={selectedYear}
+                month={selectedMonth}
+                currentUserId={currentUser?.id}
+                onNavigateToCompany={() => onNavigate('companies')}
+                onNavigateToSector={(sector) => onNavigate(sector.toLowerCase())}
+              />
 
               {/* Movimentações Expansíveis */}
               <div className="movements-container">

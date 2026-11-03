@@ -2,6 +2,7 @@ import {companyExitWhere,companyExitAllowsPeriod,exitDecisionError,exitDecisionV
 import {registerCompanyQuality,invalidateCompanyQualityCache} from './companyQuality';
 import {registerCushman} from './cushman';
 import {registerAnalytics,invalidateAnalyticsCache} from './analytics';
+import {registerRiskRadar,invalidateRiskRadarCache} from './riskRadar';
 import {registerDeploy} from './deploy';
 import {registerAutomation} from './automation';
 import path from 'node:path';
@@ -157,6 +158,7 @@ app.get('/api/health', (_req, res) => {
 registerInstallments(app, prisma, { onChanged: () => invalidateDashboardCache() });
 registerCompanyQuality(app,prisma,decryptPassword);
 registerAnalytics(app,prisma);
+registerRiskRadar(app,prisma);
 registerDeploy(app);
 registerAutomation(app,prisma);
 
@@ -1383,6 +1385,7 @@ function invalidateDashboardCache() {
   cachedPeriodsList = null;
   cachedColsList = null;
   invalidateAnalyticsCache();
+  invalidateRiskRadarCache();
 }
 
 function invalidateAllDataCaches() {
