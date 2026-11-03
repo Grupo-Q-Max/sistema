@@ -616,7 +616,6 @@ async function getCachedBaseSectorUsers(sector: 'FISCAL' | 'DP' | 'CONTABIL'): P
         {
           responsibleAssignments: { some: { sector: sector as any } },
         },
-        ...(sector === 'CONTABIL' ? [{ role: 'FISCAL' as any }] : []),
       ],
     },
     select: { id: true, name: true, email: true, role: true, active: true },
@@ -1923,12 +1922,12 @@ app.post('/api/companies', async (req, res) => {
     let isPrivileged = false;
     if (userId) {
       const actor = await prisma.user.findUnique({ where: { id: userId } });
-      if (actor && (actor.role === 'ADMIN' || actor.role === 'SOCIO')) {
+      if (actor && (actor.role === 'ADMIN' || actor.role === 'SOCIO' || actor.role === 'CADASTRO' || actor.role === 'CUSHMAN')) {
         isPrivileged = true;
       }
     }
     if ((sdLogin || sdPassword) && !isPrivileged) {
-      return res.status(403).json({ error: 'Apenas Administradores e Sócios podem cadastrar o SD Login e SD Senha.' });
+      return res.status(403).json({ error: 'Apenas Administradores, Sócios e Cadastro podem cadastrar o SD Login e SD Senha.' });
     }
 
     if (!name || !cnpj) {
@@ -2134,7 +2133,7 @@ app.put('/api/companies/:id', async (req, res) => {
     let isPrivileged = false;
     if (userId) {
       const actor = await prisma.user.findUnique({ where: { id: userId } });
-      if (actor && (actor.role === 'ADMIN' || actor.role === 'SOCIO')) {
+      if (actor && (actor.role === 'ADMIN' || actor.role === 'SOCIO' || actor.role === 'CADASTRO' || actor.role === 'CUSHMAN')) {
         isPrivileged = true;
       }
     }
@@ -2145,7 +2144,7 @@ app.put('/api/companies/:id', async (req, res) => {
     const newSdPassword = sdPassword !== undefined ? (sdPassword ? sdPassword.trim() : '') : currentSdPassword;
 
     if ((newSdLogin !== currentSdLogin || newSdPassword !== currentSdPassword) && !isPrivileged) {
-      return res.status(403).json({ error: 'Apenas Administradores e Sócios podem alterar o SD Login e SD Senha.' });
+      return res.status(403).json({ error: 'Apenas Administradores, Sócios e Cadastro podem alterar o SD Login e SD Senha.' });
     }
 
     if (isPrivileged) {
@@ -2750,6 +2749,8 @@ app.post('/api/users', async (req, res) => {
       const found = sectorPermissions.find((p: any) => p.sector === s);
       if (found) return { sector: s, access: found.access };
       if (role === 'ADMIN' || role === 'SOCIO') return { sector: s, access: 'EDIT' };
+      if (role === 'CUSHMAN' && s === 'CUSHMAN') return { sector: s, access: 'EDIT' };
+      if (role === 'CADASTRO') return { sector: s, access: 'NONE' };
       if (role === s) return { sector: s, access: 'EDIT' };
       return { sector: s, access: 'NONE' };
     });
@@ -2759,6 +2760,14 @@ app.post('/api/users', async (req, res) => {
       const found = screenPermissions.find((p: any) => p.screen === sc.id);
       if (found) return { screen: sc.id, allowed: Boolean(found.allowed) };
       if (role === 'ADMIN' || role === 'SOCIO') return { screen: sc.id, allowed: true };
+      if (role === 'CADASTRO') {
+        if (['companies', 'certificates', 'settings-data-quality'].includes(sc.id)) return { screen: sc.id, allowed: true };
+        return { screen: sc.id, allowed: false };
+      }
+      if (role === 'CUSHMAN') {
+        if (['companies', 'certificates', 'closings'].includes(sc.id)) return { screen: sc.id, allowed: true };
+        return { screen: sc.id, allowed: false };
+      }
       if (['settings-permissions', 'settings-columns', 'installments-create', 'settings-data-quality', 'logs'].includes(sc.id)) return { screen: sc.id, allowed: false };
       return { screen: sc.id, allowed: true };
     });

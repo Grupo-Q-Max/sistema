@@ -176,6 +176,7 @@ function formatMonthYearMask(value: string): string {
 export function Companies({ currentView, onNavigate, currentUser, onLogout }: CompaniesProps) {
   const [companies, setCompanies] = useState<Company[]>([]);
   const isPrivileged = currentUser?.role === 'ADMIN' || currentUser?.role === 'SOCIO';
+  const canManageSd = isPrivileged || currentUser?.role === 'CADASTRO' || currentUser?.role === 'CUSHMAN';
   const [onlyMyCompanies, setOnlyMyCompanies] = useState(false);
   const [catalog, setCatalog] = useState<CompanyCatalogConfig>(() => normalizeCompanyCatalog(DEFAULT_COMPANY_CATALOG));
   const [loading, setLoading] = useState(true);
@@ -1712,21 +1713,21 @@ export function Companies({ currentView, onNavigate, currentUser, onLogout }: Co
                   <div className="grid-2">
                     <div className="input-field">
                       <label htmlFor="modal-sd-login">
-                        23. SD Login (Empregador Web) {!isPrivileged && <span className="hint">(🔒 Somente Sócio/Admin)</span>}
+                        23. SD Login (Empregador Web) {!canManageSd && <span className="hint">(🔒 Somente Sócio/Admin/Cadastro)</span>}
                       </label>
                       <input
                         id="modal-sd-login"
                         type="text"
                         placeholder="Login SD"
                         value={sdLogin}
-                        disabled={!isPrivileged}
+                        disabled={!canManageSd}
                         onChange={(e) => setSdLogin(e.target.value)}
                       />
                     </div>
 
                     <div className="input-field">
                       <label htmlFor="modal-sd-senha">
-                        24. SD Senha {!isPrivileged && <span className="hint">(🔒 Somente Sócio/Admin)</span>}
+                        24. SD Senha {!canManageSd && <span className="hint">(🔒 Somente Sócio/Admin/Cadastro)</span>}
                       </label>
                       <div className="pwd-input-wrap">
                         <input
@@ -1734,7 +1735,7 @@ export function Companies({ currentView, onNavigate, currentUser, onLogout }: Co
                           type={showSdPwd ? 'text' : 'password'}
                           placeholder="Senha SD"
                           value={sdPassword}
-                          disabled={!isPrivileged}
+                          disabled={!canManageSd}
                           onChange={(e) => setSdPassword(e.target.value)}
                         />
                         <button

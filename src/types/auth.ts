@@ -28,7 +28,7 @@ export interface CurrentUser {
   id: string;
   name?: string | null;
   email: string;
-  role: 'ADMIN' | 'SOCIO' | 'FISCAL' | 'DP' | 'CONTABIL' | 'FINANCEIRO' | 'CADASTRO';
+  role: 'ADMIN' | 'SOCIO' | 'FISCAL' | 'DP' | 'CONTABIL' | 'FINANCEIRO' | 'CADASTRO' | 'CUSHMAN';
   active: boolean;
   leftAt?: string | null;
   exitReason?: string | null;

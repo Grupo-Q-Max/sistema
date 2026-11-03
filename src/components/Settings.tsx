@@ -35,6 +35,7 @@ import {
   Scale,
   ListChecks,
   CalendarClock,
+  Sparkles,
 } from 'lucide-react';
 import { Sidebar } from './Sidebar';
 import { ChangePasswordModal } from './ChangePasswordModal';
@@ -87,7 +88,8 @@ const ROLE_LABEL_MAP: Record<string, string> = {
   DP: 'DP',
   CONTABIL: 'Contábil',
   FINANCEIRO: 'Financeiro',
-  CADASTRO: 'Cadastro',
+  CADASTRO: 'Cadastro de Empresas',
+  CUSHMAN: 'Cushman',
 };
 
 const ROLES = [
@@ -97,7 +99,8 @@ const ROLES = [
   { value: 'DP', label: 'Setor DP' },
   { value: 'CONTABIL', label: 'Setor Contábil' },
   { value: 'FINANCEIRO', label: 'Setor Financeiro' },
-  { value: 'CADASTRO', label: 'Cadastro / Operacional' },
+  { value: 'CADASTRO', label: 'Cadastro de Empresas (Criar e Editar)' },
+  { value: 'CUSHMAN', label: 'Cushman (Empresas + Fechamento Cushman)' },
 ];
 
 const SCREENS = [
@@ -223,28 +226,14 @@ export function Settings({ currentView, onNavigate, currentUser, onLogout }: Set
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [isUserModalOpen, isColumnModalOpen]);
 
-  // Abrir Modal de Usuário para Criação
-  const handleOpenCreateUser = () => {
-    setEditingUser(null);
-    setUserName('');
-    setUserEmail('');
-    setUserPassword('');
-    setUserRole(isActorSocio ? 'FISCAL' : 'CADASTRO');
-    setUserActive(true);
-    setUserCompanyScope('ALL');
-    setUserEditOnlyResponsible(false);
-    setUserSelectedCompanies([]);
-
-    // Default sector access
+  const applyRolePreset = (role: string) => {
     const defaultSectors: Record<string, 'NONE' | 'VIEW' | 'EDIT'> = {};
     SECTORS.forEach((s) => (defaultSectors[s.key] = 'NONE'));
-    setUserSectorAccess(defaultSectors);
 
-    // Default screens access
     const defaultScreens: Record<string, boolean> = {
-      dashboard: true,
-      analytics: true,
-      closings: true,
+      dashboard: false,
+      analytics: false,
+      closings: false,
       companies: false,
       certificates: false,
       'installments-create': false,
@@ -253,7 +242,86 @@ export function Settings({ currentView, onNavigate, currentUser, onLogout }: Set
       'settings-permissions': false,
       'settings-columns': false,
     };
+
+    let scope: 'ALL' | 'RESPONSIBLE' | 'CUSTOM' = 'ALL';
+    let editOnly = false;
+
+    if (role === 'ADMIN' || role === 'SOCIO') {
+      SECTORS.forEach((s) => (defaultSectors[s.key] = 'EDIT'));
+      SCREENS.forEach((sc) => (defaultScreens[sc.id] = true));
+      scope = 'ALL';
+      editOnly = false;
+    } else if (role === 'CADASTRO') {
+      // Tipo de conta padrão para criar e editar empresas, sem fechamentos operacionais nem configurações
+      SECTORS.forEach((s) => (defaultSectors[s.key] = 'NONE'));
+      defaultScreens.companies = true;
+      defaultScreens.certificates = true;
+      defaultScreens['settings-data-quality'] = true;
+      scope = 'ALL';
+      editOnly = false;
+    } else if (role === 'CUSHMAN') {
+      // Tipo de conta Cushman: pode ver todas e editar empresas, gerencia fechamento Cushman, não vê Fiscal/DP/Contábil
+      SECTORS.forEach((s) => (defaultSectors[s.key] = 'NONE'));
+      defaultSectors.CUSHMAN = 'EDIT';
+      defaultScreens.companies = true;
+      defaultScreens.certificates = true;
+      defaultScreens.closings = true;
+      scope = 'ALL';
+      editOnly = false;
+    } else if (role === 'FISCAL') {
+      defaultSectors.FISCAL = 'EDIT';
+      defaultSectors.PARCELAMENTO = 'VIEW';
+      defaultScreens.dashboard = true;
+      defaultScreens.analytics = true;
+      defaultScreens.closings = true;
+      defaultScreens.companies = true;
+      defaultScreens.certificates = true;
+      scope = 'ALL';
+      editOnly = false;
+    } else if (role === 'DP') {
+      defaultSectors.DP = 'EDIT';
+      defaultScreens.dashboard = true;
+      defaultScreens.analytics = true;
+      defaultScreens.closings = true;
+      defaultScreens.companies = true;
+      defaultScreens.certificates = true;
+      scope = 'ALL';
+      editOnly = false;
+    } else if (role === 'CONTABIL') {
+      defaultSectors.CONTABIL = 'EDIT';
+      defaultScreens.dashboard = true;
+      defaultScreens.analytics = true;
+      defaultScreens.closings = true;
+      defaultScreens.companies = true;
+      defaultScreens.certificates = true;
+      scope = 'ALL';
+      editOnly = false;
+    } else if (role === 'FINANCEIRO') {
+      defaultSectors.PARCELAMENTO = 'EDIT';
+      defaultScreens.dashboard = true;
+      defaultScreens.closings = true;
+      defaultScreens.companies = true;
+      scope = 'ALL';
+      editOnly = false;
+    }
+
+    setUserSectorAccess(defaultSectors);
     setUserScreenAccess(defaultScreens);
+    setUserCompanyScope(scope);
+    setUserEditOnlyResponsible(editOnly);
+  };
+
+  // Abrir Modal de Usuário para Criação
+  const handleOpenCreateUser = () => {
+    setEditingUser(null);
+    setUserName('');
+    setUserEmail('');
+    setUserPassword('');
+    const initialRole = isActorSocio ? 'FISCAL' : 'CADASTRO';
+    setUserRole(initialRole);
+    setUserActive(true);
+    setUserSelectedCompanies([]);
+    applyRolePreset(initialRole);
 
     setModalTab('info');
     setIsUserModalOpen(true);
@@ -822,8 +890,8 @@ export function Settings({ currentView, onNavigate, currentUser, onLogout }: Set
                           </div>
 
                           <div className="col-role">
-                            <span className={`role-badge ${isSuper ? 'role-full' : ''}`}>
-                              {user.role}
+                            <span className={`role-badge ${isSuper ? 'role-full' : ''}`} title={`Cargo: ${user.role}`}>
+                              {ROLE_LABEL_MAP[user.role] || user.role}
                             </span>
                           </div>
 
@@ -1215,8 +1283,31 @@ export function Settings({ currentView, onNavigate, currentUser, onLogout }: Set
                       </div>
 
                       <div className="form-group">
-                        <label>Cargo / Função</label>
-                        <select value={userRole} onChange={(e) => setUserRole(e.target.value)}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                          <label style={{ margin: 0 }}>Cargo / Função</label>
+                          <button
+                            type="button"
+                            className="btn-link"
+                            style={{ fontSize: 12, display: 'inline-flex', alignItems: 'center', gap: 4, cursor: 'pointer', color: '#6366f1', border: 'none', background: 'none', padding: 0, fontWeight: 500 }}
+                            onClick={() => {
+                              applyRolePreset(userRole);
+                              showToast(`Permissões padrão de "${ROLE_LABEL_MAP[userRole] || userRole}" aplicadas!`);
+                            }}
+                            title="Redefinir setores, telas e escopo de empresas para os padrões recomendados deste cargo"
+                          >
+                            <Sparkles size={13} /> Aplicar permissões padrão do cargo
+                          </button>
+                        </div>
+                        <select
+                          value={userRole}
+                          onChange={(e) => {
+                            const nextRole = e.target.value;
+                            setUserRole(nextRole);
+                            if (!editingUser) {
+                              applyRolePreset(nextRole);
+                            }
+                          }}
+                        >
                           {ROLES.map((r) => {
                             const disabled = isActorSocio && r.value === 'ADMIN';
                             return (
@@ -1226,6 +1317,16 @@ export function Settings({ currentView, onNavigate, currentUser, onLogout }: Set
                             );
                           })}
                         </select>
+                        {userRole === 'CADASTRO' && (
+                          <small style={{ display: 'block', marginTop: 5, color: '#64748b', fontSize: 12 }}>
+                            ℹ️ <strong>Cadastro:</strong> Acesso total para criar e editar empresas, procurações e certificados. Não vê fechamentos operacionais nem configurações.
+                          </small>
+                        )}
+                        {userRole === 'CUSHMAN' && (
+                          <small style={{ display: 'block', marginTop: 5, color: '#64748b', fontSize: 12 }}>
+                            ℹ️ <strong>Cushman:</strong> Pode ver e editar todas as empresas + gerenciar o Fechamento Cushman. Não visualiza Fiscal, DP ou Contábil.
+                          </small>
+                        )}
                       </div>
 
                       <div className="form-group full-width">

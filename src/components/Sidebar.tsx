@@ -163,6 +163,7 @@ export function Sidebar({ currentView, onNavigate, currentUser, onLogout }: Side
     CONTABIL: 'Contábil',
     FINANCEIRO: 'Financeiro',
     CADASTRO: 'Cadastro',
+    CUSHMAN: 'Cushman',
   };
 
   return (

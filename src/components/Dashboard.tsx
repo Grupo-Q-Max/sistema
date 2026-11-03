@@ -143,6 +143,7 @@ const ROLE_LABEL_MAP: Record<string, string> = {
   CONTABIL: 'Contábil',
   FINANCEIRO: 'Financeiro',
   CADASTRO: 'Cadastro',
+  CUSHMAN: 'Cushman',
 };
 
 const formatDate = (iso: string) => {

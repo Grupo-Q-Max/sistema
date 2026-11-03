@@ -41,6 +41,8 @@ function App() {
 
   const getDefaultView = (user: CurrentUser) => {
     if (user.role === 'ADMIN' || user.role === 'SOCIO') return 'dashboard';
+    if (user.role === 'CADASTRO') return 'companies';
+    if (user.role === 'CUSHMAN') return 'closings-cushman';
     if (hasSectorAccess(user, 'FISCAL')) return 'closings';
     if (hasSectorAccess(user, 'DP')) return 'closings-dp';
     if (hasSectorAccess(user, 'CONTABIL')) return 'closings-accounting';
@@ -50,26 +52,27 @@ function App() {
 
   const handleNavigate = (view: string) => {
     let target = view;
+    const fallbackView = (currentUser?.role === 'CADASTRO' || currentUser?.role === 'CUSHMAN') ? 'companies' : 'dashboard';
     if (target === 'closings' && !hasSectorAccess(currentUser, 'FISCAL')) {
       target = hasSectorAccess(currentUser, 'DP') ? 'closings-dp' 
         : hasSectorAccess(currentUser, 'CONTABIL') ? 'closings-accounting'
         : hasSectorAccess(currentUser, 'CUSHMAN') ? 'closings-cushman'
-        : 'dashboard';
+        : fallbackView;
     } else if (target === 'closings-dp' && !hasSectorAccess(currentUser, 'DP')) {
       target = hasSectorAccess(currentUser, 'FISCAL') ? 'closings'
         : hasSectorAccess(currentUser, 'CONTABIL') ? 'closings-accounting'
         : hasSectorAccess(currentUser, 'CUSHMAN') ? 'closings-cushman'
-        : 'dashboard';
+        : fallbackView;
     } else if (target === 'closings-accounting' && !hasSectorAccess(currentUser, 'CONTABIL')) {
       target = hasSectorAccess(currentUser, 'FISCAL') ? 'closings'
         : hasSectorAccess(currentUser, 'DP') ? 'closings-dp'
         : hasSectorAccess(currentUser, 'CUSHMAN') ? 'closings-cushman'
-        : 'dashboard';
+        : fallbackView;
     } else if (target === 'closings-cushman' && !hasSectorAccess(currentUser, 'CUSHMAN')) {
       target = hasSectorAccess(currentUser, 'FISCAL') ? 'closings'
         : hasSectorAccess(currentUser, 'DP') ? 'closings-dp'
         : hasSectorAccess(currentUser, 'CONTABIL') ? 'closings-accounting'
-        : 'dashboard';
+        : fallbackView;
     }
     setCurrentView(target);
   };
