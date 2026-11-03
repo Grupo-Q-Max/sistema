@@ -753,7 +753,7 @@ export function Closings({ currentView, onNavigate, currentUser, onLogout }: Clo
 
   const editableFilteredRows = useMemo(() => {
     return filteredRows.filter(r => isRowEditable(r));
-  }, [filteredRows, canEditFiscal, isPrivileged, currentUser]);
+  }, [filteredRows]);
 
   const allFilteredSelected = editableFilteredRows.length > 0 && editableFilteredRows.every(r => selectedClosingIds.has(r.id));
 

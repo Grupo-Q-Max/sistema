@@ -1248,13 +1248,16 @@ app.post('/api/closings/bulk-action', async (req, res) => {
       );
 
       const responseData = sanitizeColumnsData(updated.columnsData);
+      const prog = progress as any;
       updatedResults.push({
         id: updated.id,
         columnsData: responseData,
         calculatedStatus: nextStatus,
-        progressPercent: progress.progressPercent,
-        completedCount: progress.completedCount,
-        totalProgressCount: progress.totalProgressCount
+        progressPercent: prog.progressPercent ?? 0,
+        completedCount: prog.progressDone ?? 0,
+        totalProgressCount: prog.progressTotal ?? 0,
+        progressDone: prog.progressDone ?? 0,
+        progressTotal: prog.progressTotal ?? 0
       });
     }
 
