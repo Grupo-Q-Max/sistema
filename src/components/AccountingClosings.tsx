@@ -2,9 +2,10 @@ import {AccountingMonthsModal} from './AccountingMonthsModal';
 import {ClosingProgressDetails} from './ClosingProgressDetails';
 import {groupAccountingColumns,buildClosingProgress,summarizeClosingProgress} from '../config/closingProgress';
 import {useEffect,useMemo,useRef,useState,useDeferredValue} from 'react';
-import {Building2,FileCheck,CheckCircle2,Clock,AlertCircle,Sparkles,Search,ChevronLeft,ChevronRight,ExternalLink,AlertTriangle,Copy,RefreshCw,LockKeyhole,X} from 'lucide-react';
+import {Building2,FileCheck,CheckCircle2,Clock,AlertCircle,Sparkles,Search,ChevronLeft,ChevronRight,ExternalLink,AlertTriangle,Copy,RefreshCw,LockKeyhole,X,Users} from 'lucide-react';
 import {Sidebar} from './Sidebar';
 import {CompanyDetailsModal,getCertificateStatus,formatCnpj,formatRegimeLabel} from './CompanyDetailsModal';
+import {BulkAssignResponsibleModal} from './BulkAssignResponsibleModal';
 import {ClosingSectorTabs,hasSectorAccess} from './ClosingSectorTabs';
 import {PayrollInput} from './PayrollClosings';
 import {useCompetenceCalendar} from './useCompetenceCalendar';
@@ -32,6 +33,9 @@ export function AccountingClosings({currentView,onNavigate,currentUser,onLogout}
   const [loading,setLoading]=useState(true);const [error,setError]=useState('');const [pending,setPending]=useState(0);
   const [search,setSearch]=useState('');const [situation,setSituation]=useState('ALL');const [statusFilter,setStatusFilter]=useState<'ALL'|'COMPLETED'|'IN_PROGRESS'|'PENDING'>('ALL');const [responsibleFilter,setResponsibleFilter]=useState('ALL');const [regime,setRegime]=useState('ALL');const [groupFilter,setGroupFilter]=useState('ALL');
   const [sort,setSort]=useState<{key:'code'|'name'|'groupName';asc:boolean}>({key:'code',asc:true});
+  const [selectedCompanyIds,setSelectedCompanyIds]=useState<string[]>([]);
+  const [bulkAssignOpen,setBulkAssignOpen]=useState(false);
+  const [bulkToast,setBulkToast]=useState<string|null>(null);
   const [companyDetails,setCompanyDetails]=useState<any|null>(null);
   const [notes,setNotes]=useState<{row:Row;column:any}|null>(null);const [noteDraft,setNoteDraft]=useState('');const [noteSaving,setNoteSaving]=useState(false);const [noteError,setNoteError]=useState('');
   const [copied,setCopied]=useState('');const [scrollWidth,setScrollWidth]=useState(0);
@@ -72,6 +76,14 @@ export function AccountingClosings({currentView,onNavigate,currentUser,onLogout}
     if (sort.key === 'groupName') return String(a.company.groupName||'').localeCompare(String(b.company.groupName||''),'pt-BR',{numeric:true})*(sort.asc?1:-1);
     return String(a.company[sort.key]||'').localeCompare(String(b.company[sort.key]||''),'pt-BR',{numeric:true})*(sort.asc?1:-1);
   }),[scopedRows,deferredSearch,situation,statusFilter,responsibleFilter,regime,groupFilter,sort,year]);
+  const allFilteredSelected = filtered.length > 0 && filtered.every(r => selectedCompanyIds.includes(r.company.id));
+  const handleToggleSelectAll = () => {
+    if (allFilteredSelected) {
+      setSelectedCompanyIds([]);
+    } else {
+      setSelectedCompanyIds(filtered.map(r => r.company.id));
+    }
+  };
   const visibleColumns=groupAccountingColumns(columns);const monthsRow=rows.find(row=>row.closingId===monthsClosingId);
   const regimes=Array.from(new Set(scopedRows.map(row=>row.company.taxRegime).filter(Boolean)));
   const summary=summarizeClosingProgress(buildClosingProgress(scopedRows,columns,'CONTABIL',new Date(Date.UTC(year,0,1)),latestPeriod),scopedRows.length);
@@ -220,9 +232,18 @@ export function AccountingClosings({currentView,onNavigate,currentUser,onLogout}
             <th key={label} className={isCode ? 'sticky-col-code' : isCompany ? 'sticky-col-company' : ''}>
               <div className="th-header-cell">
                 {isCode ? (
-                  <button className="payroll-sort-btn" onClick={() => setSort({ key: 'code', asc: sort.key === 'code' ? !sort.asc : true })}>
-                    {label}<span>{sort.key === 'code' ? (sort.asc ? '▲' : '▼') : '⇅'}</span>
-                  </button>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <input
+                      type="checkbox"
+                      checked={allFilteredSelected}
+                      onChange={handleToggleSelectAll}
+                      title={allFilteredSelected ? "Desmarcar todas" : "Selecionar todas as empresas filtradas"}
+                      style={{ accentColor: '#818cf8', cursor: 'pointer', width: 14, height: 14 }}
+                    />
+                    <button className="payroll-sort-btn" onClick={() => setSort({ key: 'code', asc: sort.key === 'code' ? !sort.asc : true })}>
+                      {label}<span>{sort.key === 'code' ? (sort.asc ? '▲' : '▼') : '⇅'}</span>
+                    </button>
+                  </div>
                 ) : isCompany ? (
                   <button className="payroll-sort-btn" onClick={() => setSort({ key: 'name', asc: sort.key === 'name' ? !sort.asc : true })}>
                     {label}<span>{sort.key === 'name' ? (sort.asc ? '▲' : '▼') : '⇅'}</span>
@@ -240,7 +261,23 @@ export function AccountingClosings({currentView,onNavigate,currentUser,onLogout}
         })}
         {visibleColumns.map(column=>{const month=accountingMonth(column);const locked=!!month&&Date.UTC(year,month-1,1)>latestPeriod.getTime();return <th key={column.id} title={locked?'Libera na virada do mês seguinte':visibilitySummary(column)}><div className="th-header-cell">{column.name}{locked&&<LockKeyhole size={12}/>}</div></th>;})}
       </tr></thead><tbody>{!filtered.length?<tr><td colSpan={7+visibleColumns.length} className="payroll-empty">Nenhuma empresa encontrada neste ano.</td></tr>:filtered.map(row=>{const company=row.company;const certificate=company.hasClientCertificate?getCertificateStatus(company.certificateExpiration):null;return <tr key={row.closingId}>
-        <td className="sticky-col-code"><span style={{fontWeight:600,color:'#94a3b8'}}>{formatCompanyCode(company.code)||'—'}</span></td>
+        <td className="sticky-col-code">
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <input
+              type="checkbox"
+              checked={selectedCompanyIds.includes(company.id)}
+              onChange={(e) => {
+                e.stopPropagation();
+                setSelectedCompanyIds(prev =>
+                  prev.includes(company.id) ? prev.filter(id => id !== company.id) : [...prev, company.id]
+                );
+              }}
+              title="Selecionar empresa"
+              style={{ accentColor: '#818cf8', cursor: 'pointer', width: 14, height: 14 }}
+            />
+            <span style={{fontWeight:600,color:'#94a3b8'}}>{formatCompanyCode(company.code)||'—'}</span>
+          </div>
+        </td>
         <td className="sticky-col-company"><div className="company-cell-wrapper"><button className="company-interactive-link" onClick={()=>setCompanyDetails(company)}><div className="company-link-left"><Building2 size={16} color="#818cf8"/><span>{company.name}</span></div><div className="company-link-icon-chip"><span>Ver Dados</span><ExternalLink size={10}/></div></button>{company.tradeName&&<div className="company-cell-trade">{company.tradeName}</div>}{certificate&&<button className={`cert-warning-tag ${certificate.status==='EXPIRED'?'expired':''}`} onClick={()=>setCompanyDetails(company)}><AlertTriangle size={12}/>{certificate.label}</button>}</div></td>
         <td>{company.groupName ? <span className="group-badge" style={{ padding: '2px 8px', borderRadius: '4px', background: 'rgba(99, 102, 241, 0.1)', color: '#a5b4fc', fontSize: '12px', fontWeight: 500, whiteSpace: 'nowrap' }}>{company.groupName}</span> : <span style={{ color: '#64748b' }}>—</span>}</td>
         <td><select className="table-user-select" aria-label={`Responsável Contábil de ${company.name}`} value={responsible(company)?.userId||''} disabled={!isRowEditable(row)||pending>0} onChange={event=>{void changeResponsible(row,event.target.value);}}><option value="">Não atribuído</option>{users.map(user=><option key={user.id} value={user.id} disabled={user.active===false}>{user.name||user.email}</option>)}</select></td>
@@ -284,5 +321,55 @@ export function AccountingClosings({currentView,onNavigate,currentUser,onLogout}
     );
   })()}
   {notes&&<div className="closing-modal-backdrop" onClick={()=>{if(!noteSaving)setNotes(null);}}><div className="closing-modal-content" style={{maxWidth:520}} onClick={event=>event.stopPropagation()}><div className="closing-modal-header"><div className="closing-modal-title purple">Observações Contábil · {year}</div><button className="closing-modal-close-btn" aria-label="Fechar observações" disabled={noteSaving} onClick={()=>setNotes(null)}><X size={20}/></button></div><div className="closing-modal-body"><p>{notes.row.company.name}</p><textarea className="payroll-note-textarea" value={noteDraft} disabled={!isRowEditable(notes.row)||noteSaving||notes.column.isEditable===false} onChange={event=>setNoteDraft(event.target.value)} rows={6}/>{noteError&&<p role="alert">{noteError}</p>}<div className="sub-modal-actions"><button className="btn-secondary-light" disabled={noteSaving} onClick={()=>setNotes(null)}>Fechar</button>{isRowEditable(notes.row)&&notes.column.isEditable!==false&&<button className="btn-primary-gradient" disabled={noteSaving} onClick={async()=>{setNoteSaving(true);setNoteError('');try{await save(notes.row,notes.column,noteDraft);setNotes(null);}catch(cause){setNoteError(cause instanceof Error?cause.message:'Erro ao salvar.');}finally{setNoteSaving(false);}}}>{noteSaving?'Salvando...':'Salvar observações'}</button>}</div></div></div></div>}
+  {selectedCompanyIds.length > 0 && (
+    <div className="companies-bulk-bar">
+      <div className="bulk-bar-info">
+        <CheckCircle2 size={18} color="#818cf8" />
+        <span>
+          <strong>{selectedCompanyIds.length}</strong> empresa(s) selecionada(s)
+        </span>
+      </div>
+      <div className="bulk-bar-actions">
+        <button
+          type="button"
+          className="bulk-btn-assign"
+          onClick={() => setBulkAssignOpen(true)}
+        >
+          <Users size={16} />
+          <span>Atribuir Responsável em Massa</span>
+        </button>
+        <button
+          type="button"
+          className="bulk-btn-clear"
+          onClick={() => setSelectedCompanyIds([])}
+        >
+          Desmarcar Todas
+        </button>
+      </div>
+    </div>
+  )}
+
+  <BulkAssignResponsibleModal
+    isOpen={bulkAssignOpen}
+    onClose={() => setBulkAssignOpen(false)}
+    selectedCompanyIds={selectedCompanyIds}
+    companies={scopedRows.map(r => r.company)}
+    users={users}
+    currentUser={currentUser}
+    defaultSector="CONTABIL"
+    onSuccess={(count, sectorLabel, respName) => {
+      setSelectedCompanyIds([]);
+      setBulkToast(`${count} empresa(s) atribuída(s) para ${respName} no ${sectorLabel}!`);
+      setTimeout(() => setBulkToast(null), 5000);
+      void load();
+    }}
+  />
+
+  {bulkToast && (
+    <div className="payroll-copy-toast" role="status" style={{ background: '#10b981' }}>
+      <CheckCircle2 size={16} />
+      {bulkToast}
+    </div>
+  )}
   </div>;
 }

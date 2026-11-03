@@ -31,6 +31,7 @@ import {
   Send,
   History,
   Zap,
+  Users,
 } from 'lucide-react';
 import type { CurrentUser } from '../types/auth';
 import { API } from '../api';
@@ -42,6 +43,7 @@ import { ManualCompetenceModal } from './ManualCompetenceModal';
 import { ClosingSectorTabs, hasSectorAccess } from './ClosingSectorTabs';
 import { CellAuditModal } from './CellAuditModal';
 import { BulkActionModal } from './BulkActionModal';
+import { BulkAssignResponsibleModal } from './BulkAssignResponsibleModal';
 import { DeadlineTimelineWidget } from './DeadlineTimelineWidget';
 import { getColumnDeadlineDay, getDeadlineDate, getDeadlineUrgency } from '../config/legalDeadlines';
 import './FiscalPopup.css';
@@ -751,6 +753,7 @@ export function Closings({ currentView, onNavigate, currentUser, onLogout }: Clo
   // Ações em Massa (Bulk Actions)
   const [selectedClosingIds, setSelectedClosingIds] = useState<Set<string>>(new Set());
   const [bulkModalOpen, setBulkModalOpen] = useState(false);
+  const [bulkAssignOpen, setBulkAssignOpen] = useState(false);
   const [bulkFeedback, setBulkFeedback] = useState<string | null>(null);
 
   const editableFilteredRows = useMemo(() => {
@@ -2102,6 +2105,14 @@ export function Closings({ currentView, onNavigate, currentUser, onLogout }: Clo
               </button>
               <button
                 type="button"
+                className="bulk-btn-assign"
+                onClick={() => setBulkAssignOpen(true)}
+              >
+                <Users size={15} />
+                Atribuir Responsável
+              </button>
+              <button
+                type="button"
                 className="bulk-btn-trigger"
                 onClick={() => setBulkModalOpen(true)}
               >
@@ -2146,6 +2157,22 @@ export function Closings({ currentView, onNavigate, currentUser, onLogout }: Clo
           period={new Date(Date.UTC(selectedYear, selectedMonth - 1, 1))}
           currentUser={currentUser}
           onSuccess={handleBulkSuccess}
+        />
+
+        <BulkAssignResponsibleModal
+          isOpen={bulkAssignOpen}
+          onClose={() => setBulkAssignOpen(false)}
+          selectedCompanyIds={selectedRowsList.map(r => r.company?.id).filter(Boolean)}
+          companies={scopedRows.map(r => r.company)}
+          users={fiscalUsers}
+          currentUser={currentUser}
+          defaultSector="FISCAL"
+          onSuccess={(count, sectorLabel, respName) => {
+            setSelectedClosingIds(new Set());
+            setBulkFeedback(`${count} empresa(s) atribuída(s) para ${respName} no ${sectorLabel}!`);
+            setTimeout(() => setBulkFeedback(null), 5000);
+            void fetchClosings();
+          }}
         />
       </main>
     </div>

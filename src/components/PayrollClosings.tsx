@@ -7,6 +7,7 @@ import { Sidebar } from './Sidebar';
 import { ClosingSectorTabs, hasSectorAccess } from './ClosingSectorTabs';
 import { TableSkeleton, ButtonSpinner } from './LoadingSkeleton';
 import { CellAuditModal } from './CellAuditModal';
+import { BulkAssignResponsibleModal } from './BulkAssignResponsibleModal';
 import type { CurrentUser } from '../types/auth';
 import { API } from '../api';
 import { PAYROLL_API_VERSION, effectiveFieldConfig, resolveColumnKey } from '../config/payrollColumns';
@@ -164,6 +165,9 @@ export function PayrollClosings({ currentView, onNavigate, currentUser, onLogout
   const [responsibleFilter, setResponsibleFilter] = useState('ALL');
   const [regimeFilter, setRegimeFilter] = useState('ALL');
   const [sort, setSort] = useState<{ key: 'code' | 'name' | 'regime' | 'status' | 'responsible'; asc: boolean }>({ key: 'code', asc: true });
+  const [selectedCompanyIds, setSelectedCompanyIds] = useState<string[]>([]);
+  const [bulkAssignOpen, setBulkAssignOpen] = useState(false);
+  const [bulkToast, setBulkToast] = useState<string | null>(null);
   const [openHeaderFilter, setOpenHeaderFilter] = useState<string | null>(null);
   const [copyMessage, setCopyMessage] = useState('');
   const [scrollWidth, setScrollWidth] = useState(0);
@@ -421,10 +425,37 @@ export function PayrollClosings({ currentView, onNavigate, currentUser, onLogout
 
   const regimes = Array.from(new Set(scopedRows.map(row => row.company.taxRegime).filter(Boolean))).sort((a, b) => formatRegimeLabel(a).localeCompare(formatRegimeLabel(b), 'pt-BR'));
 
+  const allFilteredSelected = filtered.length > 0 && filtered.every(r => selectedCompanyIds.includes(r.company.id));
+  const handleToggleSelectAll = () => {
+    if (allFilteredSelected) {
+      setSelectedCompanyIds([]);
+    } else {
+      setSelectedCompanyIds(filtered.map(r => r.company.id));
+    }
+  };
+
   function renderHeader(label: string, index: number) {
+    if (index === 0) {
+      return (
+        <th key={label} className="sticky-col-code" aria-sort={sort.key === 'code' ? (sort.asc ? 'ascending' : 'descending') : undefined}>
+          <div className="th-header-cell" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <input
+              type="checkbox"
+              checked={allFilteredSelected}
+              onChange={handleToggleSelectAll}
+              title={allFilteredSelected ? "Desmarcar todas" : "Selecionar todas as empresas filtradas"}
+              style={{ accentColor: '#3b82f6', cursor: 'pointer', width: 14, height: 14 }}
+            />
+            <button type="button" className="payroll-sort-btn" title={`Ordenar por ${label}`} onClick={() => setSort({ key: 'code', asc: sort.key === 'code' ? !sort.asc : true })}>
+              {label}<span>{sort.key === 'code' ? (sort.asc ? ' ▲' : ' ▼') : ' ↕'}</span>
+            </button>
+          </div>
+        </th>
+      );
+    }
     const key = (["code", "name", "regime", "status", "responsible"] as const)[index];
     const filter = index === 2 ? { value: regimeFilter, set: setRegimeFilter, options: [{ value: 'ALL', label: 'Todas as tributações' }, ...regimes.map(value => ({ value, label: formatRegimeLabel(value) }))] } : index === 3 ? { value: statusFilter, set: setStatusFilter, options: [{ value: 'ALL', label: 'Todos os status' }, ...Object.entries(STATUS_LABELS).map(([value, label]) => ({ value, label }))] } : index === 4 ? { value: responsibleFilter, set: setResponsibleFilter, options: [{ value: 'ALL', label: 'Todos os responsáveis' }, ...users.map(user => ({ value: user.id, label: user.name || user.email }))] } : null;
-    return <th key={label} className={index === 0 ? 'sticky-col-code' : index === 1 ? 'sticky-col-company' : ''} aria-sort={key && sort.key === key ? (sort.asc ? 'ascending' : 'descending') : undefined}><div className="th-header-cell">
+    return <th key={label} className={index === 1 ? 'sticky-col-company' : ''} aria-sort={key && sort.key === key ? (sort.asc ? 'ascending' : 'descending') : undefined}><div className="th-header-cell">
       {key ? <button type="button" className="payroll-sort-btn" title={`Ordenar por ${label}`} onClick={() => setSort({ key, asc: sort.key === key ? !sort.asc : true })}>{label}<span>{sort.key === key ? (sort.asc ? ' ▲' : ' ▼') : ' ↕'}</span></button> : label}
       {filter && <div className="th-filter-wrapper"><button type="button" className={`th-filter-icon-btn ${filter.value !== 'ALL' ? 'has-filter' : ''}`} aria-label={`Filtrar ${label}`} aria-expanded={openHeaderFilter === key} onClick={() => setOpenHeaderFilter(openHeaderFilter === key ? null : key)}><Filter size={12} /></button>{openHeaderFilter === key && <div className="th-filter-popover"><div className="payroll-filter-heading">Filtrar {label}</div>{filter.options.map(option => <button type="button" key={option.value} className={`th-filter-popover-item ${filter.value === option.value ? 'active' : ''}`} onClick={() => { filter.set(option.value); setOpenHeaderFilter(null); }}><span>{option.label}</span>{filter.value === option.value && <Check size={12} />}</button>)}</div>}</div>}
     </div></th>;
@@ -790,7 +821,23 @@ export function PayrollClosings({ currentView, onNavigate, currentUser, onLogout
                               const certInfo = c.hasClientCertificate ? getCertificateStatus(c.certificateExpiration) : null;
                               return (
                                 <tr key={row.closingId || c.id}>
-                                  <td className="sticky-col-code"><span style={{ fontWeight: 600, color: '#94a3b8' }}>{formatCompanyCode(c.code) || '—'}</span></td>
+                                  <td className="sticky-col-code">
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                      <input
+                                        type="checkbox"
+                                        checked={selectedCompanyIds.includes(c.id)}
+                                        onChange={(e) => {
+                                          e.stopPropagation();
+                                          setSelectedCompanyIds(prev =>
+                                            prev.includes(c.id) ? prev.filter(id => id !== c.id) : [...prev, c.id]
+                                          );
+                                        }}
+                                        title="Selecionar empresa"
+                                        style={{ accentColor: '#3b82f6', cursor: 'pointer', width: 14, height: 14 }}
+                                      />
+                                      <span style={{ fontWeight: 600, color: '#94a3b8' }}>{formatCompanyCode(c.code) || '—'}</span>
+                                    </div>
+                                  </td>
                                   <td className="sticky-col-company">
                                     <div className="company-cell-wrapper">
                                       <button type="button" className="company-interactive-link" title="Ver dados da empresa e certificado" onClick={() => setCompanyDetails(c)}>
@@ -1139,6 +1186,58 @@ export function PayrollClosings({ currentView, onNavigate, currentUser, onLogout
             columnLabel={auditTarget.columnLabel}
             sector="DP"
           />
+        )}
+
+        {/* Barra Flutuante de Ações em Massa */}
+        {selectedCompanyIds.length > 0 && (
+          <div className="companies-bulk-bar">
+            <div className="bulk-bar-info">
+              <CheckCircle2 size={18} color="#60a5fa" />
+              <span>
+                <strong>{selectedCompanyIds.length}</strong> empresa(s) selecionada(s)
+              </span>
+            </div>
+            <div className="bulk-bar-actions">
+              <button
+                type="button"
+                className="bulk-btn-assign"
+                onClick={() => setBulkAssignOpen(true)}
+              >
+                <Users size={16} />
+                <span>Atribuir Responsável em Massa</span>
+              </button>
+              <button
+                type="button"
+                className="bulk-btn-clear"
+                onClick={() => setSelectedCompanyIds([])}
+              >
+                Desmarcar Todas
+              </button>
+            </div>
+          </div>
+        )}
+
+        <BulkAssignResponsibleModal
+          isOpen={bulkAssignOpen}
+          onClose={() => setBulkAssignOpen(false)}
+          selectedCompanyIds={selectedCompanyIds}
+          companies={scopedRows.map(r => r.company)}
+          users={users}
+          currentUser={currentUser}
+          defaultSector="DP"
+          onSuccess={(count, sectorLabel, respName) => {
+            setSelectedCompanyIds([]);
+            setBulkToast(`${count} empresa(s) atribuída(s) para ${respName} no ${sectorLabel}!`);
+            setTimeout(() => setBulkToast(null), 5000);
+            void load();
+          }}
+        />
+
+        {bulkToast && (
+          <div className="payroll-copy-toast" role="status" style={{ background: '#10b981' }}>
+            <CheckCircle2 size={16} />
+            {bulkToast}
+          </div>
         )}
       </main>
     </div>

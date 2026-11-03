@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from 'react';
+import { useState, useEffect, type FormEvent } from 'react';
 import { Users, X, Check, AlertCircle, Building2 } from 'lucide-react';
 import { API } from '../api';
 import { ButtonSpinner } from './LoadingSkeleton';
@@ -13,6 +13,7 @@ export interface BulkAssignResponsibleModalProps {
   users: Array<{ id: string; name: string; email: string; role: string }>;
   onSuccess: (count: number, sectorLabel: string, respName: string) => void;
   currentUser?: CurrentUser | null;
+  defaultSector?: string;
 }
 
 const SECTOR_OPTIONS = [
@@ -30,11 +31,18 @@ export function BulkAssignResponsibleModal({
   users,
   onSuccess,
   currentUser,
+  defaultSector,
 }: BulkAssignResponsibleModalProps) {
-  const [sector, setSector] = useState<string>('FISCAL');
+  const [sector, setSector] = useState<string>(defaultSector || 'FISCAL');
   const [selectedUserId, setSelectedUserId] = useState<string>('');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (defaultSector && isOpen) {
+      setSector(defaultSector);
+    }
+  }, [defaultSector, isOpen]);
 
   if (!isOpen) return null;
 
