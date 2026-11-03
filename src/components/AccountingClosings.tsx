@@ -456,6 +456,8 @@ export function AccountingClosings({currentView,onNavigate,currentUser,onLogout}
     users={users}
     sector="CONTABIL"
     onSelectResponsible={userId => setResponsibleFilter(userId || 'ALL')}
+    onReload={() => { void load(); }}
+    currentUser={currentUser}
   />
   </div>;
 }

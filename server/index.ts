@@ -2343,6 +2343,145 @@ app.post('/api/companies/bulk-responsible', async (req, res) => {
   }
 });
 
+// Prévia de Transferência Direta de Carteira de Responsável
+app.get('/api/responsibles/transfer/preview', async (req, res) => {
+  try {
+    const { fromUserId, sector } = req.query;
+    if (!fromUserId) {
+      return res.status(400).json({ error: 'fromUserId é obrigatório.' });
+    }
+    const normSector = sector && sector !== 'ALL' ? String(sector).toUpperCase() : null;
+    const count = await prisma.companyResponsible.count({
+      where: {
+        userId: String(fromUserId),
+        ...(normSector ? { sector: normSector } : {}),
+      },
+    });
+    res.json({ count });
+  } catch (error) {
+    console.error('Erro ao consultar prévia de transferência de responsáveis:', error);
+    res.status(500).json({ error: 'Erro ao consultar prévia de transferência.' });
+  }
+});
+
+// Transferência Direta de Responsabilidades entre Usuários
+app.post('/api/responsibles/transfer', async (req, res) => {
+  try {
+    const { fromUserId, toUserId, sector, actorId, actorEmail, actorName } = req.body;
+
+    if (!fromUserId || !toUserId) {
+      return res.status(400).json({ error: 'Os colaboradores de origem e destino são obrigatórios.' });
+    }
+
+    if (fromUserId === toUserId) {
+      return res.status(400).json({ error: 'O colaborador de origem e de destino não podem ser o mesmo.' });
+    }
+
+    const [fromUser, toUser] = await Promise.all([
+      prisma.user.findUnique({
+        where: { id: String(fromUserId) },
+        select: { id: true, name: true, email: true, role: true },
+      }),
+      prisma.user.findUnique({
+        where: { id: String(toUserId) },
+        select: { id: true, name: true, email: true, role: true },
+      }),
+    ]);
+
+    if (!fromUser || !toUser) {
+      return res.status(404).json({ error: 'Colaborador de origem ou de destino não foi encontrado.' });
+    }
+
+    const normSector = sector && sector !== 'ALL' ? String(sector).toUpperCase() : null;
+
+    // Busca todas as atribuições atuais do colaborador de origem
+    const assignments = await prisma.companyResponsible.findMany({
+      where: {
+        userId: fromUser.id,
+        ...(normSector ? { sector: normSector } : {}),
+      },
+    });
+
+    if (assignments.length === 0) {
+      return res.json({
+        success: true,
+        count: 0,
+        message: `Nenhuma empresa atribuída a ${fromUser.name || fromUser.email} no setor especificado.`,
+        fromUser: fromUser.name || fromUser.email,
+        toUser: toUser.name || toUser.email,
+        sector: normSector || 'TODOS',
+      });
+    }
+
+    // Executa a migração em lote protegida
+    await prisma.$transaction(async (tx: any) => {
+      // 1. Identifica conflitos onde o destinatário já possui vínculo na mesma empresa e setor
+      const toUserExisting = await tx.companyResponsible.findMany({
+        where: {
+          userId: toUser.id,
+          companyId: { in: assignments.map((a: any) => a.companyId) },
+          ...(normSector ? { sector: normSector } : {}),
+        },
+        select: { companyId: true, sector: true },
+      });
+
+      // 2. Remove vínculos conflitantes do remetente para evitar duplicidade
+      for (const conflict of toUserExisting) {
+        await tx.companyResponsible.deleteMany({
+          where: {
+            userId: fromUser.id,
+            companyId: conflict.companyId,
+            sector: conflict.sector,
+          },
+        });
+      }
+
+      // 3. Atualiza todos os vínculos restantes para o destinatário em uma única operação atômica
+      await tx.companyResponsible.updateMany({
+        where: {
+          userId: fromUser.id,
+          ...(normSector ? { sector: normSector } : {}),
+        },
+        data: {
+          userId: toUser.id,
+        },
+      });
+    }, { timeout: 30000, maxWait: 10000 });
+
+    invalidateAllDataCaches();
+
+    // Registro na trilha de auditoria
+    void logAction(
+      actorId || req.body.userId || null,
+      actorEmail || req.body.userEmail || null,
+      actorName || req.body.userName || 'Sistema',
+      'TRANSFERENCIA_RESPONSABILIDADES',
+      normSector || 'GERAL',
+      null,
+      {
+        totalTransferred: assignments.length,
+        fromUserId: fromUser.id,
+        fromUserName: fromUser.name || fromUser.email,
+        toUserId: toUser.id,
+        toUserName: toUser.name || toUser.email,
+        sector: normSector || 'TODOS',
+      },
+      getClientIp(req)
+    );
+
+    res.json({
+      success: true,
+      count: assignments.length,
+      fromUser: fromUser.name || fromUser.email,
+      toUser: toUser.name || toUser.email,
+      sector: normSector || 'TODOS',
+    });
+  } catch (error) {
+    console.error('Erro ao transferir responsabilidades:', error);
+    res.status(500).json({ error: 'Erro interno ao transferir responsabilidades.' });
+  }
+});
+
 // Trilha de Auditoria na Própria Célula (Quick Cell History)
 app.get('/api/audit/cell-history', async (req, res) => {
   try {

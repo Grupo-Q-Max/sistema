@@ -2075,6 +2075,8 @@ export function Closings({ currentView, onNavigate, currentUser, onLogout }: Clo
           users={fiscalUsers}
           sector="FISCAL"
           onSelectResponsible={(userId) => setResponsibleFilter(userId || 'ALL')}
+          onReload={() => { void fetchClosings(); }}
+          currentUser={currentUser}
         />
 
         {focusModeIndex !== null && (
