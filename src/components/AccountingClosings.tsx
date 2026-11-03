@@ -2,10 +2,11 @@ import {AccountingMonthsModal} from './AccountingMonthsModal';
 import {ClosingProgressDetails} from './ClosingProgressDetails';
 import {groupAccountingColumns,buildClosingProgress,summarizeClosingProgress} from '../config/closingProgress';
 import {useEffect,useMemo,useRef,useState,useDeferredValue} from 'react';
-import {Building2,FileCheck,CheckCircle2,Clock,AlertCircle,Sparkles,Search,ChevronLeft,ChevronRight,ExternalLink,AlertTriangle,Copy,RefreshCw,LockKeyhole,X,Users} from 'lucide-react';
+import {Building2,FileCheck,CheckCircle2,Clock,AlertCircle,Sparkles,Search,ChevronLeft,ChevronRight,ExternalLink,AlertTriangle,Copy,RefreshCw,LockKeyhole,X,Users,BarChart3} from 'lucide-react';
 import {Sidebar} from './Sidebar';
 import {CompanyDetailsModal,getCertificateStatus,formatCnpj,formatRegimeLabel} from './CompanyDetailsModal';
 import {BulkAssignResponsibleModal} from './BulkAssignResponsibleModal';
+import {ResponsibleWorkloadModal} from './ResponsibleWorkloadModal';
 import {ClosingSectorTabs,hasSectorAccess} from './ClosingSectorTabs';
 import {PayrollInput} from './PayrollClosings';
 import {useCompetenceCalendar} from './useCompetenceCalendar';
@@ -31,11 +32,12 @@ export function AccountingClosings({currentView,onNavigate,currentUser,onLogout}
   const latestYear=new Date(Date.UTC(latestPeriod.getUTCFullYear(),latestPeriod.getUTCMonth()+1,1)).getUTCFullYear();
   const [rows,setRows]=useState<Row[]>([]);const [columns,setColumns]=useState<any[]>([]);const [users,setUsers]=useState<any[]>([]);
   const [loading,setLoading]=useState(true);const [error,setError]=useState('');const [pending,setPending]=useState(0);
-  const [search,setSearch]=useState('');const [situation,setSituation]=useState('ALL');const [statusFilter,setStatusFilter]=useState<'ALL'|'COMPLETED'|'IN_PROGRESS'|'PENDING'>('ALL');const [responsibleFilter,setResponsibleFilter]=useState('ALL');const [regime,setRegime]=useState('ALL');const [groupFilter,setGroupFilter]=useState('ALL');
+  const [search,setSearch]=useState('');const [situation,setSituation]=useState('ALL');const [statusFilter,setStatusFilter]=useState<'ALL'|'COMPLETED'|'IN_PROGRESS'|'PENDING'>('ALL');const [responsibleFilter,setResponsibleFilter]=useState('ALL');const [regime,setRegime]=useState('ALL');const [groupFilter,setGroupFilter]=useState('ALL');const [certFilter,setCertFilter]=useState('ALL');
   const [sort,setSort]=useState<{key:'code'|'name'|'groupName';asc:boolean}>({key:'code',asc:true});
   const [selectedCompanyIds,setSelectedCompanyIds]=useState<string[]>([]);
   const [bulkAssignOpen,setBulkAssignOpen]=useState(false);
   const [bulkToast,setBulkToast]=useState<string|null>(null);
+  const [workloadOpen,setWorkloadOpen]=useState(false);
   const [companyDetails,setCompanyDetails]=useState<any|null>(null);
   const [notes,setNotes]=useState<{row:Row;column:any}|null>(null);const [noteDraft,setNoteDraft]=useState('');const [noteSaving,setNoteSaving]=useState(false);const [noteError,setNoteError]=useState('');
   const [copied,setCopied]=useState('');const [scrollWidth,setScrollWidth]=useState(0);
@@ -70,12 +72,22 @@ export function AccountingClosings({currentView,onNavigate,currentUser,onLogout}
   const filtered=useMemo(()=>scopedRows.filter(row=>{
     const company=row.company;const term=deferredSearch.trim().toLocaleLowerCase('pt-BR');const text=[company.code,formatCompanyCode(company.code),company.name,company.tradeName,company.cnpj,company.groupName,company.city].filter(Boolean).join(' ').toLocaleLowerCase('pt-BR');
     const digits=term.replace(/\D/g,'');const match=text.includes(term)||(digits.length>0&&(company.cnpj||'').replace(/\D/g,'').includes(digits));
-    return match&&(situation==='ALL'||(situation==='LEFT'?left(company):!left(company)))&&(statusFilter==='ALL'||row.calculatedStatus===statusFilter)&&(responsibleFilter==='ALL'||responsible(company)?.userId===responsibleFilter)&&(regime==='ALL'||company.taxRegime===regime)&&(groupFilter==='ALL'||company.groupName===groupFilter);
+    let matchCert = true;
+    if (certFilter !== 'ALL') {
+      const cert = company.hasClientCertificate ? getCertificateStatus(company.certificateExpiration) : null;
+      if (certFilter === 'EXPIRING') matchCert = cert?.status === 'EXPIRED' || cert?.status === 'WARNING';
+      else if (certFilter === 'EXPIRED') matchCert = cert?.status === 'EXPIRED';
+      else if (certFilter === 'WARNING') matchCert = cert?.status === 'WARNING';
+      else if (certFilter === 'OK') matchCert = cert?.status === 'OK';
+      else if (certFilter === 'HAS_CERT') matchCert = Boolean(company.hasClientCertificate);
+      else if (certFilter === 'NO_CERT') matchCert = !company.hasClientCertificate;
+    }
+    return match && matchCert &&(situation==='ALL'||(situation==='LEFT'?left(company):!left(company)))&&(statusFilter==='ALL'||row.calculatedStatus===statusFilter)&&(responsibleFilter==='ALL'||responsible(company)?.userId===responsibleFilter)&&(regime==='ALL'||company.taxRegime===regime)&&(groupFilter==='ALL'||company.groupName===groupFilter);
   }).sort((a,b)=> {
     if (sort.key === 'code') return compareCodes(a.company.code, b.company.code, sort.asc);
     if (sort.key === 'groupName') return String(a.company.groupName||'').localeCompare(String(b.company.groupName||''),'pt-BR',{numeric:true})*(sort.asc?1:-1);
     return String(a.company[sort.key]||'').localeCompare(String(b.company[sort.key]||''),'pt-BR',{numeric:true})*(sort.asc?1:-1);
-  }),[scopedRows,deferredSearch,situation,statusFilter,responsibleFilter,regime,groupFilter,sort,year]);
+  }),[scopedRows,deferredSearch,situation,statusFilter,responsibleFilter,regime,groupFilter,certFilter,sort,year]);
   const allFilteredSelected = filtered.length > 0 && filtered.every(r => selectedCompanyIds.includes(r.company.id));
   const handleToggleSelectAll = () => {
     if (allFilteredSelected) {
@@ -137,6 +149,21 @@ export function AccountingClosings({currentView,onNavigate,currentUser,onLogout}
     });
 
     exportToCsv(`fechamento_contabil_${year}`, csvColumns, data);
+  };
+
+  const handleCopyAllCnpjs = async () => {
+    const cnpjs = filtered.map(r => r.company.cnpj).filter(Boolean);
+    if (!cnpjs.length) {
+      setCopied('Nenhum CNPJ encontrado.');
+      return;
+    }
+    const cleanList = cnpjs.map((c: string) => c.replace(/\D/g, '')).join('\n');
+    try {
+      await navigator.clipboard.writeText(cleanList);
+      setCopied(`${cnpjs.length} CNPJs copiados!`);
+    } catch {
+      setError('Não foi possível copiar os CNPJs.');
+    }
   };
 
   return <div className="crm-dashboard"><Sidebar currentView={currentView} onNavigate={onNavigate} currentUser={currentUser} onLogout={onLogout}/><main className="crm-main"><div className="closings-container payroll-closings accounting-closings">
@@ -203,6 +230,15 @@ export function AccountingClosings({currentView,onNavigate,currentUser,onLogout}
         <select className="closings-select" aria-label="Filtrar tributação" value={regime} onChange={event=>setRegime(event.target.value)}><option value="ALL">Tributação: Todas</option>{regimes.map(value=><option key={value} value={value}>{formatRegimeLabel(value)}</option>)}</select>
         <select className="closings-select" aria-label="Filtrar grupo" value={groupFilter} onChange={event=>setGroupFilter(event.target.value)}><option value="ALL">Grupo: Todos</option>{groups.map(value=><option key={value} value={value}>{value}</option>)}</select>
         <select className="closings-select" aria-label="Filtrar responsável" value={responsibleFilter} onChange={event=>setResponsibleFilter(event.target.value)}><option value="ALL">Responsável: Todos</option>{users.map(user=><option key={user.id} value={user.id}>{user.name||user.email}</option>)}</select>
+        <select className="closings-select" aria-label="Filtrar certificado digital" value={certFilter} onChange={event=>setCertFilter(event.target.value)}>
+          <option value="ALL">Certificados: Todos</option>
+          <option value="EXPIRING">Vencendo ou Vencidos</option>
+          <option value="EXPIRED">Apenas Vencidos</option>
+          <option value="WARNING">Vencendo em até 30 dias</option>
+          <option value="OK">Válidos (&gt; 30 dias)</option>
+          <option value="HAS_CERT">Com certificado</option>
+          <option value="NO_CERT">Sem certificado</option>
+        </select>
         {statusFilter !== 'ALL' && (
           <button
             type="button"
@@ -216,6 +252,14 @@ export function AccountingClosings({currentView,onNavigate,currentUser,onLogout}
           </button>
         )}
         <button className="payroll-refresh-btn" aria-label="Atualizar Contábil" disabled={pending>0||loading} onClick={()=>{void load();}}><RefreshCw size={16}/></button>
+        <button type="button" className="btn-secondary-light" onClick={handleCopyAllCnpjs} title="Copiar CNPJs limpos das empresas filtradas">
+          <Copy size={15} />
+          Copiar CNPJs
+        </button>
+        <button type="button" className="btn-secondary-light" onClick={() => setWorkloadOpen(true)} title="Ver ranking e distribuição de empresas por responsável">
+          <BarChart3 size={15} />
+          Carga da Equipe
+        </button>
         <button className="btn-secondary-light" onClick={handleExport} title="Exportar para Excel (CSV)">
           <ExternalLink size={16} />
           Exportar
@@ -303,6 +347,7 @@ export function AccountingClosings({currentView,onNavigate,currentUser,onLogout}
         notesLabel="Observações Contábil"
         initialNotes={initialNotesValue}
         canEditNotes={activeCompanyRow ? isRowEditable(activeCompanyRow) : false}
+        currentUser={currentUser}
         onSaveNotes={activeCompanyRow && notesCol ? async (newNotes: string) => {
           await save(activeCompanyRow, notesCol, newNotes);
           try {
@@ -371,5 +416,14 @@ export function AccountingClosings({currentView,onNavigate,currentUser,onLogout}
       {bulkToast}
     </div>
   )}
+
+  <ResponsibleWorkloadModal
+    isOpen={workloadOpen}
+    onClose={() => setWorkloadOpen(false)}
+    rows={scopedRows}
+    users={users}
+    sector="CONTABIL"
+    onSelectResponsible={userId => setResponsibleFilter(userId || 'ALL')}
+  />
   </div>;
 }

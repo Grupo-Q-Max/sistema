@@ -112,6 +112,7 @@ export interface CompanyDetailsModalProps {
   initialNotes?: string;
   canEditNotes?: boolean;
   onSaveNotes?: (newNotes: string) => Promise<void>;
+  currentUser?: any;
 }
 
 export function CompanyDetailsModal({
@@ -121,13 +122,26 @@ export function CompanyDetailsModal({
   initialNotes,
   canEditNotes = true,
   onSaveNotes,
+  currentUser,
 }: CompanyDetailsModalProps) {
   const [revealedPasswords, setRevealedPasswords] = useState<Record<string, boolean>>({});
   const [copyMessage, setCopyMessage] = useState('');
-  const [notesText, setNotesText] = useState(initialNotes !== undefined ? initialNotes : (c.notes || ''));
+  const [notesText, setNotesText] = useState<string>(initialNotes !== undefined ? initialNotes : (c.notes || ''));
   const [isSavingNotes, setIsSavingNotes] = useState(false);
   const [notesSavedSuccess, setNotesSavedSuccess] = useState(false);
   const [notesError, setNotesError] = useState('');
+
+  const handleInsertStamp = () => {
+    const now = new Date();
+    const day = String(now.getDate()).padStart(2, '0');
+    const month = String(now.getMonth() + 1).padStart(2, '0');
+    const hours = String(now.getHours()).padStart(2, '0');
+    const minutes = String(now.getMinutes()).padStart(2, '0');
+    const author = currentUser?.name || currentUser?.email || 'Usuário';
+    const stamp = `[${day}/${month} ${hours}:${minutes} - ${author}]: `;
+    setNotesText((prev: string) => prev ? `${stamp}\n${prev}` : stamp);
+    setNotesSavedSuccess(false);
+  };
 
   useEffect(() => {
     if (initialNotes !== undefined) {
@@ -626,11 +640,32 @@ export function CompanyDetailsModal({
                           <span className="label" style={{ fontWeight: 600, color: '#334155' }}>
                             {notesLabel}:
                           </span>
-                          {notesSavedSuccess && (
-                            <span style={{ fontSize: '0.8rem', color: '#16a34a', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                              <CheckCircle2 size={14} /> Salvo com sucesso!
-                            </span>
-                          )}
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                            {canEditNotes && onSaveNotes && (
+                              <button
+                                type="button"
+                                onClick={handleInsertStamp}
+                                title="Inserir data e nome do usuário na observação"
+                                style={{
+                                  background: 'rgba(99, 102, 241, 0.1)',
+                                  border: '1px solid rgba(129, 140, 248, 0.4)',
+                                  color: '#4338ca',
+                                  fontSize: '0.76rem',
+                                  padding: '2px 8px',
+                                  borderRadius: '4px',
+                                  cursor: 'pointer',
+                                  fontWeight: 600,
+                                }}
+                              >
+                                + Inserir Data e Autor
+                              </button>
+                            )}
+                            {notesSavedSuccess && (
+                              <span style={{ fontSize: '0.8rem', color: '#16a34a', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                <CheckCircle2 size={14} /> Salvo com sucesso!
+                              </span>
+                            )}
+                          </div>
                         </div>
                         {onSaveNotes ? (
                           <div>

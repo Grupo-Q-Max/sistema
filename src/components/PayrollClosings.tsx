@@ -1,13 +1,14 @@
 import { latestOpenPeriod } from '../config/competenceCalendar';
 import { useCompetenceCalendar } from './useCompetenceCalendar';
 import { memo, useEffect, useMemo, useRef, useState, useDeferredValue } from 'react';
-import { Building2, CheckCircle2, ChevronLeft, ChevronRight, Eye, EyeOff, RefreshCw, Users, X, ExternalLink, AlertTriangle, Copy, Search, AlertCircle, Filter, Check, Calendar, FileText, Clock, Sparkles, History } from 'lucide-react';
+import { Building2, CheckCircle2, ChevronLeft, ChevronRight, Eye, EyeOff, RefreshCw, Users, X, ExternalLink, AlertTriangle, Copy, Search, AlertCircle, Filter, Check, Calendar, FileText, Clock, Sparkles, History, BarChart3 } from 'lucide-react';
 import { CompanyDetailsModal, getCertificateStatus, formatCnpj, formatRegimeLabel } from './CompanyDetailsModal';
 import { Sidebar } from './Sidebar';
 import { ClosingSectorTabs, hasSectorAccess } from './ClosingSectorTabs';
 import { TableSkeleton, ButtonSpinner } from './LoadingSkeleton';
 import { CellAuditModal } from './CellAuditModal';
 import { BulkAssignResponsibleModal } from './BulkAssignResponsibleModal';
+import { ResponsibleWorkloadModal } from './ResponsibleWorkloadModal';
 import type { CurrentUser } from '../types/auth';
 import { API } from '../api';
 import { PAYROLL_API_VERSION, effectiveFieldConfig, resolveColumnKey } from '../config/payrollColumns';
@@ -164,6 +165,8 @@ export function PayrollClosings({ currentView, onNavigate, currentUser, onLogout
   const [statusFilter, setStatusFilter] = useState('ALL');
   const [responsibleFilter, setResponsibleFilter] = useState('ALL');
   const [regimeFilter, setRegimeFilter] = useState('ALL');
+  const [certFilter, setCertFilter] = useState('ALL');
+  const [workloadOpen, setWorkloadOpen] = useState(false);
   const [sort, setSort] = useState<{ key: 'code' | 'name' | 'regime' | 'status' | 'responsible'; asc: boolean }>({ key: 'code', asc: true });
   const [selectedCompanyIds, setSelectedCompanyIds] = useState<string[]>([]);
   const [bulkAssignOpen, setBulkAssignOpen] = useState(false);
@@ -306,11 +309,21 @@ export function PayrollClosings({ currentView, onNavigate, currentUser, onLogout
   const filtered = useMemo(() => scopedRows.filter(row => {
     const c = row.company; const haystack = [c.code, c.name, c.tradeName, c.cnpj, c.groupName, c.city].filter(Boolean).join(' ').toLocaleLowerCase('pt-BR');
     const matchSearch = haystack.includes(deferredSearch.toLocaleLowerCase('pt-BR')) || (/\d/.test(deferredSearch) && (c.cnpj || '').replace(/\D/g, '').includes(deferredSearch.replace(/\D/g, '')));
-    return matchSearch && (statusFilter === 'ALL' || row.calculatedStatus === statusFilter) && (responsibleFilter === 'ALL' || getResponsible(c)?.userId === responsibleFilter) && (regimeFilter === 'ALL' || c.taxRegime === regimeFilter);
+    let matchCert = true;
+    if (certFilter !== 'ALL') {
+      const cert = c.hasClientCertificate ? getCertificateStatus(c.certificateExpiration) : null;
+      if (certFilter === 'EXPIRING') matchCert = cert?.status === 'EXPIRED' || cert?.status === 'WARNING';
+      else if (certFilter === 'EXPIRED') matchCert = cert?.status === 'EXPIRED';
+      else if (certFilter === 'WARNING') matchCert = cert?.status === 'WARNING';
+      else if (certFilter === 'OK') matchCert = cert?.status === 'OK';
+      else if (certFilter === 'HAS_CERT') matchCert = Boolean(c.hasClientCertificate);
+      else if (certFilter === 'NO_CERT') matchCert = !c.hasClientCertificate;
+    }
+    return matchSearch && matchCert && (statusFilter === 'ALL' || row.calculatedStatus === statusFilter) && (responsibleFilter === 'ALL' || getResponsible(c)?.userId === responsibleFilter) && (regimeFilter === 'ALL' || c.taxRegime === regimeFilter);
   }).sort((a, b) => {
     if (sort.key === 'code') return compareCodes(a.company.code, b.company.code, sort.asc);
     return sortValue(a).localeCompare(sortValue(b), 'pt-BR', { numeric: true }) * (sort.asc ? 1 : -1);
-  }), [scopedRows, deferredSearch, statusFilter, responsibleFilter, regimeFilter, sort, users]);
+  }), [scopedRows, deferredSearch, statusFilter, responsibleFilter, regimeFilter, certFilter, sort, users]);
 
   const totalEmployees = scopedRows.reduce((total, row) => total + (Number(row.columnsData?.dp_qtde_funcionarios) || 0), 0);
 
@@ -421,6 +434,21 @@ export function PayrollClosings({ currentView, onNavigate, currentUser, onLogout
 
     const mesStr = String(period.getUTCMonth() + 1).padStart(2, '0') + '-' + period.getUTCFullYear();
     exportToCsv(`fechamento_dp_${mesStr}`, csvColumns, data);
+  };
+
+  const handleCopyAllCnpjs = async () => {
+    const cnpjs = filtered.map(r => r.company.cnpj).filter(Boolean);
+    if (!cnpjs.length) {
+      setCopyMessage('Nenhum CNPJ encontrado.');
+      return;
+    }
+    const cleanList = cnpjs.map((c: string) => c.replace(/\D/g, '')).join('\n');
+    try {
+      await navigator.clipboard.writeText(cleanList);
+      setCopyMessage(`${cnpjs.length} CNPJs copiados!`);
+    } catch {
+      setError('Não foi possível copiar os CNPJs.');
+    }
   };
 
   const regimes = Array.from(new Set(scopedRows.map(row => row.company.taxRegime).filter(Boolean))).sort((a, b) => formatRegimeLabel(a).localeCompare(formatRegimeLabel(b), 'pt-BR'));
@@ -707,6 +735,15 @@ export function PayrollClosings({ currentView, onNavigate, currentUser, onLogout
                     <option value="ALL">Responsável: Todos</option>
                     {users.map(user => <option key={user.id} value={user.id}>{user.name || user.email}</option>)}
                   </select>
+                  <select className="closings-select" aria-label="Filtrar certificado" value={certFilter} onChange={e => setCertFilter(e.target.value)}>
+                    <option value="ALL">Certificados: Todos</option>
+                    <option value="EXPIRING">Vencendo ou Vencidos</option>
+                    <option value="EXPIRED">Apenas Vencidos</option>
+                    <option value="WARNING">Vencendo em até 30 dias</option>
+                    <option value="OK">Válidos (&gt; 30 dias)</option>
+                    <option value="HAS_CERT">Com certificado</option>
+                    <option value="NO_CERT">Sem certificado</option>
+                  </select>
                   <label className="only-mine-toggle" title="Filtrar apenas empresas sob minha responsabilidade">
                     <input
                       type="checkbox"
@@ -715,6 +752,14 @@ export function PayrollClosings({ currentView, onNavigate, currentUser, onLogout
                     />
                     <span>Minhas empresas</span>
                   </label>
+                  <button type="button" className="btn-secondary-light" onClick={handleCopyAllCnpjs} title="Copiar CNPJs limpos das empresas filtradas">
+                    <Copy size={15} />
+                    Copiar CNPJs
+                  </button>
+                  <button type="button" className="btn-secondary-light" onClick={() => setWorkloadOpen(true)} title="Ver ranking e distribuição de empresas por responsável">
+                    <BarChart3 size={15} />
+                    Carga da Equipe
+                  </button>
                   <button className="payroll-refresh-btn" type="button" title="Atualizar fechamento DP" aria-label="Atualizar fechamento DP" disabled={pending > 0 || loading} onClick={() => { void load(); }}>
                     <RefreshCw size={16} className={loading ? 'payroll-spin' : ''} />
                   </button>
@@ -922,7 +967,22 @@ export function PayrollClosings({ currentView, onNavigate, currentUser, onLogout
             </>
           )}
     {copyMessage && <div className="payroll-copy-toast" role="status"><CheckCircle2 size={16} />{copyMessage}</div>}
-    {companyDetails && <CompanyDetailsModal company={companyDetails} notesLabel="Observações do cadastro" onClose={() => setCompanyDetails(null)} />}
+    {companyDetails && (
+      <CompanyDetailsModal
+        company={companyDetails}
+        currentUser={currentUser}
+        notesLabel="Observações do cadastro"
+        onClose={() => setCompanyDetails(null)}
+      />
+    )}
+    <ResponsibleWorkloadModal
+      isOpen={workloadOpen}
+      onClose={() => setWorkloadOpen(false)}
+      rows={scopedRows}
+      users={users}
+      sector="DP"
+      onSelectResponsible={userId => setResponsibleFilter(userId || 'ALL')}
+    />
     {notesDialog && <div className="closing-modal-backdrop" onClick={() => { if (!notesSaving) setNotesDialog(null); }}><div className="closing-modal-content" style={{ maxWidth: 500 }} onClick={e => e.stopPropagation()}><div className="closing-modal-header"><div className="closing-modal-title">Observação do DP</div><button type="button" className="closing-modal-close-btn" aria-label="Fechar observação do DP" disabled={notesSaving} onClick={() => setNotesDialog(null)}><X size={20} /></button></div><div className="closing-modal-body"><p>{notesDialog.row.company.name} · {monthLabel}</p><textarea className="payroll-note-textarea" rows={6} value={notesDraft} disabled={notesSaving || !isRowEditable(notesDialog.row) || notesDialog.column.isEditable === false} onChange={e => setNotesDraft(e.target.value)} placeholder="Observações do DP para esta competência" />{notesError && <p role="alert">{notesError}</p>}<div className="sub-modal-actions"><button type="button" className="btn-secondary-light" disabled={notesSaving} onClick={() => setNotesDialog(null)}>Fechar</button>{isRowEditable(notesDialog.row) && notesDialog.column.isEditable !== false && <button type="button" className="btn-primary-gradient" disabled={notesSaving} onClick={async () => { setNotesSaving(true); setNotesError(''); try { await enqueueSave(notesDialog.row, notesDialog.column, notesDraft); setNotesDialog(null); } catch (err) { setNotesError(err instanceof Error ? err.message : 'Erro ao salvar.'); } finally { setNotesSaving(false); } }}>{notesSaving ? 'Salvando...' : 'Salvar observação'}</button>}</div></div></div></div>}
     {reinfRow && <PayrollReinfPreview row={reinfRow} definition={reinfDefinition} monthLabel={monthLabel} onClose={() => setReinfRow(null)} />}
 

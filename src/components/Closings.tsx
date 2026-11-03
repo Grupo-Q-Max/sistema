@@ -32,6 +32,7 @@ import {
   History,
   Zap,
   Users,
+  BarChart3,
 } from 'lucide-react';
 import type { CurrentUser } from '../types/auth';
 import { API } from '../api';
@@ -39,6 +40,7 @@ import { TableSkeleton, ButtonSpinner } from './LoadingSkeleton';
 import './Closings.css';
 import './PayrollClosings.css';
 import { CompanyDetailsModal, getCertificateStatus, formatCnpj, formatRegimeLabel, formatDateBr } from './CompanyDetailsModal';
+import { ResponsibleWorkloadModal } from './ResponsibleWorkloadModal';
 import { ManualCompetenceModal } from './ManualCompetenceModal';
 import { ClosingSectorTabs, hasSectorAccess } from './ClosingSectorTabs';
 import { CellAuditModal } from './CellAuditModal';
@@ -148,6 +150,8 @@ export function Closings({ currentView, onNavigate, currentUser, onLogout }: Clo
   const [statusFilter, setStatusFilter] = useState('ALL');
   const [regimeFilter, setRegimeFilter] = useState('ALL');
   const [responsibleFilter, setResponsibleFilter] = useState('ALL');
+  const [certFilter, setCertFilter] = useState('ALL');
+  const [workloadOpen, setWorkloadOpen] = useState(false);
 
   // Senhas reveladas
 
@@ -416,6 +420,21 @@ export function Closings({ currentView, onNavigate, currentUser, onLogout }: Clo
     alertBox.style.fontSize = '13px';
     document.body.appendChild(alertBox);
     setTimeout(() => alertBox.remove(), 2000);
+  };
+
+  const handleCopyAllCnpjs = async () => {
+    const cnpjs = filteredRows.map((r: any) => r.company?.cnpj).filter(Boolean);
+    if (!cnpjs.length) {
+      handleCopy('', 'Nenhum CNPJ encontrado');
+      return;
+    }
+    const cleanList = cnpjs.map((c: string) => c.replace(/\D/g, '')).join('\n');
+    try {
+      await navigator.clipboard.writeText(cleanList);
+      handleCopy(cleanList, `${cnpjs.length} CNPJs`);
+    } catch {
+      window.alert('Não foi possível copiar os CNPJs.');
+    }
   };
 
 
@@ -714,7 +733,19 @@ export function Closings({ currentView, onNavigate, currentUser, onLogout }: Clo
 
       const situation = installmentSummaries[c.id];
       const matchInstallment = !viewInstallments || installmentFilter === 'ALL' || (installmentFilter === 'HAS_PLAN' ? situation && situation.status !== 'NA' : situation?.status === installmentFilter);
-      return matchSearch && matchStatus && matchRegime && matchResponsible && matchInstallment;
+
+      let matchCert = true;
+      if (certFilter !== 'ALL') {
+        const cert = c.hasClientCertificate ? getCertificateStatus(c.certificateExpiration) : null;
+        if (certFilter === 'EXPIRING') matchCert = cert?.status === 'EXPIRED' || cert?.status === 'WARNING';
+        else if (certFilter === 'EXPIRED') matchCert = cert?.status === 'EXPIRED';
+        else if (certFilter === 'WARNING') matchCert = cert?.status === 'WARNING';
+        else if (certFilter === 'OK') matchCert = cert?.status === 'OK';
+        else if (certFilter === 'HAS_CERT') matchCert = Boolean(c.hasClientCertificate);
+        else if (certFilter === 'NO_CERT') matchCert = !c.hasClientCertificate;
+      }
+
+      return matchSearch && matchStatus && matchRegime && matchResponsible && matchInstallment && matchCert;
     });
 
     // Ordenação
@@ -748,7 +779,7 @@ export function Closings({ currentView, onNavigate, currentUser, onLogout }: Clo
     });
 
     return list;
-  }, [scopedRows, deferredSearchTerm, statusFilter, regimeFilter, responsibleFilter, obligationFilters, sortConfig, popupColumns, installmentFilter, installmentSummaries, viewInstallments]);
+  }, [scopedRows, deferredSearchTerm, statusFilter, regimeFilter, responsibleFilter, certFilter, obligationFilters, sortConfig, popupColumns, installmentFilter, installmentSummaries, viewInstallments]);
 
   // Ações em Massa (Bulk Actions)
   const [selectedClosingIds, setSelectedClosingIds] = useState<Set<string>>(new Set());
@@ -1166,6 +1197,26 @@ export function Closings({ currentView, onNavigate, currentUser, onLogout }: Clo
 
               <button
                 type="button"
+                className="btn-secondary-light"
+                onClick={handleCopyAllCnpjs}
+                title="Copiar CNPJs limpos das empresas filtradas"
+              >
+                <Copy size={15} />
+                Copiar CNPJs
+              </button>
+
+              <button
+                type="button"
+                className="btn-secondary-light"
+                onClick={() => setWorkloadOpen(true)}
+                title="Ver ranking e distribuição de empresas por responsável"
+              >
+                <BarChart3 size={15} />
+                Carga da Equipe
+              </button>
+
+              <button
+                type="button"
                 className={`btn-density-toggle ${tableDensity === 'compact' ? 'active' : ''}`}
                 onClick={toggleDensity}
                 title={tableDensity === 'compact' ? 'Mudar para modo Espaçoso' : 'Mudar para modo Compacto'}
@@ -1208,6 +1259,21 @@ export function Closings({ currentView, onNavigate, currentUser, onLogout }: Clo
                     {u.name || u.email}
                   </option>
                 ))}
+              </select>
+
+              <select
+                className="closings-select"
+                aria-label="Filtrar certificado"
+                value={certFilter}
+                onChange={(e) => setCertFilter(e.target.value)}
+              >
+                <option value="ALL">Certificados: Todos</option>
+                <option value="EXPIRING">Vencendo ou Vencidos</option>
+                <option value="EXPIRED">Apenas Vencidos</option>
+                <option value="WARNING">Vencendo em até 30 dias</option>
+                <option value="OK">Válidos (&gt; 30 dias)</option>
+                <option value="HAS_CERT">Com certificado</option>
+                <option value="NO_CERT">Sem certificado</option>
               </select>
 
               <label className="only-mine-toggle" title="Filtrar apenas empresas sob minha responsabilidade">
@@ -1951,7 +2017,22 @@ export function Closings({ currentView, onNavigate, currentUser, onLogout }: Clo
         {/* ==========================================================================
             POPUP COMPLETO COM TODAS AS INFORMAÇÕES DA EMPRESA E CERTIFICADO
             ========================================================================== */}
-        {activeModal?.type === 'COMPANY_INFO' && <CompanyDetailsModal company={activeModal.row.company} onClose={closeAllModals} />}
+        {activeModal?.type === 'COMPANY_INFO' && (
+          <CompanyDetailsModal
+            company={activeModal.row.company}
+            currentUser={currentUser}
+            onClose={closeAllModals}
+          />
+        )}
+
+        <ResponsibleWorkloadModal
+          isOpen={workloadOpen}
+          onClose={() => setWorkloadOpen(false)}
+          rows={scopedRows}
+          users={fiscalUsers}
+          sector="FISCAL"
+          onSelectResponsible={(userId) => setResponsibleFilter(userId || 'ALL')}
+        />
 
         <ManualCompetenceModal
           isOpen={isManualModalOpen}
