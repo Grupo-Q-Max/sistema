@@ -22,6 +22,7 @@ import {
   Scale,
   ListChecks,
   Sparkles,
+  Search,
 } from 'lucide-react';
 import type { CurrentUser } from '../types/auth';
 import { ChangePasswordModal } from './ChangePasswordModal';
@@ -192,6 +193,21 @@ export function Sidebar({ currentView, onNavigate, currentUser, onLogout }: Side
         </button>
       </div>
 
+      <button
+        type="button"
+        className="sidebar-search-trigger"
+        onClick={() => window.dispatchEvent(new CustomEvent('open-spotlight'))}
+        title="Buscar empresas ou atalhos (Ctrl + K)"
+      >
+        <Search size={16} />
+        {!collapsed && (
+          <>
+            <span>Buscar...</span>
+            <kbd>Ctrl K</kbd>
+          </>
+        )}
+      </button>
+
       <nav className="crm-sidebar__nav">
         {showDashboard && (
           <a
@@ -310,6 +326,21 @@ export function Sidebar({ currentView, onNavigate, currentUser, onLogout }: Side
             <AlertTriangle size={20} />
             <span className="nav-item-label">Avisos de cadastro</span>
             {qualityCount > 0 && <span className="quality-nav-count">{qualityCount}</span>}
+          </a>
+        )}
+
+        {isPrivileged && (
+          <a
+            href="#"
+            className="nav-item"
+            title="Balanceador de Carga da Equipe"
+            onClick={(e) => {
+              e.preventDefault();
+              window.dispatchEvent(new CustomEvent('open-workload-balancer'));
+            }}
+          >
+            <Scale size={20} />
+            <span className="nav-item-label">Balanceador de Carga</span>
           </a>
         )}
         {showSettingsGroup && (

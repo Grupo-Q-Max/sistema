@@ -3,6 +3,7 @@ import {registerCompanyQuality,invalidateCompanyQualityCache} from './companyQua
 import {registerCushman} from './cushman';
 import {registerAnalytics,invalidateAnalyticsCache} from './analytics';
 import {registerRiskRadar,invalidateRiskRadarCache} from './riskRadar';
+import {registerWorkloadAndHistory} from './workloadAndHistory';
 import {registerDeploy} from './deploy';
 import {registerAutomation} from './automation';
 import path from 'node:path';
@@ -159,6 +160,7 @@ registerInstallments(app, prisma, { onChanged: () => invalidateDashboardCache() 
 registerCompanyQuality(app,prisma,decryptPassword);
 registerAnalytics(app,prisma);
 registerRiskRadar(app,prisma);
+registerWorkloadAndHistory(app,prisma);
 registerDeploy(app);
 registerAutomation(app,prisma);
 

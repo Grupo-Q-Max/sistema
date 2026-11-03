@@ -21,6 +21,9 @@ const Certificates = lazy(() => import('./components/Certificates').then(m => ({
 const SystemLogs = lazy(() => import('./components/SystemLogs').then(m => ({ default: m.SystemLogs })));
 const CompanyQuality = lazy(() => import('./components/CompanyQuality').then(m => ({ default: m.CompanyQuality })));
 const InstallmentSettings = lazy(() => import('./components/InstallmentSettings').then(m => ({ default: m.InstallmentSettings })));
+const SpotlightSearch = lazy(() => import('./components/SpotlightSearch').then(m => ({ default: m.SpotlightSearch })));
+const Company360Modal = lazy(() => import('./components/Company360Modal').then(m => ({ default: m.Company360Modal })));
+const WorkloadBalancerModal = lazy(() => import('./components/WorkloadBalancerModal').then(m => ({ default: m.WorkloadBalancerModal })));
 
 const ViewLoading = () => (
   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', width: '100%', background: '#090d16', color: '#94a3b8' }}>
@@ -38,6 +41,41 @@ function App() {
   const [password, setPassword] = useState('');
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+
+  // Modais Globais (Spotlight, Raio-X 360, Balanceador de Carga)
+  const [isSpotlightOpen, setIsSpotlightOpen] = useState(false);
+  const [selected360CompanyId, setSelected360CompanyId] = useState<string | null>(null);
+  const [isWorkloadOpen, setIsWorkloadOpen] = useState(false);
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && (e.key === 'k' || e.key === 'K')) {
+        e.preventDefault(); // Impede que o navegador foque a barra de URL/busca do navegador!
+        e.stopPropagation();
+        setIsSpotlightOpen((prev) => !prev);
+      }
+    };
+
+    const handleOpenSpotlight = () => setIsSpotlightOpen(true);
+    const handleOpenWorkload = () => setIsWorkloadOpen(true);
+    const handleOpen360 = (e: any) => {
+      if (e.detail?.companyId) {
+        setSelected360CompanyId(e.detail.companyId);
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    window.addEventListener('open-spotlight', handleOpenSpotlight);
+    window.addEventListener('open-workload-balancer', handleOpenWorkload);
+    window.addEventListener('open-company-360', handleOpen360);
+
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('open-spotlight', handleOpenSpotlight);
+      window.removeEventListener('open-workload-balancer', handleOpenWorkload);
+      window.removeEventListener('open-company-360', handleOpen360);
+    };
+  }, []);
 
   const getDefaultView = (user: CurrentUser) => {
     if (user.role === 'ADMIN' || user.role === 'SOCIO') return 'dashboard';
@@ -278,6 +316,37 @@ function App() {
     return (
       <Suspense fallback={<ViewLoading />}>
         {renderView()}
+
+        {/* BUSCA GLOBAL SPOTLIGHT (Ctrl + K) */}
+        <SpotlightSearch
+          isOpen={isSpotlightOpen}
+          onClose={() => setIsSpotlightOpen(false)}
+          onNavigate={(view) => {
+            handleNavigate(view);
+          }}
+          onOpenCompany360={(companyId) => {
+            setSelected360CompanyId(companyId);
+          }}
+        />
+
+        {/* RAIO-X HISTÓRICO ANUAL 360° DA EMPRESA */}
+        <Company360Modal
+          companyId={selected360CompanyId}
+          onClose={() => setSelected360CompanyId(null)}
+          onNavigateToCompany={() => {
+            handleNavigate('companies');
+          }}
+          onNavigateToSector={(sector) => {
+            handleNavigate(sector === 'dp' ? 'closings-dp' : sector === 'contabil' ? 'closings-accounting' : 'closings');
+          }}
+        />
+
+        {/* BALANCEADOR VISUAL DE CARGA DA EQUIPE */}
+        <WorkloadBalancerModal
+          isOpen={isWorkloadOpen}
+          onClose={() => setIsWorkloadOpen(false)}
+          currentUserId={currentUser.id}
+        />
       </Suspense>
     );
   }

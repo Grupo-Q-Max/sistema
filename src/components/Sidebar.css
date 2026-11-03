@@ -69,6 +69,46 @@ body.sidebar-collapsed .crm-dashboard > .crm-main {
   color: var(--accent);
 }
 
+.sidebar-search-trigger {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 12px 14px 6px 14px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  color: #94a3b8;
+  font-size: 0.82rem;
+  cursor: pointer;
+  transition: all 0.2s;
+  width: calc(100% - 28px);
+}
+
+.sidebar-search-trigger:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: #f1f5f9;
+  border-color: rgba(59, 130, 246, 0.35);
+}
+
+.sidebar-search-trigger kbd {
+  margin-left: auto;
+  font-size: 0.68rem;
+  background: rgba(255, 255, 255, 0.08);
+  padding: 2px 6px;
+  border-radius: 4px;
+  color: #64748b;
+  font-weight: 600;
+}
+
+.crm-sidebar.collapsed .sidebar-search-trigger {
+  margin: 12px auto 6px auto;
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  justify-content: center;
+}
+
 .crm-sidebar .crm-sidebar__nav {
   flex: 1;
   min-height: 0;

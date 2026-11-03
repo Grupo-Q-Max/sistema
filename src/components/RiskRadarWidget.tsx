@@ -14,7 +14,8 @@ import {
   Users,
   X,
   ExternalLink,
-  Building2
+  Building2,
+  Calendar
 } from 'lucide-react';
 import { API } from '../api';
 import './RiskRadarWidget.css';
@@ -694,6 +695,19 @@ _Gerado pelo Fechamento Pro_`;
             </div>
 
             <div className="radar-modal-footer">
+              <button
+                type="button"
+                className="btn-modal-copy"
+                style={{ color: '#60a5fa' }}
+                onClick={() => {
+                  window.dispatchEvent(new CustomEvent('open-company-360', { detail: { companyId: selectedCompany.id } }));
+                  setSelectedCompany(null);
+                }}
+              >
+                <Calendar size={16} />
+                <span>Histórico Anual 360°</span>
+              </button>
+
               <button
                 type="button"
                 className="btn-modal-copy"
