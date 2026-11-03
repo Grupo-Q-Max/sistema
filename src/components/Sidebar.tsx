@@ -21,9 +21,11 @@ import {
   KeyRound,
   Scale,
   ListChecks,
+  Sparkles,
 } from 'lucide-react';
 import type { CurrentUser } from '../types/auth';
 import { ChangePasswordModal } from './ChangePasswordModal';
+import { WhatsNewModal } from './WhatsNewModal';
 import './Dashboard.css';
 import './Sidebar.css';
 import './CompanyQuality.css';
@@ -31,6 +33,7 @@ import { hasSectorAccess } from './ClosingSectorTabs';
 import { API } from '../api';
 
 let cachedQualitySummary: { count: number; ts: number } | null = null;
+const WHATS_NEW_VERSION = 'v2.4-nov-2026';
 
 interface SidebarProps {
   currentView: string;
@@ -42,6 +45,13 @@ interface SidebarProps {
 export function Sidebar({ currentView, onNavigate, currentUser, onLogout }: SidebarProps) {
   const [mobileOpen,setMobileOpen]=useState(false);
   const [isPasswordModalOpen, setIsPasswordModalOpen] = useState(false);
+  const [isWhatsNewOpen, setIsWhatsNewOpen] = useState(() => {
+    try {
+      return localStorage.getItem('fechamento_whats_new_seen') !== WHATS_NEW_VERSION;
+    } catch {
+      return false;
+    }
+  });
   const [collapsed, setCollapsed] = useState(() => {
     try {
       return localStorage.getItem('fechamento_sidebar_collapsed') === 'true';
@@ -399,6 +409,21 @@ export function Sidebar({ currentView, onNavigate, currentUser, onLogout }: Side
       </nav>
 
       {isPrivileged&&qualityCount>0&&currentView!=='settings-data-quality'&&<a href="#" className="quality-sidebar-alert" role="status" onClick={event=>{event.preventDefault();navigate('settings-data-quality');}}><strong>{qualityCount} empresa(s) com avisos</strong><span>Revise datas, certificados e cadastro</span></a>}
+      
+      {/* Botão de Novidades do Sistema */}
+      <div className="sidebar-whats-new-container">
+        <button
+          type="button"
+          className="sidebar-whats-new-btn"
+          onClick={() => setIsWhatsNewOpen(true)}
+          title="Ver o que há de novo e melhorias do sistema"
+        >
+          <Sparkles size={16} className="sparkles-icon" />
+          {!collapsed && <span>O que há de novo?</span>}
+          <span className="whats-new-pill">Novidades</span>
+        </button>
+      </div>
+
       {/* User profile footer in sidebar */}
       {currentUser && (
         <div className="sidebar-footer">
@@ -440,6 +465,12 @@ export function Sidebar({ currentView, onNavigate, currentUser, onLogout }: Side
         currentUser={currentUser}
       />
     )}
+
+    <WhatsNewModal
+      isOpen={isWhatsNewOpen}
+      onClose={() => setIsWhatsNewOpen(false)}
+      versionKey={WHATS_NEW_VERSION}
+    />
     </>
   );
 }
