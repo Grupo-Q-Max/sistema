@@ -30,7 +30,7 @@ export function AccountingClosings({currentView,onNavigate,currentUser,onLogout}
   const latestYear=new Date(Date.UTC(latestPeriod.getUTCFullYear(),latestPeriod.getUTCMonth()+1,1)).getUTCFullYear();
   const [rows,setRows]=useState<Row[]>([]);const [columns,setColumns]=useState<any[]>([]);const [users,setUsers]=useState<any[]>([]);
   const [loading,setLoading]=useState(true);const [error,setError]=useState('');const [pending,setPending]=useState(0);
-  const [search,setSearch]=useState('');const [situation,setSituation]=useState('ALL');const [responsibleFilter,setResponsibleFilter]=useState('ALL');const [regime,setRegime]=useState('ALL');const [groupFilter,setGroupFilter]=useState('ALL');
+  const [search,setSearch]=useState('');const [situation,setSituation]=useState('ALL');const [statusFilter,setStatusFilter]=useState<'ALL'|'COMPLETED'|'IN_PROGRESS'|'PENDING'>('ALL');const [responsibleFilter,setResponsibleFilter]=useState('ALL');const [regime,setRegime]=useState('ALL');const [groupFilter,setGroupFilter]=useState('ALL');
   const [sort,setSort]=useState<{key:'code'|'name'|'groupName';asc:boolean}>({key:'code',asc:true});
   const [companyDetails,setCompanyDetails]=useState<any|null>(null);
   const [notes,setNotes]=useState<{row:Row;column:any}|null>(null);const [noteDraft,setNoteDraft]=useState('');const [noteSaving,setNoteSaving]=useState(false);const [noteError,setNoteError]=useState('');
@@ -66,12 +66,12 @@ export function AccountingClosings({currentView,onNavigate,currentUser,onLogout}
   const filtered=useMemo(()=>scopedRows.filter(row=>{
     const company=row.company;const term=deferredSearch.trim().toLocaleLowerCase('pt-BR');const text=[company.code,formatCompanyCode(company.code),company.name,company.tradeName,company.cnpj,company.groupName,company.city].filter(Boolean).join(' ').toLocaleLowerCase('pt-BR');
     const digits=term.replace(/\D/g,'');const match=text.includes(term)||(digits.length>0&&(company.cnpj||'').replace(/\D/g,'').includes(digits));
-    return match&&(situation==='ALL'||(situation==='LEFT'?left(company):!left(company)))&&(responsibleFilter==='ALL'||responsible(company)?.userId===responsibleFilter)&&(regime==='ALL'||company.taxRegime===regime)&&(groupFilter==='ALL'||company.groupName===groupFilter);
+    return match&&(situation==='ALL'||(situation==='LEFT'?left(company):!left(company)))&&(statusFilter==='ALL'||row.calculatedStatus===statusFilter)&&(responsibleFilter==='ALL'||responsible(company)?.userId===responsibleFilter)&&(regime==='ALL'||company.taxRegime===regime)&&(groupFilter==='ALL'||company.groupName===groupFilter);
   }).sort((a,b)=> {
     if (sort.key === 'code') return compareCodes(a.company.code, b.company.code, sort.asc);
     if (sort.key === 'groupName') return String(a.company.groupName||'').localeCompare(String(b.company.groupName||''),'pt-BR',{numeric:true})*(sort.asc?1:-1);
     return String(a.company[sort.key]||'').localeCompare(String(b.company[sort.key]||''),'pt-BR',{numeric:true})*(sort.asc?1:-1);
-  }),[scopedRows,deferredSearch,situation,responsibleFilter,regime,groupFilter,sort,year]);
+  }),[scopedRows,deferredSearch,situation,statusFilter,responsibleFilter,regime,groupFilter,sort,year]);
   const visibleColumns=groupAccountingColumns(columns);const monthsRow=rows.find(row=>row.closingId===monthsClosingId);
   const regimes=Array.from(new Set(scopedRows.map(row=>row.company.taxRegime).filter(Boolean)));
   const summary=summarizeClosingProgress(buildClosingProgress(scopedRows,columns,'CONTABIL',new Date(Date.UTC(year,0,1)),latestPeriod),scopedRows.length);
@@ -131,7 +131,50 @@ export function AccountingClosings({currentView,onNavigate,currentUser,onLogout}
     <div className="closings-header"><div className="closings-header-titles"><h1><FileCheck size={28} color="#818cf8"/>Fechamento Contábil</h1><p>Controle anual dos meses e obrigações contábeis</p></div><div className="closings-header-actions"><ClosingSectorTabs sector="CONTABIL" currentUser={currentUser} onNavigate={onNavigate}/><div className="month-selector-box"><button className="month-nav-btn" aria-label="Ano anterior" disabled={pending>0||year<=1900} onClick={()=>setYear(year-1)}><ChevronLeft size={20}/></button><span className="month-display-text">Ano {year}</span><button className="month-nav-btn" aria-label="Próximo ano" title="Novo ano liberado automaticamente em janeiro" disabled={pending>0||year>=latestYear} onClick={()=>{if(year<latestYear)setYear(year+1);}}><ChevronRight size={20}/></button></div></div></div>
     {!canView?<p>Você não tem acesso ao setor Contábil.</p>:<>
       <p className="accounting-calendar-note">Novo ano automático em janeiro, com campos zerados. Os meses liberam na virada seguinte; as empresas que saíram permanecem no histórico do ano.</p>
-      <div className="closings-stats-grid">{[{label:'Total Empresas',value:summary.total,kind:'total',Icon:Building2},{label:'Concluídos',value:summary.completed,kind:'completed',Icon:CheckCircle2},{label:'Em Andamento',value:summary.inProgress,kind:'in-progress',Icon:Clock},{label:'Pendentes',value:summary.pending,kind:'pending',Icon:AlertCircle},{label:'Progresso (Campos)',value:summary.overallPercent+'%',kind:'percent',Icon:Sparkles},{label:'Progresso (Empresas)',value:(summary.total ? Math.round(summary.completed / summary.total * 100) : 0)+'%',kind:'percent',Icon:Building2}].map(({label,value,kind,Icon})=><div className={`closing-stat-card ${kind==='percent'?'progress-clickable':''}`} key={label} role={kind==='percent'?'button':undefined} tabIndex={kind==='percent'?0:undefined} aria-expanded={kind==='percent'?progressOpen:undefined} onClick={kind==='percent'?()=>setProgressOpen(v=>!v):undefined} onKeyDown={kind==='percent'?event=>{if(['Enter',' '].includes(event.key)){event.preventDefault();setProgressOpen(v=>!v);}}:undefined}><div className={`closing-stat-icon ${kind}`}><Icon size={22}/></div><div className="closing-stat-info"><span>{label}</span><strong>{loading?'—':value}</strong></div></div>)}</div>
+      <div className="closings-stats-grid">{[
+        { label: 'Total Empresas', value: summary.total, kind: 'total', Icon: Building2, status: 'ALL' },
+        { label: 'Concluídos', value: summary.completed, kind: 'completed', Icon: CheckCircle2, status: 'COMPLETED' },
+        { label: 'Em Andamento', value: summary.inProgress, kind: 'in-progress', Icon: Clock, status: 'IN_PROGRESS' },
+        { label: 'Pendentes', value: summary.pending, kind: 'pending', Icon: AlertCircle, status: 'PENDING' },
+        { label: 'Progresso (Campos)', value: summary.overallPercent + '%', kind: 'percent', Icon: Sparkles },
+        { label: 'Progresso (Empresas)', value: (summary.total ? Math.round(summary.completed / summary.total * 100) : 0) + '%', kind: 'percent', Icon: Building2 }
+      ].map(({ label, value, kind, Icon, status }) => {
+        const isClickable = Boolean(status) || kind === 'percent';
+        const isActive = status && status !== 'ALL' && statusFilter === status;
+        return (
+          <div
+            className={`closing-stat-card ${kind === 'percent' ? 'progress-clickable' : isClickable ? 'stat-clickable' : ''} ${isActive ? `stat-active ${kind}` : ''}`}
+            key={label}
+            role={isClickable ? 'button' : undefined}
+            tabIndex={isClickable ? 0 : undefined}
+            aria-expanded={kind === 'percent' ? progressOpen : undefined}
+            title={status ? (status === 'ALL' ? 'Clique para mostrar todas' : `Clique para filtrar apenas empresas ${label.toLowerCase()}`) : kind === 'percent' ? 'Clique para ver detalhes do progresso' : undefined}
+            onClick={() => {
+              if (kind === 'percent') {
+                setProgressOpen(v => !v);
+              } else if (status) {
+                setStatusFilter(prev => prev === status ? 'ALL' : (status as any));
+              }
+            }}
+            onKeyDown={event => {
+              if (['Enter', ' '].includes(event.key)) {
+                event.preventDefault();
+                if (kind === 'percent') {
+                  setProgressOpen(v => !v);
+                } else if (status) {
+                  setStatusFilter(prev => prev === status ? 'ALL' : (status as any));
+                }
+              }
+            }}
+          >
+            <div className={`closing-stat-icon ${kind}`}><Icon size={22} /></div>
+            <div className="closing-stat-info">
+              <span>{label}</span>
+              <strong>{loading ? '—' : value}</strong>
+            </div>
+          </div>
+        );
+      })}</div>
       <ClosingProgressDetails rows={scopedRows} columns={columns} sector="CONTABIL" period={new Date(Date.UTC(year,0,1))} latest={latestPeriod} open={progressOpen} onToggle={()=>setProgressOpen(value=>!value)} loading={loading}/>
       <div className="closings-toolbar"><div className="closings-search-box"><Search size={18} color="#94a3b8"/><input aria-label="Buscar empresa" value={search} onChange={event=>setSearch(event.target.value)} placeholder="Buscar por código, empresa, CNPJ, grupo ou cidade..."/></div><div className="closings-filters">
         <label className="checkbox-label filter-my-companies" style={{ display: 'inline-flex', alignItems: 'center', gap: 6, margin: 0, padding: '0 8px', cursor: 'pointer', userSelect: 'none', fontSize: 13, color: '#cbd5e1' }}>
@@ -143,10 +186,23 @@ export function AccountingClosings({currentView,onNavigate,currentUser,onLogout}
           />
           <span>Minhas empresas</span>
         </label>
+        <select className="closings-select" aria-label="Filtrar status" value={statusFilter} onChange={event=>setStatusFilter(event.target.value as any)}><option value="ALL">Status: Todos</option><option value="COMPLETED">Concluídos</option><option value="IN_PROGRESS">Em Andamento</option><option value="PENDING">Pendentes</option></select>
         <select className="closings-select" aria-label="Filtrar situação" value={situation} onChange={event=>setSituation(event.target.value)}><option value="ALL">Situação: Todas</option><option value="ACTIVE">Ativas</option><option value="LEFT">Saíram no ano</option></select>
         <select className="closings-select" aria-label="Filtrar tributação" value={regime} onChange={event=>setRegime(event.target.value)}><option value="ALL">Tributação: Todas</option>{regimes.map(value=><option key={value} value={value}>{formatRegimeLabel(value)}</option>)}</select>
         <select className="closings-select" aria-label="Filtrar grupo" value={groupFilter} onChange={event=>setGroupFilter(event.target.value)}><option value="ALL">Grupo: Todos</option>{groups.map(value=><option key={value} value={value}>{value}</option>)}</select>
         <select className="closings-select" aria-label="Filtrar responsável" value={responsibleFilter} onChange={event=>setResponsibleFilter(event.target.value)}><option value="ALL">Responsável: Todos</option>{users.map(user=><option key={user.id} value={user.id}>{user.name||user.email}</option>)}</select>
+        {statusFilter !== 'ALL' && (
+          <button
+            type="button"
+            className="filter-clear-pill"
+            style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '4px 10px', borderRadius: '6px', background: 'rgba(99, 102, 241, 0.2)', border: '1px solid rgba(129, 140, 248, 0.4)', color: '#c7d2fe', fontSize: '12px', cursor: 'pointer', transition: 'all 0.2s' }}
+            onClick={() => setStatusFilter('ALL')}
+            title="Remover filtro de status"
+          >
+            <span>Filtro: {statusFilter === 'COMPLETED' ? 'Concluídos' : statusFilter === 'IN_PROGRESS' ? 'Em Andamento' : 'Pendentes'}</span>
+            <X size={13} />
+          </button>
+        )}
         <button className="payroll-refresh-btn" aria-label="Atualizar Contábil" disabled={pending>0||loading} onClick={()=>{void load();}}><RefreshCw size={16}/></button>
         <button className="btn-secondary-light" onClick={handleExport} title="Exportar para Excel (CSV)">
           <ExternalLink size={16} />

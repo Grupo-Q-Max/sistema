@@ -619,21 +619,33 @@ export function PayrollClosings({ currentView, onNavigate, currentUser, onLogout
             <>
               <div className="closings-stats-grid">
                 {[
-                  { label: 'Total Empresas', value: summary.total, kind: 'total', Icon: Building2 },
-                  { label: 'Concluídos', value: summary.completed, kind: 'completed', Icon: CheckCircle2 },
-                  { label: 'Em Andamento', value: summary.inProgress, kind: 'in-progress', Icon: Clock },
-                  { label: 'Pendentes', value: summary.pending, kind: 'pending', Icon: AlertCircle },
+                  { label: 'Total Empresas', value: summary.total, kind: 'total', Icon: Building2, status: 'ALL' },
+                  { label: 'Concluídos', value: summary.completed, kind: 'completed', Icon: CheckCircle2, status: 'COMPLETED' },
+                  { label: 'Em Andamento', value: summary.inProgress, kind: 'in-progress', Icon: Clock, status: 'IN_PROGRESS' },
+                  { label: 'Pendentes', value: summary.pending, kind: 'pending', Icon: AlertCircle, status: 'PENDING' },
                   { label: 'Progresso (Campos)', value: summary.overallPercent + '%', kind: 'percent', Icon: Sparkles },
                   { label: 'Total Funcionários', value: totalEmployees, kind: 'percent', Icon: Users },
-                ].map(({ label, value, kind, Icon }) => (
-                  <div key={label} className="closing-stat-card">
-                    <div className={`closing-stat-icon ${kind}`}><Icon size={22} /></div>
-                    <div className="closing-stat-info">
-                      <span>{label}</span>
-                      <strong>{loading ? '—' : value}</strong>
+                ].map(({ label, value, kind, Icon, status }) => {
+                  const isClickable = Boolean(status);
+                  const isActive = status && status !== 'ALL' && statusFilter === status;
+                  return (
+                    <div
+                      key={label}
+                      className={`closing-stat-card ${isClickable ? 'stat-clickable' : ''} ${isActive ? `stat-active ${kind}` : ''}`}
+                      role={isClickable ? 'button' : undefined}
+                      tabIndex={isClickable ? 0 : undefined}
+                      title={status ? (status === 'ALL' ? 'Clique para mostrar todas' : `Clique para filtrar apenas empresas ${label.toLowerCase()}`) : undefined}
+                      onClick={status ? () => setStatusFilter(prev => prev === status ? 'ALL' : status) : undefined}
+                      onKeyDown={status ? e => { if (['Enter', ' '].includes(e.key)) { e.preventDefault(); setStatusFilter(prev => prev === status ? 'ALL' : status); } } : undefined}
+                    >
+                      <div className={`closing-stat-icon ${kind}`}><Icon size={22} /></div>
+                      <div className="closing-stat-info">
+                        <span>{label}</span>
+                        <strong>{loading ? '—' : value}</strong>
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
 
               <div className="closings-toolbar">

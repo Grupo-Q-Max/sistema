@@ -1040,7 +1040,14 @@ export function Closings({ currentView, onNavigate, currentUser, onLogout }: Clo
             <>
           {/* Cards de Métricas */}
           <div className="closings-stats-grid">
-            <div className="closing-stat-card">
+            <div
+              className="closing-stat-card stat-clickable"
+              role="button"
+              tabIndex={0}
+              title="Clique para mostrar todas as empresas"
+              onClick={() => setStatusFilter('ALL')}
+              onKeyDown={e => { if (['Enter', ' '].includes(e.key)) { e.preventDefault(); setStatusFilter('ALL'); } }}
+            >
               <div className="closing-stat-icon total">
                 <Building2 size={22} />
               </div>
@@ -1050,7 +1057,14 @@ export function Closings({ currentView, onNavigate, currentUser, onLogout }: Clo
               </div>
             </div>
 
-            <div className="closing-stat-card">
+            <div
+              className={`closing-stat-card stat-clickable ${statusFilter === 'COMPLETED' ? 'stat-active completed' : ''}`}
+              role="button"
+              tabIndex={0}
+              title="Clique para filtrar apenas empresas concluídas"
+              onClick={() => setStatusFilter(prev => prev === 'COMPLETED' ? 'ALL' : 'COMPLETED')}
+              onKeyDown={e => { if (['Enter', ' '].includes(e.key)) { e.preventDefault(); setStatusFilter(prev => prev === 'COMPLETED' ? 'ALL' : 'COMPLETED'); } }}
+            >
               <div className="closing-stat-icon completed">
                 <CheckCircle2 size={22} />
               </div>
@@ -1060,7 +1074,14 @@ export function Closings({ currentView, onNavigate, currentUser, onLogout }: Clo
               </div>
             </div>
 
-            <div className="closing-stat-card">
+            <div
+              className={`closing-stat-card stat-clickable ${statusFilter === 'IN_PROGRESS' ? 'stat-active in-progress' : ''}`}
+              role="button"
+              tabIndex={0}
+              title="Clique para filtrar apenas empresas em andamento"
+              onClick={() => setStatusFilter(prev => prev === 'IN_PROGRESS' ? 'ALL' : 'IN_PROGRESS')}
+              onKeyDown={e => { if (['Enter', ' '].includes(e.key)) { e.preventDefault(); setStatusFilter(prev => prev === 'IN_PROGRESS' ? 'ALL' : 'IN_PROGRESS'); } }}
+            >
               <div className="closing-stat-icon in-progress">
                 <Clock size={22} />
               </div>
@@ -1070,7 +1091,14 @@ export function Closings({ currentView, onNavigate, currentUser, onLogout }: Clo
               </div>
             </div>
 
-            <div className="closing-stat-card">
+            <div
+              className={`closing-stat-card stat-clickable ${statusFilter === 'PENDING' ? 'stat-active pending' : ''}`}
+              role="button"
+              tabIndex={0}
+              title="Clique para filtrar apenas empresas pendentes"
+              onClick={() => setStatusFilter(prev => prev === 'PENDING' ? 'ALL' : 'PENDING')}
+              onKeyDown={e => { if (['Enter', ' '].includes(e.key)) { e.preventDefault(); setStatusFilter(prev => prev === 'PENDING' ? 'ALL' : 'PENDING'); } }}
+            >
               <div className="closing-stat-icon pending">
                 <AlertCircle size={22} />
               </div>
