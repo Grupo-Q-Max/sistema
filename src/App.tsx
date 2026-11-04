@@ -24,6 +24,7 @@ const InstallmentSettings = lazy(() => import('./components/InstallmentSettings'
 const SpotlightSearch = lazy(() => import('./components/SpotlightSearch').then(m => ({ default: m.SpotlightSearch })));
 const Company360Modal = lazy(() => import('./components/Company360Modal').then(m => ({ default: m.Company360Modal })));
 const WorkloadBalancerModal = lazy(() => import('./components/WorkloadBalancerModal').then(m => ({ default: m.WorkloadBalancerModal })));
+const DominioStagingModal = lazy(() => import('./components/DominioStagingModal').then(m => ({ default: m.DominioStagingModal })));
 
 const ViewLoading = () => (
   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', width: '100%', background: '#090d16', color: '#94a3b8' }}>
@@ -42,10 +43,11 @@ function App() {
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
-  // Modais Globais (Spotlight, Raio-X 360, Balanceador de Carga)
+  // Modais Globais (Spotlight, Raio-X 360, Balanceador de Carga, Aprovação Domínio)
   const [isSpotlightOpen, setIsSpotlightOpen] = useState(false);
   const [selected360CompanyId, setSelected360CompanyId] = useState<string | null>(null);
   const [isWorkloadOpen, setIsWorkloadOpen] = useState(false);
+  const [isDominioStagingOpen, setIsDominioStagingOpen] = useState(false);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -58,6 +60,7 @@ function App() {
 
     const handleOpenSpotlight = () => setIsSpotlightOpen(true);
     const handleOpenWorkload = () => setIsWorkloadOpen(true);
+    const handleOpenDominioStaging = () => setIsDominioStagingOpen(true);
     const handleOpen360 = (e: any) => {
       if (e.detail?.companyId) {
         setSelected360CompanyId(e.detail.companyId);
@@ -67,12 +70,14 @@ function App() {
     window.addEventListener('keydown', handleKeyDown);
     window.addEventListener('open-spotlight', handleOpenSpotlight);
     window.addEventListener('open-workload-balancer', handleOpenWorkload);
+    window.addEventListener('open-dominio-staging', handleOpenDominioStaging);
     window.addEventListener('open-company-360', handleOpen360);
 
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('open-spotlight', handleOpenSpotlight);
       window.removeEventListener('open-workload-balancer', handleOpenWorkload);
+      window.removeEventListener('open-dominio-staging', handleOpenDominioStaging);
       window.removeEventListener('open-company-360', handleOpen360);
     };
   }, []);
@@ -346,6 +351,12 @@ function App() {
           isOpen={isWorkloadOpen}
           onClose={() => setIsWorkloadOpen(false)}
           currentUserId={currentUser.id}
+        />
+
+        {/* CENTRAL DE CONCILIAÇÃO E APROVAÇÃO DOMÍNIO */}
+        <DominioStagingModal
+          isOpen={isDominioStagingOpen}
+          onClose={() => setIsDominioStagingOpen(false)}
         />
       </Suspense>
     );

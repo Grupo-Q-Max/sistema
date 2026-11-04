@@ -6,6 +6,7 @@ import {registerRiskRadar,invalidateRiskRadarCache} from './riskRadar';
 import {registerWorkloadAndHistory} from './workloadAndHistory';
 import {registerDeploy} from './deploy';
 import {registerAutomation} from './automation';
+import {registerDominioStaging} from './dominioStaging';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {externalCompaniesExcluded} from '../src/config/installmentCompanies';
@@ -123,6 +124,7 @@ const KNOWN_API_PREFIXES = [
   '/logs',
   '/login',
   '/logout',
+  '/dominio-staging',
 ];
 
 // Normaliza requisições vindas com prefixo legado /sistema ou sem /api ou com /api duplicado
@@ -163,6 +165,7 @@ registerRiskRadar(app,prisma);
 registerWorkloadAndHistory(app,prisma);
 registerDeploy(app);
 registerAutomation(app,prisma);
+registerDominioStaging(app,prisma);
 
 let appConfigCache: {
   ts: number;

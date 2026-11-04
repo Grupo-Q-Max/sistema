@@ -212,6 +212,7 @@ model Company {
   userAccess       UserCompanyAccess[]
   responsibles     CompanyResponsible[]
   automationTasks  AutomationTask[]
+  dominioStagingChanges DominioStagingChange[]
 
   @@index([obligationStartDate, exitDate])
   @@index([code])
@@ -413,4 +414,40 @@ model AppConfig {
   id        String   @id
   value     Json
   updatedAt DateTime @updatedAt
+}
+
+// ========================
+// 5. CONCILIAÇÃO E APROVAÇÃO DOMÍNIO (STAGING)
+// ========================
+
+enum DominioApprovalStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+model DominioStagingChange {
+  id              String                @id @default(uuid())
+  companyId       String?
+  companyCode     String?               // Código Domínio (ex: "5", "102")
+  companyName     String                // Razão Social
+  sector          String                // "CONTABIL", "FISCAL", "DP"
+  referencePeriod String                // "10/2026", "2026-10", "2026"
+  columnKey       String                // Ex: "fechamento_doc", "cobranca_doc", "das", etc.
+  columnLabel     String                // Ex: "Fechamento Documentos", "Cobrança Doc"
+  currentValue    String?               // Valor atual no Fechamento Pro
+  proposedValue   String                // Novo valor identificado no Domínio
+  status          DominioApprovalStatus @default(PENDING)
+  sourceFile      String?               // Nome do backup de origem (ex: "50110_20261104_1000M.dom")
+  approvedBy      String?               // Nome ou email do usuário que aprovou
+  approvedAt      DateTime?
+  rejectedAt      DateTime?
+
+  createdAt       DateTime              @default(now())
+  updatedAt       DateTime              @updatedAt
+
+  company         Company?              @relation(fields: [companyId], references: [id], onDelete: SetNull)
+
+  @@index([status, sector])
+  @@index([companyCode, referencePeriod])
 }

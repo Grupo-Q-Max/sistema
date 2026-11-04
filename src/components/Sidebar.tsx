@@ -125,6 +125,28 @@ export function Sidebar({ currentView, onNavigate, currentUser, onLogout }: Side
   };
 
   const [qualityCount,setQualityCount]=useState(()=>cachedQualitySummary?.count||0);
+  const [dominioPendingCount, setDominioPendingCount] = useState(0);
+
+  const fetchDominioSummary = async () => {
+    try {
+      const res = await fetch(`${API}/api/dominio-staging/summary`);
+      if (res.ok) {
+        const data = await res.json();
+        setDominioPendingCount(data.pendingCount || 0);
+      }
+    } catch {}
+  };
+
+  useEffect(() => {
+    fetchDominioSummary();
+    const interval = setInterval(fetchDominioSummary, 30000);
+    const handleUpdate = () => fetchDominioSummary();
+    window.addEventListener('dominio-staging-updated', handleUpdate);
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('dominio-staging-updated', handleUpdate);
+    };
+  }, []);
   useEffect(()=>{
     if(!isPrivileged||(!currentUser?.sessionToken&&!currentUser?.id))return;
     const controller=new AbortController();
@@ -343,6 +365,35 @@ export function Sidebar({ currentView, onNavigate, currentUser, onLogout }: Side
             <span className="nav-item-label">Balanceador de Carga</span>
           </a>
         )}
+
+        <a
+          href="#"
+          className="nav-item nav-item--dominio"
+          title="Central de Aprovação do Sistema Domínio"
+          onClick={(e) => {
+            e.preventDefault();
+            window.dispatchEvent(new CustomEvent('open-dominio-staging'));
+          }}
+        >
+          <Sparkles size={20} className={dominioPendingCount > 0 ? 'text-amber-400' : ''} />
+          <span className="nav-item-label">Aprovação Domínio</span>
+          {dominioPendingCount > 0 && (
+            <span
+              style={{
+                background: '#f59e0b',
+                color: '#000',
+                fontSize: 11,
+                fontWeight: 700,
+                padding: '2px 7px',
+                borderRadius: 999,
+                marginLeft: 'auto',
+                boxShadow: '0 0 10px rgba(245, 158, 11, 0.5)'
+              }}
+            >
+              {dominioPendingCount}
+            </span>
+          )}
+        </a>
         {showSettingsGroup && (
           <>
             <div className="nav-divider"></div>
