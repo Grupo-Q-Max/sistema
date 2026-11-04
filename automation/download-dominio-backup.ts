@@ -3,6 +3,7 @@ import path from 'node:path';
 import fs from 'node:fs';
 import os from 'node:os';
 import 'dotenv/config';
+import { getOutlookVerificationCode } from './read-outlook-code';
 
 // Configurações
 const USER_DESKTOP = path.join(os.homedir(), 'Desktop');
@@ -171,9 +172,49 @@ async function handleLoginFlow(page: Page): Promise<void> {
       continue;
     }
 
-    // 6. Se houver tela de código do Outlook
-    if (url.includes('mfa') || url.includes('challenge') || url.includes('code') || url.includes('verification')) {
-      console.log('📬 Aguardando confirmação do código do Outlook na tela...');
+    // 6. Tela de código de verificação (MFA do Outlook)
+    const isMfaUrl = url.includes('mfa') || url.includes('challenge') || url.includes('code') || url.includes('verification');
+    let codeInput = page.locator('input[name*="code" i], input[name*="challenge" i], input[name*="otp" i], input[id*="code" i], input[id*="otp" i], input[autocomplete="one-time-code"], input[maxlength="6"], input[placeholder*="código" i]').first();
+
+    const isCodeVisible = await codeInput.isVisible({ timeout: 1000 }).catch(() => false);
+    if (isMfaUrl || isCodeVisible) {
+      console.log('📬 Detectada tela de código de verificação.');
+
+      // Tenta obter o código automaticamente do Outlook
+      let extractedCode: string | null = null;
+      for (let attempt = 1; attempt <= 6; attempt++) {
+        console.log(`⏳ Aguardando e buscando código no Outlook (tentativa ${attempt}/6)...`);
+        extractedCode = await getOutlookVerificationCode();
+        if (extractedCode) break;
+        await page.waitForTimeout(4000);
+      }
+
+      if (extractedCode && isCodeVisible) {
+        console.log(`🎯 Inserindo código de verificação: ${extractedCode}...`);
+        await codeInput.fill(extractedCode);
+        await page.waitForTimeout(1000);
+
+        // Marca a opção de lembrar este dispositivo para não pedir de novo
+        const rememberBox = page.locator('input[type="checkbox"]').first();
+        if (await rememberBox.isVisible({ timeout: 1000 }).catch(() => false)) {
+          console.log('☑️ Marcando "Lembrar deste computador / Manter conectado"...');
+          await rememberBox.check({ force: true }).catch(() => {});
+        }
+
+        // Clica em confirmar / verificar / continuar
+        const confirmBtn = page.getByRole('button', { name: /confirmar|verificar|continuar|avançar|entrar|submit/i })
+          .or(page.locator('button[type="submit"], input[type="submit"]'))
+          .first();
+
+        if (await confirmBtn.isVisible({ timeout: 1500 }).catch(() => false)) {
+          console.log('👆 Clicando para confirmar o código...');
+          await confirmBtn.click({ force: true }).catch(() => {});
+          await page.waitForTimeout(4000);
+          continue;
+        }
+      } else {
+        console.log('ℹ️ Se o código chegou no seu celular/Outlook, você pode digitá-lo na tela.');
+      }
     }
 
     await page.waitForTimeout(2000);
