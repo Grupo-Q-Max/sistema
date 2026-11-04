@@ -96,6 +96,14 @@ export function AccountingClosings({currentView,onNavigate,currentUser,onLogout}
   const deferredSearch = useDeferredValue(search);
   const groups=useMemo(()=>Array.from(new Set(scopedRows.map(row=>row.company.groupName).filter(Boolean))).sort((a:any,b:any)=>String(a).localeCompare(String(b),'pt-BR')),[scopedRows]);
 
+  const contabilUsers = useMemo(() => {
+    const assignedUserIds = new Set(
+      scopedRows.map(r => responsible(r.company)?.userId).filter(Boolean)
+    );
+    const activeContabilUsers = users.filter(u => assignedUserIds.has(u.id) || u.role === 'ADMIN' || u.role === 'SOCIO');
+    return activeContabilUsers.length > 0 ? activeContabilUsers : users;
+  }, [scopedRows, users]);
+
   const monthsBreakdown = useMemo(() => {
     let totalEligible = 0;
     let done = 0;
@@ -182,7 +190,7 @@ export function AccountingClosings({currentView,onNavigate,currentUser,onLogout}
       }
     }
 
-    return match && matchCert && matchMonthStatus && matchColumnFilters &&(situation==='ALL'||(situation==='LEFT'?left(company):!left(company)))&&(statusFilter==='ALL'||row.calculatedStatus===statusFilter)&&(responsibleFilter==='ALL'||responsible(company)?.userId===responsibleFilter)&&(regime==='ALL'||company.taxRegime===regime)&&(groupFilter==='ALL'||company.groupName===groupFilter);
+    return match && matchCert && matchMonthStatus && matchColumnFilters &&(situation==='ALL'||(situation==='LEFT'?left(company):!left(company)))&&(statusFilter==='ALL'||row.calculatedStatus===statusFilter)&&(responsibleFilter==='ALL'||(responsibleFilter==='UNASSIGNED'?!responsible(company)?.userId:responsible(company)?.userId===responsibleFilter))&&(regime==='ALL'||company.taxRegime===regime)&&(groupFilter==='ALL'||company.groupName===groupFilter);
   }).sort((a,b)=> {
     if (sort.key === 'code') return compareCodes(a.company.code, b.company.code, sort.asc);
     if (sort.key === 'groupName') return String(a.company.groupName||'').localeCompare(String(b.company.groupName||''),'pt-BR',{numeric:true})*(sort.asc?1:-1);
@@ -441,7 +449,11 @@ export function AccountingClosings({currentView,onNavigate,currentUser,onLogout}
         <select className="closings-select" aria-label="Filtrar situação" value={situation} onChange={event=>setSituation(event.target.value)}><option value="ALL">Situação: Todas</option><option value="ACTIVE">Ativas</option><option value="LEFT">Saíram no ano</option></select>
         <select className="closings-select" aria-label="Filtrar tributação" value={regime} onChange={event=>setRegime(event.target.value)}><option value="ALL">Tributação: Todas</option>{regimes.map(value=><option key={value} value={value}>{formatRegimeLabel(value)}</option>)}</select>
         <select className="closings-select" aria-label="Filtrar grupo" value={groupFilter} onChange={event=>setGroupFilter(event.target.value)}><option value="ALL">Grupo: Todos</option>{groups.map(value=><option key={value} value={value}>{value}</option>)}</select>
-        <select className="closings-select" aria-label="Filtrar responsável" value={responsibleFilter} onChange={event=>setResponsibleFilter(event.target.value)}><option value="ALL">Responsável: Todos</option>{users.map(user=><option key={user.id} value={user.id}>{user.name||user.email}</option>)}</select>
+        <select className="closings-select" aria-label="Filtrar responsável" value={responsibleFilter} onChange={event=>setResponsibleFilter(event.target.value)}>
+          <option value="ALL">Responsável: Todos</option>
+          <option value="UNASSIGNED">Não atribuído</option>
+          {contabilUsers.map(user=><option key={user.id} value={user.id}>{user.name||user.email}</option>)}
+        </select>
         <select className="closings-select" aria-label="Filtrar certificado digital" value={certFilter} onChange={event=>setCertFilter(event.target.value)}>
           <option value="ALL">Certificados: Todos</option>
           <option value="EXPIRING">Vencendo ou Vencidos</option>
@@ -460,6 +472,18 @@ export function AccountingClosings({currentView,onNavigate,currentUser,onLogout}
             title="Remover filtro de status"
           >
             <span>Filtro: {statusFilter === 'COMPLETED' ? 'Concluídos' : statusFilter === 'IN_PROGRESS' ? 'Em Andamento' : 'Pendentes'}</span>
+            <X size={13} />
+          </button>
+        )}
+        {responsibleFilter !== 'ALL' && (
+          <button
+            type="button"
+            className="filter-clear-pill"
+            style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '4px 10px', borderRadius: '6px', background: 'rgba(99, 102, 241, 0.2)', border: '1px solid rgba(129, 140, 248, 0.4)', color: '#c7d2fe', fontSize: '12px', cursor: 'pointer', transition: 'all 0.2s' }}
+            onClick={() => setResponsibleFilter('ALL')}
+            title="Remover filtro de responsável"
+          >
+            <span>Responsável: {responsibleFilter === 'UNASSIGNED' ? 'Não atribuído' : users.find(u => u.id === responsibleFilter)?.name || 'Selecionado'}</span>
             <X size={13} />
           </button>
         )}
@@ -662,7 +686,18 @@ export function AccountingClosings({currentView,onNavigate,currentUser,onLogout}
                             <span>Responsável: Todos</span>
                             {responsibleFilter === 'ALL' && <Check size={12} />}
                           </button>
-                          {users.map(u => (
+                          <button
+                            type="button"
+                            className={`th-filter-popover-item ${responsibleFilter === 'UNASSIGNED' ? 'active' : ''}`}
+                            onClick={() => {
+                              setResponsibleFilter('UNASSIGNED');
+                              setOpenHeaderFilter(null);
+                            }}
+                          >
+                            <span>Não atribuído</span>
+                            {responsibleFilter === 'UNASSIGNED' && <Check size={12} />}
+                          </button>
+                          {contabilUsers.map(u => (
                             <button
                               key={u.id}
                               type="button"
@@ -806,11 +841,11 @@ export function AccountingClosings({currentView,onNavigate,currentUser,onLogout}
                         </div>
                         {[
                           { value: 'ALL', label: 'Todos os status' },
-                          { value: 'DONE', label: 'CONCLUÍDO (OK)' },
-                          { value: 'DOC_REDE', label: 'DOC. REDE' },
-                          { value: 'SEM_MOVIMENTO', label: 'SEM MOVIMENTO' },
-                          { value: 'COBRANCA', label: 'COBRANÇA DOC.' },
-                          { value: 'PENDING', label: 'PENDENTE' },
+                          ...(monthsBreakdown.done > 0 ? [{ value: 'DONE', label: `CONCLUÍDO (${monthsBreakdown.done})` }] : []),
+                          ...(monthsBreakdown.docRede > 0 ? [{ value: 'DOC_REDE', label: `DOC. REDE (${monthsBreakdown.docRede})` }] : []),
+                          ...(monthsBreakdown.noMovement > 0 ? [{ value: 'SEM_MOVIMENTO', label: `SEM MOVIMENTO (${monthsBreakdown.noMovement})` }] : []),
+                          ...(monthsBreakdown.collection > 0 ? [{ value: 'COBRANCA', label: `COBRANÇA DOC. (${monthsBreakdown.collection})` }] : []),
+                          ...(monthsBreakdown.pending > 0 ? [{ value: 'PENDING', label: `PENDENTE (${monthsBreakdown.pending})` }] : []),
                         ].map(item => (
                           <button
                             key={item.value}
