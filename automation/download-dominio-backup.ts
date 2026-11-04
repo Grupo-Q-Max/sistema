@@ -85,27 +85,34 @@ async function handleLoginFlow(page: Page): Promise<void> {
     if (isVamosComecar) {
       console.log('🚪 Tela "Vamos começar" detectada. Acionando botão "Entrar"...');
       
-      // 1. Tenta clique nativo via Playwright
-      const entrarBtn = page.getByRole('button', { name: /entrar/i })
-        .or(page.locator('button:has-text("Entrar"), [role="button"]:has-text("Entrar"), a:has-text("Entrar")'))
-        .first();
-
-      if (await entrarBtn.isVisible({ timeout: 1500 }).catch(() => false)) {
-        const box = await entrarBtn.boundingBox().catch(() => null);
-        if (box) {
-          await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2).catch(() => {});
-        }
-        await entrarBtn.click({ force: true }).catch(() => {});
+      // 1. Tenta clique direto via texto pelo Playwright
+      try {
+        await page.click('text=/^\\s*entrar\\s*$/i', { timeout: 2000, force: true });
+      } catch {
+        try {
+          await page.click('button:has-text("Entrar")', { timeout: 2000, force: true });
+        } catch {}
       }
 
-      // 2. Tenta via disparos de eventos DOM completos
+      // 2. Tenta clique por coordenadas físicas do mouse
+      try {
+        const btn = page.locator('button, a, div[role="button"]').filter({ hasText: /^Entrar$/i }).first();
+        const box = await btn.boundingBox();
+        if (box) {
+          await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
+        }
+      } catch {}
+
+      // 3. Tenta via eventos nativos completos do navegador (Pointer + Mouse)
       await page.evaluate(() => {
         const candidates = Array.from(document.querySelectorAll('button, a, div[role="button"], span, input'));
         for (const el of candidates) {
           const text = (el.textContent || (el as HTMLInputElement).value || '').trim();
           if (/^entrar$/i.test(text)) {
             (el as HTMLElement).focus();
+            el.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, cancelable: true }));
             el.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
+            el.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, cancelable: true }));
             el.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true }));
             el.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
             (el as HTMLElement).click();
@@ -113,7 +120,7 @@ async function handleLoginFlow(page: Page): Promise<void> {
         }
       }).catch(() => {});
 
-      // 3. Pressiona Enter no teclado por garantia
+      // 4. Pressiona tecla Enter no teclado
       await page.keyboard.press('Enter').catch(() => {});
 
       await page.waitForTimeout(3000);
