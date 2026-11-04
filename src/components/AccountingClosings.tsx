@@ -2,7 +2,7 @@ import {AccountingMonthsModal} from './AccountingMonthsModal';
 import {ClosingProgressDetails} from './ClosingProgressDetails';
 import {groupAccountingColumns,buildClosingProgress,summarizeClosingProgress} from '../config/closingProgress';
 import {useEffect,useMemo,useRef,useState,useDeferredValue} from 'react';
-import {Building2,FileCheck,CheckCircle2,Clock,AlertCircle,Sparkles,Search,ChevronLeft,ChevronRight,ExternalLink,AlertTriangle,Copy,RefreshCw,LockKeyhole,X,Users,BarChart3} from 'lucide-react';
+import {Building2,FileCheck,CheckCircle2,Clock,AlertCircle,Sparkles,Search,ChevronLeft,ChevronRight,ExternalLink,AlertTriangle,Copy,RefreshCw,LockKeyhole,X,Users,BarChart3,Filter,Check,Calendar} from 'lucide-react';
 import {Sidebar} from './Sidebar';
 import {CompanyDetailsModal,getCertificateStatus,formatCnpj,formatRegimeLabel} from './CompanyDetailsModal';
 import {BulkAssignResponsibleModal} from './BulkAssignResponsibleModal';
@@ -33,6 +33,9 @@ export function AccountingClosings({currentView,onNavigate,currentUser,onLogout}
   const [rows,setRows]=useState<Row[]>([]);const [columns,setColumns]=useState<any[]>([]);const [users,setUsers]=useState<any[]>([]);
   const [loading,setLoading]=useState(true);const [error,setError]=useState('');const [pending,setPending]=useState(0);
   const [search,setSearch]=useState('');const [situation,setSituation]=useState('ALL');const [statusFilter,setStatusFilter]=useState<'ALL'|'COMPLETED'|'IN_PROGRESS'|'PENDING'>('ALL');const [responsibleFilter,setResponsibleFilter]=useState('ALL');const [regime,setRegime]=useState('ALL');const [groupFilter,setGroupFilter]=useState('ALL');const [certFilter,setCertFilter]=useState('ALL');
+  const [monthStatusFilter,setMonthStatusFilter]=useState<'ALL'|'DONE'|'DOC_REDE'|'SEM_MOVIMENTO'|'COBRANCA'|'PENDING'>('ALL');
+  const [columnFilters,setColumnFilters]=useState<Record<string,string>>({});
+  const [openHeaderFilter,setOpenHeaderFilter]=useState<string|null>(null);
   const [sort,setSort]=useState<{key:'code'|'name'|'groupName';asc:boolean}>({key:'code',asc:true});
   const [selectedCompanyIds,setSelectedCompanyIds]=useState<string[]>([]);
   const [bulkAssignOpen,setBulkAssignOpen]=useState(false);
@@ -58,8 +61,22 @@ export function AccountingClosings({currentView,onNavigate,currentUser,onLogout}
     }catch(cause){if(request===sequence.current){setRows([]);setColumns([]);setError(cause instanceof Error?cause.message:'Erro ao carregar.');}}finally{if(request===sequence.current)setLoading(false);}
   }
   useEffect(()=>{if(canView)void load();return()=>{sequence.current++;};},[year,canView]);
-  useEffect(()=>{setNotes(null);setCompanyDetails(null);setMonthsClosingId('');setProgressOpen(false);},[year]);
+  useEffect(()=>{setNotes(null);setCompanyDetails(null);setMonthsClosingId('');setProgressOpen(false);setOpenHeaderFilter(null);setMonthStatusFilter('ALL');setColumnFilters({});},[year]);
   useEffect(()=>{const close=(event:KeyboardEvent)=>{if(event.key==='Escape'){setCompanyDetails(null);if(!noteSaving)setNotes(null);}};window.addEventListener('keydown',close);return()=>window.removeEventListener('keydown',close);},[noteSaving]);
+  useEffect(()=>{
+    if(!openHeaderFilter)return;
+    const handlePointerDown=(event:MouseEvent|TouchEvent)=>{
+      const target=event.target as HTMLElement|null;
+      if(!target?.closest('.th-filter-wrapper'))setOpenHeaderFilter(null);
+    };
+    const handleKeyDown=(event:KeyboardEvent)=>{if(event.key==='Escape')setOpenHeaderFilter(null);};
+    document.addEventListener('pointerdown',handlePointerDown as any);
+    document.addEventListener('keydown',handleKeyDown);
+    return()=>{
+      document.removeEventListener('pointerdown',handlePointerDown as any);
+      document.removeEventListener('keydown',handleKeyDown);
+    };
+  },[openHeaderFilter]);
   useEffect(()=>{if(!copied)return;const timer=window.setTimeout(()=>setCopied(''),2500);return()=>window.clearTimeout(timer);},[copied]);
   useEffect(()=>{const table=tableScroll.current?.querySelector('table');if(!table)return;const update=()=>setScrollWidth(table.scrollWidth);update();const observer=new ResizeObserver(update);observer.observe(table);return()=>observer.disconnect();},[loading,columns]);
   const scopedRows=useMemo(()=>rows.filter(row=>{
@@ -70,6 +87,44 @@ export function AccountingClosings({currentView,onNavigate,currentUser,onLogout}
   }),[rows,currentUser,onlyMyCompanies,isPrivileged]);
   const deferredSearch = useDeferredValue(search);
   const groups=useMemo(()=>Array.from(new Set(scopedRows.map(row=>row.company.groupName).filter(Boolean))).sort((a:any,b:any)=>String(a).localeCompare(String(b),'pt-BR')),[scopedRows]);
+
+  const monthsBreakdown = useMemo(() => {
+    let totalEligible = 0;
+    let done = 0;
+    let noMovement = 0;
+    let docRede = 0;
+    let collection = 0;
+    let pending = 0;
+
+    for (const row of scopedRows) {
+      for (let m = 0; m < 12; m++) {
+        const isBlocked = Date.UTC(year, m, 1) > latestPeriod.getTime();
+        if (isBlocked) continue;
+
+        const col = columns.find(item => accountingMonth(item) === m + 1);
+        const key = col ? (resolveColumnKey(col) || col.id) : `cont_mes_${String(m + 1).padStart(2, '0')}`;
+        const val = row.columnsData?.[key];
+
+        if (val === NOT_CLIENT) continue;
+
+        totalEligible++;
+        if (val === 'OK - FINALIZADO') {
+          done++;
+        } else if (val === 'SEM MOVIMENTO') {
+          noMovement++;
+        } else if (val === 'DOC. REDE') {
+          docRede++;
+        } else if (val === 'COBRANÇA DOC.') {
+          collection++;
+        } else {
+          pending++;
+        }
+      }
+    }
+
+    return { totalEligible, done, noMovement, docRede, collection, pending };
+  }, [scopedRows, columns, year, latestPeriod]);
+
   const filtered=useMemo(()=>scopedRows.filter(row=>{
     const company=row.company;const term=deferredSearch.trim().toLocaleLowerCase('pt-BR');const text=[company.code,formatCompanyCode(company.code),company.name,company.tradeName,company.cnpj,company.groupName,company.city].filter(Boolean).join(' ').toLocaleLowerCase('pt-BR');
     const digits=term.replace(/\D/g,'');const match=text.includes(term)||(digits.length>0&&(company.cnpj||'').replace(/\D/g,'').includes(digits));
@@ -83,12 +138,44 @@ export function AccountingClosings({currentView,onNavigate,currentUser,onLogout}
       else if (certFilter === 'HAS_CERT') matchCert = Boolean(company.hasClientCertificate);
       else if (certFilter === 'NO_CERT') matchCert = !company.hasClientCertificate;
     }
-    return match && matchCert &&(situation==='ALL'||(situation==='LEFT'?left(company):!left(company)))&&(statusFilter==='ALL'||row.calculatedStatus===statusFilter)&&(responsibleFilter==='ALL'||responsible(company)?.userId===responsibleFilter)&&(regime==='ALL'||company.taxRegime===regime)&&(groupFilter==='ALL'||company.groupName===groupFilter);
+
+    let matchMonthStatus = true;
+    if (monthStatusFilter !== 'ALL') {
+      let hasMatch = false;
+      for (let m = 0; m < 12; m++) {
+        const isBlocked = Date.UTC(year, m, 1) > latestPeriod.getTime();
+        if (isBlocked) continue;
+        const col = columns.find(item => accountingMonth(item) === m + 1);
+        const k = col ? (resolveColumnKey(col) || col.id) : `cont_mes_${String(m + 1).padStart(2, '0')}`;
+        const val = row.columnsData?.[k];
+        if (val === NOT_CLIENT) continue;
+
+        if (monthStatusFilter === 'DONE' && (val === 'OK - FINALIZADO' || val === 'SEM MOVIMENTO')) { hasMatch = true; break; }
+        if (monthStatusFilter === 'DOC_REDE' && val === 'DOC. REDE') { hasMatch = true; break; }
+        if (monthStatusFilter === 'SEM_MOVIMENTO' && val === 'SEM MOVIMENTO') { hasMatch = true; break; }
+        if (monthStatusFilter === 'COBRANCA' && val === 'COBRANÇA DOC.') { hasMatch = true; break; }
+        if (monthStatusFilter === 'PENDING' && (!val || val === 'Pendente')) { hasMatch = true; break; }
+      }
+      matchMonthStatus = hasMatch;
+    }
+
+    let matchColumnFilters = true;
+    for (const [colKey, filterVal] of Object.entries(columnFilters)) {
+      if (!filterVal || filterVal === 'ALL') continue;
+      const cellVal = row.columnsData?.[colKey];
+      const normalizedCell = typeof cellVal === 'object' && cellVal !== null ? (cellVal.status || cellVal.value || '') : String(cellVal || '');
+      if (normalizedCell !== filterVal) {
+        matchColumnFilters = false;
+        break;
+      }
+    }
+
+    return match && matchCert && matchMonthStatus && matchColumnFilters &&(situation==='ALL'||(situation==='LEFT'?left(company):!left(company)))&&(statusFilter==='ALL'||row.calculatedStatus===statusFilter)&&(responsibleFilter==='ALL'||responsible(company)?.userId===responsibleFilter)&&(regime==='ALL'||company.taxRegime===regime)&&(groupFilter==='ALL'||company.groupName===groupFilter);
   }).sort((a,b)=> {
     if (sort.key === 'code') return compareCodes(a.company.code, b.company.code, sort.asc);
     if (sort.key === 'groupName') return String(a.company.groupName||'').localeCompare(String(b.company.groupName||''),'pt-BR',{numeric:true})*(sort.asc?1:-1);
     return String(a.company[sort.key]||'').localeCompare(String(b.company[sort.key]||''),'pt-BR',{numeric:true})*(sort.asc?1:-1);
-  }),[scopedRows,deferredSearch,situation,statusFilter,responsibleFilter,regime,groupFilter,certFilter,sort,year]);
+  }),[scopedRows,deferredSearch,situation,statusFilter,responsibleFilter,regime,groupFilter,certFilter,monthStatusFilter,columnFilters,sort,year,columns,latestPeriod]);
   const allFilteredSelected = filtered.length > 0 && filtered.every(r => selectedCompanyIds.includes(r.company.id));
   const handleToggleSelectAll = () => {
     if (allFilteredSelected) {
@@ -246,6 +333,87 @@ export function AccountingClosings({currentView,onNavigate,currentUser,onLogout}
           </div>
         );
       })}</div>
+
+      <div className="accounting-months-breakdown-card">
+        <div className="breakdown-header">
+          <div className="breakdown-title">
+            <Calendar size={18} />
+            <span>Detalhamento dos Meses · {year}</span>
+          </div>
+          <span className="breakdown-subtitle">
+            {monthsBreakdown.totalEligible} meses liberados nas empresas ativas (clique para filtrar)
+          </span>
+        </div>
+        <div className="breakdown-chips">
+          <button
+            type="button"
+            className={`breakdown-chip done ${monthStatusFilter === 'DONE' ? 'active' : ''}`}
+            onClick={() => setMonthStatusFilter(prev => prev === 'DONE' ? 'ALL' : 'DONE')}
+            title="Filtrar empresas com meses Concluídos"
+          >
+            <span className="chip-dot" />
+            <span className="chip-label">CONCLUÍDO</span>
+            <strong>{monthsBreakdown.done} / {monthsBreakdown.totalEligible}</strong>
+            <span className="chip-pct">{monthsBreakdown.totalEligible ? Math.round(monthsBreakdown.done / monthsBreakdown.totalEligible * 100) : 0}%</span>
+          </button>
+          <button
+            type="button"
+            className={`breakdown-chip doc-rede ${monthStatusFilter === 'DOC_REDE' ? 'active' : ''}`}
+            onClick={() => setMonthStatusFilter(prev => prev === 'DOC_REDE' ? 'ALL' : 'DOC_REDE')}
+            title="Filtrar empresas com DOC. REDE"
+          >
+            <span className="chip-dot" />
+            <span className="chip-label">DOC. REDE</span>
+            <strong>{monthsBreakdown.docRede} / {monthsBreakdown.totalEligible}</strong>
+            <span className="chip-pct">{monthsBreakdown.totalEligible ? Math.round(monthsBreakdown.docRede / monthsBreakdown.totalEligible * 100) : 0}%</span>
+          </button>
+          <button
+            type="button"
+            className={`breakdown-chip no-movement ${monthStatusFilter === 'SEM_MOVIMENTO' ? 'active' : ''}`}
+            onClick={() => setMonthStatusFilter(prev => prev === 'SEM_MOVIMENTO' ? 'ALL' : 'SEM_MOVIMENTO')}
+            title="Filtrar empresas com SEM MOVIMENTO"
+          >
+            <span className="chip-dot" />
+            <span className="chip-label">SEM MOVIMENTO</span>
+            <strong>{monthsBreakdown.noMovement} / {monthsBreakdown.totalEligible}</strong>
+            <span className="chip-pct">{monthsBreakdown.totalEligible ? Math.round(monthsBreakdown.noMovement / monthsBreakdown.totalEligible * 100) : 0}%</span>
+          </button>
+          <button
+            type="button"
+            className={`breakdown-chip collection ${monthStatusFilter === 'COBRANCA' ? 'active' : ''}`}
+            onClick={() => setMonthStatusFilter(prev => prev === 'COBRANCA' ? 'ALL' : 'COBRANCA')}
+            title="Filtrar empresas com COBRANÇA DOC."
+          >
+            <span className="chip-dot" />
+            <span className="chip-label">COBRANÇA DOC.</span>
+            <strong>{monthsBreakdown.collection} / {monthsBreakdown.totalEligible}</strong>
+            <span className="chip-pct">{monthsBreakdown.totalEligible ? Math.round(monthsBreakdown.collection / monthsBreakdown.totalEligible * 100) : 0}%</span>
+          </button>
+          <button
+            type="button"
+            className={`breakdown-chip pending ${monthStatusFilter === 'PENDING' ? 'active' : ''}`}
+            onClick={() => setMonthStatusFilter(prev => prev === 'PENDING' ? 'ALL' : 'PENDING')}
+            title="Filtrar empresas com meses Pendentes"
+          >
+            <span className="chip-dot" />
+            <span className="chip-label">PENDENTE</span>
+            <strong>{monthsBreakdown.pending} / {monthsBreakdown.totalEligible}</strong>
+            <span className="chip-pct">{monthsBreakdown.totalEligible ? Math.round(monthsBreakdown.pending / monthsBreakdown.totalEligible * 100) : 0}%</span>
+          </button>
+          {monthStatusFilter !== 'ALL' && (
+            <button
+              type="button"
+              className="breakdown-clear-btn"
+              onClick={() => setMonthStatusFilter('ALL')}
+              title="Remover filtro dos meses"
+            >
+              <X size={13} />
+              Limpar filtro
+            </button>
+          )}
+        </div>
+      </div>
+
       <ClosingProgressDetails rows={scopedRows} columns={columns} sector="CONTABIL" period={new Date(Date.UTC(year,0,1))} latest={latestPeriod} open={progressOpen} onToggle={()=>setProgressOpen(value=>!value)} loading={loading}/>
       <div className="closings-toolbar"><div className="closings-search-box"><Search size={18} color="#94a3b8"/><input aria-label="Buscar empresa" value={search} onChange={event=>setSearch(event.target.value)} placeholder="Buscar por código, empresa, CNPJ, grupo ou cidade..."/></div><div className="closings-filters">
         <label className="checkbox-label filter-my-companies" style={{ display: 'inline-flex', alignItems: 'center', gap: 6, margin: 0, padding: '0 8px', cursor: 'pointer', userSelect: 'none', fontSize: 13, color: '#cbd5e1' }}>
@@ -283,6 +451,31 @@ export function AccountingClosings({currentView,onNavigate,currentUser,onLogout}
             <X size={13} />
           </button>
         )}
+        {monthStatusFilter !== 'ALL' && (
+          <button
+            type="button"
+            className="filter-clear-pill"
+            style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '4px 10px', borderRadius: '6px', background: 'rgba(99, 102, 241, 0.2)', border: '1px solid rgba(129, 140, 248, 0.4)', color: '#c7d2fe', fontSize: '12px', cursor: 'pointer', transition: 'all 0.2s' }}
+            onClick={() => setMonthStatusFilter('ALL')}
+            title="Remover filtro de status dos meses"
+          >
+            <span>Meses: {monthStatusFilter === 'DONE' ? 'Concluídos' : monthStatusFilter === 'DOC_REDE' ? 'DOC. REDE' : monthStatusFilter === 'SEM_MOVIMENTO' ? 'Sem Movimento' : monthStatusFilter === 'COBRANCA' ? 'Cobrança Doc.' : 'Pendentes'}</span>
+            <X size={13} />
+          </button>
+        )}
+        {Object.entries(columnFilters).filter(([, val]) => val && val !== 'ALL').map(([colKey, val]) => (
+          <button
+            key={colKey}
+            type="button"
+            className="filter-clear-pill"
+            style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '4px 10px', borderRadius: '6px', background: 'rgba(99, 102, 241, 0.2)', border: '1px solid rgba(129, 140, 248, 0.4)', color: '#c7d2fe', fontSize: '12px', cursor: 'pointer', transition: 'all 0.2s' }}
+            onClick={() => setColumnFilters(prev => { const n = { ...prev }; delete n[colKey]; return n; })}
+            title="Remover filtro de coluna"
+          >
+            <span>Filtro coluna: {val}</span>
+            <X size={13} />
+          </button>
+        ))}
         <button className="payroll-refresh-btn" aria-label="Atualizar Contábil" disabled={pending>0||loading} onClick={()=>{void load();}}><RefreshCw size={16}/></button>
         <button type="button" className="btn-secondary-light" onClick={handleCopyAllCnpjs} title="Copiar CNPJs limpos das empresas filtradas">
           <Copy size={15} />
@@ -304,6 +497,10 @@ export function AccountingClosings({currentView,onNavigate,currentUser,onLogout}
           const isCode = index === 0;
           const isCompany = index === 1;
           const isGroup = label === 'Grupo';
+          const isResponsible = label === 'Responsável';
+          const isSituation = label === 'Situação';
+          const isRegime = label === 'Tributação';
+
           return (
             <th key={label} className={isCode ? 'sticky-col-code' : isCompany ? 'sticky-col-company' : ''}>
               <div className="th-header-cell">
@@ -321,13 +518,249 @@ export function AccountingClosings({currentView,onNavigate,currentUser,onLogout}
                     </button>
                   </div>
                 ) : isCompany ? (
-                  <button className="payroll-sort-btn" onClick={() => setSort({ key: 'name', asc: sort.key === 'name' ? !sort.asc : true })}>
-                    {label}<span>{sort.key === 'name' ? (sort.asc ? '▲' : '▼') : '⇅'}</span>
-                  </button>
+                  <>
+                    <button className="payroll-sort-btn" onClick={() => setSort({ key: 'name', asc: sort.key === 'name' ? !sort.asc : true })}>
+                      {label}<span>{sort.key === 'name' ? (sort.asc ? '▲' : '▼') : '⇅'}</span>
+                    </button>
+                    <div className="th-filter-wrapper">
+                      <button
+                        type="button"
+                        className={`th-filter-icon-btn ${certFilter !== 'ALL' ? 'has-filter' : ''}`}
+                        title="Filtrar por certificado digital"
+                        aria-label="Filtrar por certificado digital"
+                        onClick={e => {
+                          e.stopPropagation();
+                          setOpenHeaderFilter(openHeaderFilter === 'header-cert' ? null : 'header-cert');
+                        }}
+                      >
+                        <Filter size={11} />
+                      </button>
+                      {openHeaderFilter === 'header-cert' && (
+                        <div className="th-filter-popover" onClick={e => e.stopPropagation()}>
+                          <div className="payroll-filter-heading" style={{ padding: '4px 8px', fontSize: '11px', fontWeight: 600, color: '#94a3b8', borderBottom: '1px solid #334155', marginBottom: '4px' }}>
+                            Filtrar Certificados
+                          </div>
+                          {[
+                            { value: 'ALL', label: 'Certificados: Todos' },
+                            { value: 'EXPIRING', label: 'Vencendo ou Vencidos' },
+                            { value: 'EXPIRED', label: 'Apenas Vencidos' },
+                            { value: 'WARNING', label: 'Vencendo em até 30 dias' },
+                            { value: 'OK', label: 'Válidos (> 30 dias)' },
+                            { value: 'HAS_CERT', label: 'Com certificado' },
+                            { value: 'NO_CERT', label: 'Sem certificado' },
+                          ].map(item => (
+                            <button
+                              key={item.value}
+                              type="button"
+                              className={`th-filter-popover-item ${certFilter === item.value ? 'active' : ''}`}
+                              onClick={() => {
+                                setCertFilter(item.value);
+                                setOpenHeaderFilter(null);
+                              }}
+                            >
+                              <span>{item.label}</span>
+                              {certFilter === item.value && <Check size={12} />}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </>
                 ) : isGroup ? (
-                  <button className="payroll-sort-btn" onClick={() => setSort({ key: 'groupName', asc: sort.key === 'groupName' ? !sort.asc : true })}>
-                    {label}<span>{sort.key === 'groupName' ? (sort.asc ? '▲' : '▼') : '⇅'}</span>
-                  </button>
+                  <>
+                    <button className="payroll-sort-btn" onClick={() => setSort({ key: 'groupName', asc: sort.key === 'groupName' ? !sort.asc : true })}>
+                      {label}<span>{sort.key === 'groupName' ? (sort.asc ? '▲' : '▼') : '⇅'}</span>
+                    </button>
+                    <div className="th-filter-wrapper">
+                      <button
+                        type="button"
+                        className={`th-filter-icon-btn ${groupFilter !== 'ALL' ? 'has-filter' : ''}`}
+                        title="Filtrar por grupo"
+                        aria-label="Filtrar por grupo"
+                        onClick={e => {
+                          e.stopPropagation();
+                          setOpenHeaderFilter(openHeaderFilter === 'header-group' ? null : 'header-group');
+                        }}
+                      >
+                        <Filter size={11} />
+                      </button>
+                      {openHeaderFilter === 'header-group' && (
+                        <div className="th-filter-popover" onClick={e => e.stopPropagation()} style={{ maxHeight: '250px', overflowY: 'auto' }}>
+                          <div className="payroll-filter-heading" style={{ padding: '4px 8px', fontSize: '11px', fontWeight: 600, color: '#94a3b8', borderBottom: '1px solid #334155', marginBottom: '4px' }}>
+                            Filtrar Grupo
+                          </div>
+                          <button
+                            type="button"
+                            className={`th-filter-popover-item ${groupFilter === 'ALL' ? 'active' : ''}`}
+                            onClick={() => {
+                              setGroupFilter('ALL');
+                              setOpenHeaderFilter(null);
+                            }}
+                          >
+                            <span>Grupo: Todos</span>
+                            {groupFilter === 'ALL' && <Check size={12} />}
+                          </button>
+                          {groups.map(grp => (
+                            <button
+                              key={grp}
+                              type="button"
+                              className={`th-filter-popover-item ${groupFilter === grp ? 'active' : ''}`}
+                              onClick={() => {
+                                setGroupFilter(grp);
+                                setOpenHeaderFilter(null);
+                              }}
+                            >
+                              <span>{grp}</span>
+                              {groupFilter === grp && <Check size={12} />}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </>
+                ) : isResponsible ? (
+                  <>
+                    <span>{label}</span>
+                    <div className="th-filter-wrapper">
+                      <button
+                        type="button"
+                        className={`th-filter-icon-btn ${responsibleFilter !== 'ALL' ? 'has-filter' : ''}`}
+                        title="Filtrar por responsável"
+                        aria-label="Filtrar por responsável"
+                        onClick={e => {
+                          e.stopPropagation();
+                          setOpenHeaderFilter(openHeaderFilter === 'header-resp' ? null : 'header-resp');
+                        }}
+                      >
+                        <Filter size={11} />
+                      </button>
+                      {openHeaderFilter === 'header-resp' && (
+                        <div className="th-filter-popover" onClick={e => e.stopPropagation()} style={{ maxHeight: '250px', overflowY: 'auto' }}>
+                          <div className="payroll-filter-heading" style={{ padding: '4px 8px', fontSize: '11px', fontWeight: 600, color: '#94a3b8', borderBottom: '1px solid #334155', marginBottom: '4px' }}>
+                            Filtrar Responsável
+                          </div>
+                          <button
+                            type="button"
+                            className={`th-filter-popover-item ${responsibleFilter === 'ALL' ? 'active' : ''}`}
+                            onClick={() => {
+                              setResponsibleFilter('ALL');
+                              setOpenHeaderFilter(null);
+                            }}
+                          >
+                            <span>Responsável: Todos</span>
+                            {responsibleFilter === 'ALL' && <Check size={12} />}
+                          </button>
+                          {users.map(u => (
+                            <button
+                              key={u.id}
+                              type="button"
+                              className={`th-filter-popover-item ${responsibleFilter === u.id ? 'active' : ''}`}
+                              onClick={() => {
+                                setResponsibleFilter(u.id);
+                                setOpenHeaderFilter(null);
+                              }}
+                            >
+                              <span>{u.name || u.email}</span>
+                              {responsibleFilter === u.id && <Check size={12} />}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </>
+                ) : isSituation ? (
+                  <>
+                    <span>{label}</span>
+                    <div className="th-filter-wrapper">
+                      <button
+                        type="button"
+                        className={`th-filter-icon-btn ${situation !== 'ALL' ? 'has-filter' : ''}`}
+                        title="Filtrar por situação"
+                        aria-label="Filtrar por situação"
+                        onClick={e => {
+                          e.stopPropagation();
+                          setOpenHeaderFilter(openHeaderFilter === 'header-situation' ? null : 'header-situation');
+                        }}
+                      >
+                        <Filter size={11} />
+                      </button>
+                      {openHeaderFilter === 'header-situation' && (
+                        <div className="th-filter-popover" onClick={e => e.stopPropagation()}>
+                          <div className="payroll-filter-heading" style={{ padding: '4px 8px', fontSize: '11px', fontWeight: 600, color: '#94a3b8', borderBottom: '1px solid #334155', marginBottom: '4px' }}>
+                            Filtrar Situação
+                          </div>
+                          {[
+                            { value: 'ALL', label: 'Situação: Todas' },
+                            { value: 'ACTIVE', label: 'Ativas' },
+                            { value: 'LEFT', label: 'Saíram no ano' },
+                          ].map(item => (
+                            <button
+                              key={item.value}
+                              type="button"
+                              className={`th-filter-popover-item ${situation === item.value ? 'active' : ''}`}
+                              onClick={() => {
+                                setSituation(item.value);
+                                setOpenHeaderFilter(null);
+                              }}
+                            >
+                              <span>{item.label}</span>
+                              {situation === item.value && <Check size={12} />}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </>
+                ) : isRegime ? (
+                  <>
+                    <span>{label}</span>
+                    <div className="th-filter-wrapper">
+                      <button
+                        type="button"
+                        className={`th-filter-icon-btn ${regime !== 'ALL' ? 'has-filter' : ''}`}
+                        title="Filtrar por tributação"
+                        aria-label="Filtrar por tributação"
+                        onClick={e => {
+                          e.stopPropagation();
+                          setOpenHeaderFilter(openHeaderFilter === 'header-regime' ? null : 'header-regime');
+                        }}
+                      >
+                        <Filter size={11} />
+                      </button>
+                      {openHeaderFilter === 'header-regime' && (
+                        <div className="th-filter-popover" onClick={e => e.stopPropagation()} style={{ maxHeight: '250px', overflowY: 'auto' }}>
+                          <div className="payroll-filter-heading" style={{ padding: '4px 8px', fontSize: '11px', fontWeight: 600, color: '#94a3b8', borderBottom: '1px solid #334155', marginBottom: '4px' }}>
+                            Filtrar Tributação
+                          </div>
+                          <button
+                            type="button"
+                            className={`th-filter-popover-item ${regime === 'ALL' ? 'active' : ''}`}
+                            onClick={() => {
+                              setRegime('ALL');
+                              setOpenHeaderFilter(null);
+                            }}
+                          >
+                            <span>Tributação: Todas</span>
+                            {regime === 'ALL' && <Check size={12} />}
+                          </button>
+                          {regimes.map(r => (
+                            <button
+                              key={r}
+                              type="button"
+                              className={`th-filter-popover-item ${regime === r ? 'active' : ''}`}
+                              onClick={() => {
+                                setRegime(r);
+                                setOpenHeaderFilter(null);
+                              }}
+                            >
+                              <span>{formatRegimeLabel(r)}</span>
+                              {regime === r && <Check size={12} />}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </>
                 ) : (
                   label
                 )}
@@ -335,7 +768,129 @@ export function AccountingClosings({currentView,onNavigate,currentUser,onLogout}
             </th>
           );
         })}
-        {visibleColumns.map(column=>{const month=accountingMonth(column);const locked=!!month&&Date.UTC(year,month-1,1)>latestPeriod.getTime();return <th key={column.id} title={locked?'Libera na virada do mês seguinte':visibilitySummary(column)}><div className="th-header-cell">{column.name}{locked&&<LockKeyhole size={12}/>}</div></th>;})}
+        {visibleColumns.map(column => {
+          if (column.isMonthsGroup) {
+            return (
+              <th key={column.id} style={{ minWidth: '180px' }}>
+                <div className="th-header-cell">
+                  <span>Meses</span>
+                  <div className="th-filter-wrapper">
+                    <button
+                      type="button"
+                      className={`th-filter-icon-btn ${monthStatusFilter !== 'ALL' ? 'has-filter' : ''}`}
+                      title="Filtrar por status dos meses"
+                      aria-label="Filtrar por status dos meses"
+                      onClick={e => {
+                        e.stopPropagation();
+                        setOpenHeaderFilter(openHeaderFilter === 'col-months' ? null : 'col-months');
+                      }}
+                    >
+                      <Filter size={11} />
+                    </button>
+                    {openHeaderFilter === 'col-months' && (
+                      <div className="th-filter-popover" onClick={e => e.stopPropagation()}>
+                        <div className="payroll-filter-heading" style={{ padding: '4px 8px', fontSize: '11px', fontWeight: 600, color: '#94a3b8', borderBottom: '1px solid #334155', marginBottom: '4px' }}>
+                          Filtrar Meses
+                        </div>
+                        {[
+                          { value: 'ALL', label: 'Todos os status' },
+                          { value: 'DONE', label: 'CONCLUÍDO (OK)' },
+                          { value: 'DOC_REDE', label: 'DOC. REDE' },
+                          { value: 'SEM_MOVIMENTO', label: 'SEM MOVIMENTO' },
+                          { value: 'COBRANCA', label: 'COBRANÇA DOC.' },
+                          { value: 'PENDING', label: 'PENDENTE' },
+                        ].map(item => (
+                          <button
+                            key={item.value}
+                            type="button"
+                            className={`th-filter-popover-item ${monthStatusFilter === item.value ? 'active' : ''}`}
+                            onClick={() => {
+                              setMonthStatusFilter(item.value as any);
+                              setOpenHeaderFilter(null);
+                            }}
+                          >
+                            <span>{item.label}</span>
+                            {monthStatusFilter === item.value && <Check size={12} />}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </th>
+            );
+          }
+
+          const month = accountingMonth(column);
+          const locked = !!month && Date.UTC(year, month - 1, 1) > latestPeriod.getTime();
+          const colKey = resolveColumnKey(column) || column.id;
+          const activeColFilter = columnFilters[colKey] || 'ALL';
+
+          const uniqueColValues = Array.from(new Set(scopedRows.map(r => {
+            const v = r.columnsData?.[colKey];
+            if (v === null || v === undefined || v === '') return '';
+            return typeof v === 'object' ? (v.status || v.value || '') : String(v);
+          }).filter(Boolean))).slice(0, 15);
+
+          return (
+            <th key={column.id} title={locked ? 'Libera na virada do mês seguinte' : visibilitySummary(column)}>
+              <div className="th-header-cell">
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                  {column.name}
+                  {locked && <LockKeyhole size={12} />}
+                </span>
+                {uniqueColValues.length > 0 && (
+                  <div className="th-filter-wrapper">
+                    <button
+                      type="button"
+                      className={`th-filter-icon-btn ${activeColFilter !== 'ALL' ? 'has-filter' : ''}`}
+                      title={`Filtrar ${column.name}`}
+                      aria-label={`Filtrar ${column.name}`}
+                      onClick={e => {
+                        e.stopPropagation();
+                        setOpenHeaderFilter(openHeaderFilter === `col-${colKey}` ? null : `col-${colKey}`);
+                      }}
+                    >
+                      <Filter size={11} />
+                    </button>
+                    {openHeaderFilter === `col-${colKey}` && (
+                      <div className="th-filter-popover" onClick={e => e.stopPropagation()}>
+                        <div className="payroll-filter-heading" style={{ padding: '4px 8px', fontSize: '11px', fontWeight: 600, color: '#94a3b8', borderBottom: '1px solid #334155', marginBottom: '4px' }}>
+                          Filtrar {column.name}
+                        </div>
+                        <button
+                          type="button"
+                          className={`th-filter-popover-item ${activeColFilter === 'ALL' ? 'active' : ''}`}
+                          onClick={() => {
+                            setColumnFilters(prev => ({ ...prev, [colKey]: 'ALL' }));
+                            setOpenHeaderFilter(null);
+                          }}
+                        >
+                          <span>Todos</span>
+                          {activeColFilter === 'ALL' && <Check size={12} />}
+                        </button>
+                        {uniqueColValues.map(val => (
+                          <button
+                            key={val}
+                            type="button"
+                            className={`th-filter-popover-item ${activeColFilter === val ? 'active' : ''}`}
+                            onClick={() => {
+                              setColumnFilters(prev => ({ ...prev, [colKey]: val }));
+                              setOpenHeaderFilter(null);
+                            }}
+                          >
+                            <span>{val}</span>
+                            {activeColFilter === val && <Check size={12} />}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            </th>
+          );
+        })}
       </tr></thead><tbody>{!filtered.length?<tr><td colSpan={7+visibleColumns.length} className="payroll-empty">Nenhuma empresa encontrada neste ano.</td></tr>:filtered.map(row=>{const company=row.company;const certificate=company.hasClientCertificate?getCertificateStatus(company.certificateExpiration):null;return <tr key={row.closingId}>
         <td className="sticky-col-code">
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
