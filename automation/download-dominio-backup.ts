@@ -79,12 +79,13 @@ async function handleLoginFlow(page: Page): Promise<void> {
     // 2. Tela "Vamos começar" com o botão azul "Entrar" (conforme imagem do Onvio)
     const isVamosComecar = await page.evaluate(() => {
       const text = (document.body.innerText || '').toLowerCase();
-      return text.includes('vamos começar') || text.includes('vamos comecar') || (text.includes('onvio') && text.includes('entrar'));
+      return text.includes('vamos começar') || text.includes('vamos comecar');
     }).catch(() => false);
 
     if (isVamosComecar) {
-      console.log('🚪 Tela "Vamos começar" detectada. Pressionando botão "Entrar"...');
-      // Localiza o botão "Entrar"
+      console.log('🚪 Tela "Vamos começar" detectada. Acionando botão "Entrar"...');
+      
+      // 1. Tenta clique nativo via Playwright
       const entrarBtn = page.getByRole('button', { name: /entrar/i })
         .or(page.locator('button:has-text("Entrar"), [role="button"]:has-text("Entrar"), a:has-text("Entrar")'))
         .first();
@@ -97,20 +98,25 @@ async function handleLoginFlow(page: Page): Promise<void> {
         await entrarBtn.click({ force: true }).catch(() => {});
       }
 
+      // 2. Tenta via disparos de eventos DOM completos
       await page.evaluate(() => {
         const candidates = Array.from(document.querySelectorAll('button, a, div[role="button"], span, input'));
         for (const el of candidates) {
           const text = (el.textContent || (el as HTMLInputElement).value || '').trim();
           if (/^entrar$/i.test(text)) {
-            el.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
-            el.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
+            (el as HTMLElement).focus();
+            el.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
+            el.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true }));
             el.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
             (el as HTMLElement).click();
           }
         }
       }).catch(() => {});
 
-      await page.waitForTimeout(2500);
+      // 3. Pressiona Enter no teclado por garantia
+      await page.keyboard.press('Enter').catch(() => {});
+
+      await page.waitForTimeout(3000);
       continue;
     }
 
@@ -185,7 +191,42 @@ async function handleLoginFlow(page: Page): Promise<void> {
       continue;
     }
 
-    // 6. Tela "Selecione um método para verificar sua identidade" (conforme imagem do Onvio)
+    // 6. Tela "Verificar sua identidade - Código de Recuperação" (conforme imagem do Onvio)
+    const isRecoveryScreen = await page.evaluate(() => {
+      const text = document.body.innerText || '';
+      return text.includes('código de recuperação') && (text.includes('inscrição inicial') || text.includes('Insira seu código'));
+    }).catch(() => false);
+
+    if (isRecoveryScreen) {
+      console.log('🛡️ Detectada tela "Código de Recuperação".');
+      if (DOMINIO_RECOVERY_CODE) {
+        console.log('🔑 DOMINIO_RECOVERY_CODE configurado no .env. Preenchendo...');
+        const recInput = page.locator('input[type="text"], input').first();
+        if (await recInput.isVisible({ timeout: 2000 })) {
+          await recInput.fill(DOMINIO_RECOVERY_CODE);
+          await page.waitForTimeout(800);
+          const contBtn = page.getByRole('button', { name: /continuar|avançar|entrar/i })
+            .or(page.locator('button:has-text("Continuar"), input[value*="Continuar"]'))
+            .first();
+          if (await contBtn.isVisible({ timeout: 2000 })) {
+            console.log('👆 Clicando em Continuar...');
+            await contBtn.click({ force: true });
+            await page.waitForTimeout(3000);
+            continue;
+          }
+        }
+      } else {
+        console.log('📧 Sem código de recuperação único. Clicando em "Tentar outro método" para ir por E-mail...');
+        const otherMethodLink = page.locator('text=/tentar outro método|tentar outro metodo|try another method/i').first();
+        if (await otherMethodLink.isVisible({ timeout: 2000 }).catch(() => false)) {
+          await otherMethodLink.click({ force: true });
+          await page.waitForTimeout(2500);
+          continue;
+        }
+      }
+    }
+
+    // 6.1. Tela "Selecione um método para verificar sua identidade" (conforme imagem do Onvio)
     const isMethodSelection = await page.evaluate(() => {
       const text = document.body.innerText || '';
       return /selecione um método|verificar sua identidade|choose a verification method/i.test(text);
@@ -206,7 +247,7 @@ async function handleLoginFlow(page: Page): Promise<void> {
         console.log('📧 Selecionando método "E-mail" para envio do código de verificação...');
         const emailOption = page.locator('text=/^\\s*e-mail|email\\s*$/i')
           .or(page.getByText('E-mail', { exact: true }))
-          .or(page.locator('div:has-text("E-mail"), button:has-text("E-mail"), li:has-text("E-mail")'))
+          .or(page.locator('div:has-text("E-mail"), button:has-text("E-mail"), li:has-text("E-mail"), p:has-text("E-mail")'))
           .first();
 
         if (await emailOption.isVisible({ timeout: 2000 }).catch(() => false)) {
