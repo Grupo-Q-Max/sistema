@@ -144,11 +144,12 @@ export const PayrollInput = memo(function PayrollInput({ column, value, disabled
   const selectClass = column.inputType === 'SELECT'
     ? (!draft || pendingSet.has(draft.trim().toUpperCase()) ? 'payroll-select-pending' : draft.trim().toUpperCase() === 'N/A' ? 'payroll-select-na' : 'payroll-select-filled')
     : '';
-  return <div className="payroll-input-cell">
+  return <div className="payroll-input-cell notranslate">
     {column.inputType === 'SELECT' ? <select className={selectClass} aria-label={column.name} value={draft} disabled={disabled || saving} onChange={e => { dirty.current = true; setDraft(e.target.value); void commit(e.target.value); }}><option value="">Selecione...</option>{draft && !options.includes(draft) && <option value={draft}>{draft} (anterior)</option>}{options.map(option => <option key={option} value={option}>{option}</option>)}</select>
       : column.inputType === 'TEXTAREA' ? <textarea {...inputProps} onKeyDown={undefined} rows={1} />
         : <div className="payroll-password-cell"><input {...inputProps} type={column.inputType === 'NUMBER' ? 'number' : column.inputType === 'PASSWORD' && !revealed ? 'password' : 'text'} min={column.inputType === 'NUMBER' ? 0 : undefined} step={column.inputType === 'NUMBER' ? 1 : undefined} autoComplete="off" />{column.inputType === 'PASSWORD' && <button type="button" aria-label={revealed ? 'Ocultar senha' : 'Mostrar senha'} onClick={() => setRevealed(!revealed)}>{revealed ? <EyeOff size={14} /> : <Eye size={14} />}</button>}</div>}
-    {saving && <small>Salvando...</small>}{error && <small role="alert">{error} <button type="button" onClick={() => { void commit(); }}>Tentar novamente</button></small>}
+    {saving && <span><small>Salvando...</small></span>}
+    {error && <span><small role="alert">{error} <button type="button" onClick={() => { void commit(); }}>Tentar novamente</button></small></span>}
   </div>;
 });
 
