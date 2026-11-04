@@ -92,17 +92,23 @@ async function run() {
   // Clica no botão "COMPLETO"
   console.log('🔎 Selecionando filtro "COMPLETO"...');
   try {
-    // Tenta encontrar o botão ou elemento com o texto COMPLETO
-    const completoBtn = page.getByRole('button', { name: /completo/i })
-      .or(page.locator('button:has-text("COMPLETO"), a:has-text("COMPLETO"), span:has-text("COMPLETO"), td:has-text("COMPLETO")'));
+    const completoBtn = page.locator('button:has-text("COMPLETO"), a:has-text("COMPLETO"), input[value*="COMPLETO"], span:has-text("COMPLETO"), td:has-text("COMPLETO")').first();
     
-    if (await completoBtn.first().isVisible({ timeout: 5000 })) {
-      await completoBtn.first().click();
+    if (await completoBtn.isVisible({ timeout: 5000 })) {
+      await completoBtn.click();
       console.log('🖱️ Clique na aba "COMPLETO" realizado.');
-      await page.waitForTimeout(3000);
+      await page.waitForTimeout(1500);
+
+      // Clica em PESQUISAR para a tabela do Domínio carregar os backups completos
+      const pesquisarBtn = page.locator('button:has-text("PESQUISAR"), input[value*="PESQUISAR"], a:has-text("PESQUISAR")').first();
+      if (await pesquisarBtn.isVisible({ timeout: 3000 })) {
+        await pesquisarBtn.click();
+        console.log('🔍 Botão PESQUISAR acionado para carregar backups completos.');
+        await page.waitForTimeout(3000);
+      }
     }
   } catch (err) {
-    console.log('Aviso: botão COMPLETO já ativo ou elemento direto não encontrado, prosseguindo...');
+    console.log('Aviso ao selecionar COMPLETO:', err);
   }
 
   // Localiza a tabela e o primeiro ícone de download
@@ -161,3 +167,4 @@ async function run() {
 }
 
 run().catch(console.error);
+
