@@ -271,10 +271,10 @@ async function handleLoginFlow(page: Page): Promise<void> {
         console.log('🔑 Preenchendo com código de recuperação do .env...');
         codeToFill = DOMINIO_RECOVERY_CODE;
       } else {
-        // Tenta obter o código automaticamente do Outlook
+        // Tenta obter o código automaticamente do Outlook (Web, Desktop ou IMAP)
         for (let attempt = 1; attempt <= 8; attempt++) {
           console.log(`⏳ Aguardando e buscando código no Outlook (tentativa ${attempt}/8)...`);
-          const extracted = await getOutlookVerificationCode();
+          const extracted = await getOutlookVerificationCode(page.context());
           if (extracted) {
             codeToFill = extracted;
             break;
