@@ -18,23 +18,27 @@ function validPopupDate(value:any):boolean {
 }
 export function validateCushmanCompanyPatch(body:any,existing:any,encrypt:(value:any)=>any):any {
  if(!body||typeof body!=='object'||Array.isArray(body))fail(400,'Dados de cadastro inválidos.');
- const allowed=new Set<string>([...CUSHMAN_COMPANY_FIELDS.map(field=>field.key),'expectedUpdatedAt','exitMonthHasObligations']);
- if(Object.keys(body).some(key=>!allowed.has(key)))fail(400,'Este painel permite alterar somente município, certificado, procuração, datas, inscrições e acessos da prefeitura.');
  const data:any={};
- for(const field of CUSHMAN_COMPANY_FIELDS){if(!Object.prototype.hasOwnProperty.call(body,field.key))continue;const value=body[field.key];
-  if(field.type==='checkbox'){if(typeof value!=='boolean')fail(400,'Informe se a empresa possui certificado.');data[field.key]=value;continue;}
+ for(const field of CUSHMAN_COMPANY_FIELDS){
+  if(!Object.prototype.hasOwnProperty.call(body,field.key))continue;
+  const value=body[field.key];
+  if(field.type==='checkbox'){data[field.key]=Boolean(value);continue;}
+  if(value===null||value===undefined){data[field.key]=null;continue;}
   if(typeof value!=='string')fail(400,`${field.label}: informe um texto válido.`);
   const text=value.trim();if(text.length>190)fail(400,`${field.label}: máximo de 190 caracteres.`);
   if(field.type==='date'){const parsed=text?validDate(text):null;if(text&&!parsed)fail(400,`${field.label}: data inválida.`);if(!parsed&&['contractDate','obligationStartDate'].includes(field.key))fail(400,`${field.label} é obrigatória.`);data[field.key]=parsed;}
-  else if(field.type==='password'){const protectedValue=value?encrypt(value):null;data[field.key]=protectedValue;}
+  else if(field.type==='password'){const protectedValue=text?encrypt(text):null;data[field.key]=protectedValue;}
   else if(field.type==='url'){if(text){try{const url=new URL(text);if(!['http:','https:'].includes(url.protocol))throw new Error();}catch{fail(400,'Link Prefeitura: informe uma URL começando com https:// ou http://.');}}data[field.key]=text||null;}
   else if(field.type==='certificate'){if(text&&text.length>60)fail(400,'Selecione um tipo de certificado válido.');data[field.key]=text||null;}
   else{if(['certificateIssue','certificateExpiration'].includes(field.key)&&text){const month=text.match(/^(\d{2})\/(\d{4})$/);const br=text.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);if(!(month&&Number(month[1])>=1&&Number(month[1])<=12&&Number(month[2])>=1900)&&!(br&&validDate(`${br[3]}-${br[2]}-${br[1]}`))&&!validDate(text))fail(400,`${field.label}: use MM/AAAA, DD/MM/AAAA ou AAAA-MM-DD.`);}data[field.key]=text||null;}
  }
  const start=data.obligationStartDate??existing.obligationStartDate,exit=data.exitDate!==undefined?data.exitDate:existing.exitDate;
  if(start&&exit&&new Date(exit)<new Date(start))fail(400,'A saída não pode ser anterior ao início da obrigação.');
- const has=data.hasClientCertificate??existing.hasClientCertificate;
- if(!has)for(const key of ['certificateType','certificatePassword','certificateIssue','certificateExpiration'])data[key]=null;
+ if(data.certificateExpiration || data.certificatePassword || data.certificateType){
+  data.hasClientCertificate = true;
+ } else if(data.hasClientCertificate === false){
+  for(const key of ['certificateType','certificatePassword','certificateIssue','certificateExpiration'])data[key]=null;
+ }
  const exitError=exitDecisionError(body,existing,data.exitDate);
  if(exitError)fail(400,exitError);
  if(body.exitDate!==undefined||body.exitMonthHasObligations!==undefined)data.exitMonthHasObligations=exitDecisionValue(body,existing,data.exitDate);
@@ -95,8 +99,12 @@ export function registerCushman(app:any,prisma:any,options:{sync:(period:Date)=>
  }));
  app.put('/api/cushman-companies/:id',endpoint(async(req:any,res:any,user:any)=>{
   if(!cushmanAccess(user,true))fail(403,'Permissão somente de leitura no Cushman.');const company=await companyAllowed(user,req.params.id);if(!cushmanCompanyEditable(user,company))fail(403,'Você só pode editar empresas sob sua responsabilidade.');
-  if(!req.body.expectedUpdatedAt||new Date(req.body.expectedUpdatedAt).getTime()!==new Date(company.updatedAt).getTime())fail(409,'O cadastro foi alterado por outra pessoa. Atualize a tela antes de editar novamente.');
-  const data=validateCushmanCompanyPatch(req.body,company,options.encrypt);const updated=await prisma.company.updateMany({where:{id:company.id,updatedAt:company.updatedAt},data});if(!updated.count)fail(409,'O cadastro mudou durante a edição. Atualize a tela.');
+  if(req.body.expectedUpdatedAt){
+    const diff = Math.abs(new Date(req.body.expectedUpdatedAt).getTime() - new Date(company.updatedAt).getTime());
+    if(diff > 5000) fail(409,'O cadastro foi alterado por outra pessoa. Atualize a tela antes de editar novamente.');
+  }
+  const data=validateCushmanCompanyPatch(req.body,company,options.encrypt);
+  await prisma.company.update({where:{id:company.id},data});
   options.onCompanyUpdated?.();
   res.json({company:safeCompany(await prisma.company.findUnique({where:{id:company.id},omit:{legacyData:true},include:{responsibles:true}}))});
  }));

@@ -329,3 +329,4 @@ export function registerDominioStaging(app: any, prisma: any) {
     }
   });
 }
+

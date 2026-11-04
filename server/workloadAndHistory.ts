@@ -485,3 +485,4 @@ export function registerWorkloadAndHistory(app: any, prisma: any) {
     }
   });
 }
+

@@ -140,3 +140,4 @@ Ao abrir o Antigravity na Máquina Virtual, basta instruir o agente com a seguin
 > *"Olá! Clonei o repositório do Fechamento Pro nesta VM. Por favor, leia o arquivo `CONTEXT_HANDOVER.md` na raiz do projeto para carregar 100% do histórico e do contexto. Estamos prontos para continuar a automação do Sistema Domínio."*
 
 Com isso, o agente terá **conhecimento completo e imediato** de toda a história do projeto!
+

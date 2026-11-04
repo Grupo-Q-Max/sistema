@@ -24,7 +24,7 @@ import './PayrollClosings.css';
 
 type Props = { currentView: string; onNavigate: (view: string) => void; currentUser?: CurrentUser | null; onLogout?: () => void };
 type PayrollRow = { company: any; closingId: string; columnsData: Record<string, any>; calculatedStatus: string; progressPercent: number; fiscalReinf: any };
-export const PAYROLL_BASE_HEADERS = ['Código', 'Empresa / Certificado', 'Tributação', 'Status', 'Responsável', 'CNPJ'];
+export const PAYROLL_BASE_HEADERS = ['Código', 'Empresa / Certificado', 'Grupo', 'Tributação', 'Status', 'Responsável', 'CNPJ'];
 const STATUS_LABELS: Record<string, string> = { COMPLETED: 'Concluído', IN_PROGRESS: 'Em Andamento', PENDING: 'Pendente' };
 
 function getTodayBr(): string {
@@ -168,8 +168,9 @@ export function PayrollClosings({ currentView, onNavigate, currentUser, onLogout
   const [responsibleFilter, setResponsibleFilter] = useState('ALL');
   const [regimeFilter, setRegimeFilter] = useState('ALL');
   const [certFilter, setCertFilter] = useState('ALL');
+  const [groupFilter, setGroupFilter] = useState('ALL');
   const [workloadOpen, setWorkloadOpen] = useState(false);
-  const [sort, setSort] = useState<{ key: 'code' | 'name' | 'regime' | 'status' | 'responsible'; asc: boolean }>({ key: 'code', asc: true });
+  const [sort, setSort] = useState<{ key: 'code' | 'name' | 'group' | 'regime' | 'status' | 'responsible'; asc: boolean }>({ key: 'code', asc: true });
   const [selectedCompanyIds, setSelectedCompanyIds] = useState<string[]>([]);
   const [bulkAssignOpen, setBulkAssignOpen] = useState(false);
   const [bulkToast, setBulkToast] = useState<string | null>(null);
@@ -302,7 +303,17 @@ export function PayrollClosings({ currentView, onNavigate, currentUser, onLogout
     return canUserViewCompany(currentUser, row.company, 'DP');
   }), [rows, currentUser, onlyMyCompanies, isPrivileged]);
 
+  const distinctGroups = useMemo(() => {
+    const set = new Set<string>();
+    for (const r of scopedRows) {
+      const g = r.company?.groupName?.trim();
+      if (g) set.add(g);
+    }
+    return Array.from(set).sort((a, b) => a.localeCompare(b, 'pt-BR'));
+  }, [scopedRows]);
+
   function sortValue(row: PayrollRow) {
+    if (sort.key === 'group') return row.company.groupName || '';
     if (sort.key === 'status') return STATUS_LABELS[row.calculatedStatus] || '';
     if (sort.key === 'regime') return formatRegimeLabel(row.company.taxRegime || '');
     if (sort.key === 'responsible') return users.find(user => user.id === getResponsible(row.company)?.userId)?.name || users.find(user => user.id === getResponsible(row.company)?.userId)?.email || '';
@@ -323,11 +334,17 @@ export function PayrollClosings({ currentView, onNavigate, currentUser, onLogout
       else if (certFilter === 'HAS_CERT') matchCert = Boolean(c.hasClientCertificate);
       else if (certFilter === 'NO_CERT') matchCert = !c.hasClientCertificate;
     }
-    return matchSearch && matchCert && (statusFilter === 'ALL' || row.calculatedStatus === statusFilter) && (responsibleFilter === 'ALL' || getResponsible(c)?.userId === responsibleFilter) && (regimeFilter === 'ALL' || c.taxRegime === regimeFilter);
+    const matchGroup = groupFilter === 'ALL'
+      ? true
+      : groupFilter === 'NONE'
+        ? !c.groupName?.trim()
+        : c.groupName?.trim() === groupFilter;
+
+    return matchSearch && matchCert && matchGroup && (statusFilter === 'ALL' || row.calculatedStatus === statusFilter) && (responsibleFilter === 'ALL' || getResponsible(c)?.userId === responsibleFilter) && (regimeFilter === 'ALL' || c.taxRegime === regimeFilter);
   }).sort((a, b) => {
     if (sort.key === 'code') return compareCodes(a.company.code, b.company.code, sort.asc);
     return sortValue(a).localeCompare(sortValue(b), 'pt-BR', { numeric: true }) * (sort.asc ? 1 : -1);
-  }), [scopedRows, deferredSearch, statusFilter, responsibleFilter, regimeFilter, certFilter, sort, users]);
+  }), [scopedRows, deferredSearch, statusFilter, responsibleFilter, regimeFilter, certFilter, groupFilter, sort, users]);
 
   const totalEmployees = scopedRows.reduce((total, row) => total + (Number(row.columnsData?.dp_qtde_funcionarios) || 0), 0);
 
@@ -485,8 +502,28 @@ export function PayrollClosings({ currentView, onNavigate, currentUser, onLogout
         </th>
       );
     }
-    const key = (["code", "name", "regime", "status", "responsible"] as const)[index];
-    const filter = index === 2 ? { value: regimeFilter, set: setRegimeFilter, options: [{ value: 'ALL', label: 'Todas as tributações' }, ...regimes.map(value => ({ value, label: formatRegimeLabel(value) }))] } : index === 3 ? { value: statusFilter, set: setStatusFilter, options: [{ value: 'ALL', label: 'Todos os status' }, ...Object.entries(STATUS_LABELS).map(([value, label]) => ({ value, label }))] } : index === 4 ? { value: responsibleFilter, set: setResponsibleFilter, options: [{ value: 'ALL', label: 'Todos os responsáveis' }, ...users.map(user => ({ value: user.id, label: user.name || user.email }))] } : null;
+    const key = (["code", "name", "group", "regime", "status", "responsible"] as const)[index];
+    const filter = index === 2 ? {
+      value: groupFilter,
+      set: setGroupFilter,
+      options: [
+        { value: 'ALL', label: 'Todos os grupos' },
+        { value: 'NONE', label: 'Sem grupo' },
+        ...distinctGroups.map(value => ({ value, label: value }))
+      ]
+    } : index === 3 ? {
+      value: regimeFilter,
+      set: setRegimeFilter,
+      options: [{ value: 'ALL', label: 'Todas as tributações' }, ...regimes.map(value => ({ value, label: formatRegimeLabel(value) }))]
+    } : index === 4 ? {
+      value: statusFilter,
+      set: setStatusFilter,
+      options: [{ value: 'ALL', label: 'Todos os status' }, ...Object.entries(STATUS_LABELS).map(([value, label]) => ({ value, label }))]
+    } : index === 5 ? {
+      value: responsibleFilter,
+      set: setResponsibleFilter,
+      options: [{ value: 'ALL', label: 'Todos os responsáveis' }, ...users.map(user => ({ value: user.id, label: user.name || user.email }))]
+    } : null;
     return <th key={label} className={index === 1 ? 'sticky-col-company' : ''} aria-sort={key && sort.key === key ? (sort.asc ? 'ascending' : 'descending') : undefined}><div className="th-header-cell">
       {key ? <button type="button" className="payroll-sort-btn" title={`Ordenar por ${label}`} onClick={() => setSort({ key, asc: sort.key === key ? !sort.asc : true })}>{label}<span>{sort.key === key ? (sort.asc ? ' ▲' : ' ▼') : ' ↕'}</span></button> : label}
       {filter && <div className="th-filter-wrapper"><button type="button" className={`th-filter-icon-btn ${filter.value !== 'ALL' ? 'has-filter' : ''}`} aria-label={`Filtrar ${label}`} aria-expanded={openHeaderFilter === key} onClick={() => setOpenHeaderFilter(openHeaderFilter === key ? null : key)}><Filter size={12} /></button>{openHeaderFilter === key && <div className="th-filter-popover"><div className="payroll-filter-heading">Filtrar {label}</div>{filter.options.map(option => <button type="button" key={option.value} className={`th-filter-popover-item ${filter.value === option.value ? 'active' : ''}`} onClick={() => { filter.set(option.value); setOpenHeaderFilter(null); }}><span>{option.label}</span>{filter.value === option.value && <Check size={12} />}</button>)}</div>}</div>}
@@ -731,6 +768,11 @@ export function PayrollClosings({ currentView, onNavigate, currentUser, onLogout
                     <option value="ALL">Status: Todos</option>
                     {Object.entries(STATUS_LABELS).map(([key, label]) => <option key={key} value={key}>{label}</option>)}
                   </select>
+                  <select className="closings-select" aria-label="Filtrar grupo" value={groupFilter} onChange={e => setGroupFilter(e.target.value)}>
+                    <option value="ALL">Grupo: Todos</option>
+                    <option value="NONE">Sem Grupo</option>
+                    {distinctGroups.map(group => <option key={group} value={group}>{group}</option>)}
+                  </select>
                   <select className="closings-select" aria-label="Filtrar tributação" value={regimeFilter} onChange={e => setRegimeFilter(e.target.value)}>
                     <option value="ALL">Tributação: Todas</option>
                     {regimes.map(regime => <option key={regime} value={regime}>{formatRegimeLabel(regime)}</option>)}
@@ -914,6 +956,15 @@ export function PayrollClosings({ currentView, onNavigate, currentUser, onLogout
                                         </button>
                                       )}
                                     </div>
+                                  </td>
+                                  <td title={c.groupName || 'Sem grupo'}>
+                                    {c.groupName ? (
+                                      <span className="group-badge" style={{ display: 'inline-block', maxWidth: 140, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', padding: '2px 8px', borderRadius: 6, fontSize: '0.75rem', fontWeight: 600, background: 'rgba(99, 102, 241, 0.15)', color: '#a5b4fc', border: '1px solid rgba(99, 102, 241, 0.3)' }}>
+                                        {c.groupName}
+                                      </span>
+                                    ) : (
+                                      <span style={{ color: '#64748b', fontSize: '0.8rem' }}>—</span>
+                                    )}
                                   </td>
                                   <td><span className={`tax-regime-pill ${c.taxRegime === 'SIMPLES_NACIONAL' ? 'simples' : c.taxRegime?.includes('PRESUMIDO') ? 'presumido' : c.taxRegime?.includes('REAL') ? 'real' : c.taxRegime === 'MEI' ? 'mei' : ''}`}>{formatRegimeLabel(c.taxRegime || '')}</span></td>
                                   <td title={`Progresso: ${row.progressPercent}%`}><span className={`status-badge ${row.calculatedStatus === 'COMPLETED' ? 'completed' : row.calculatedStatus === 'IN_PROGRESS' ? 'in-progress' : 'pending'}`}>{STATUS_LABELS[row.calculatedStatus] || row.calculatedStatus}</span></td>

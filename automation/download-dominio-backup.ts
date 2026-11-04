@@ -13,6 +13,7 @@ const TARGET_URL = 'https://suporte.dominioatendimento.com/backup/faces/bkp-real
 
 const DOMINIO_EMAIL = process.env.DOMINIO_EMAIL || '';
 const DOMINIO_SENHA = process.env.DOMINIO_SENHA || '';
+const DOMINIO_RECOVERY_CODE = process.env.DOMINIO_RECOVERY_CODE || '';
 
 // Garantir que a pasta de destino exista
 if (!fs.existsSync(BACKUP_DIR)) {
@@ -76,61 +77,41 @@ async function handleLoginFlow(page: Page): Promise<void> {
     console.log(`🔎 Analisando tela: ${url.replace('https://', '').slice(0, 45)}...`);
 
     // 2. Tela "Vamos começar" com o botão azul "Entrar" (conforme imagem do Onvio)
-    // Estratégia A: JavaScript nativo direto no DOM (ignora qualquer trava do Playwright)
-    const clickedViaJs = await page.evaluate(() => {
-      const candidates = Array.from(document.querySelectorAll('button, a, div, span, input'));
-      for (const el of candidates) {
-        const text = (el.textContent || (el as HTMLInputElement).value || '').trim();
-        if (/^entrar$/i.test(text)) {
-          (el as HTMLElement).click();
-          return true;
-        }
-      }
-      return false;
+    const isVamosComecar = await page.evaluate(() => {
+      const text = (document.body.innerText || '').toLowerCase();
+      return text.includes('vamos começar') || text.includes('vamos comecar') || (text.includes('onvio') && text.includes('entrar'));
     }).catch(() => false);
 
-    if (clickedViaJs) {
-      console.log('👆 Botão "Entrar" clicado com sucesso via JavaScript nativo!');
-      await page.waitForTimeout(3000);
-      continue;
-    }
-
-    // Estratégia B: Seletor Playwright direto no texto
-    try {
-      const entrarBtn = page.getByText('Entrar', { exact: true })
-        .or(page.getByRole('button', { name: /entrar/i }))
-        .or(page.locator('button:has-text("Entrar"), a:has-text("Entrar"), [role="button"]:has-text("Entrar")'))
+    if (isVamosComecar) {
+      console.log('🚪 Tela "Vamos começar" detectada. Pressionando botão "Entrar"...');
+      // Localiza o botão "Entrar"
+      const entrarBtn = page.getByRole('button', { name: /entrar/i })
+        .or(page.locator('button:has-text("Entrar"), [role="button"]:has-text("Entrar"), a:has-text("Entrar")'))
         .first();
 
-      if (await entrarBtn.isVisible({ timeout: 1000 }).catch(() => false)) {
-        console.log('👆 Detectado botão "Entrar" pelo Playwright. Clicando...');
-        await entrarBtn.click({ force: true }).catch(() => {});
-        await page.waitForTimeout(3000);
-        continue;
-      }
-    } catch {}
-
-    // Estratégia C: Busca o botão dentro de qualquer frame/iframe da página
-    for (const frame of page.frames()) {
-      try {
-        const frameClicked = await frame.evaluate(() => {
-          const els = Array.from(document.querySelectorAll('button, a, div, span, input'));
-          for (const el of els) {
-            const text = (el.textContent || (el as HTMLInputElement).value || '').trim();
-            if (/^entrar$/i.test(text)) {
-              (el as HTMLElement).click();
-              return true;
-            }
-          }
-          return false;
-        }).catch(() => false);
-
-        if (frameClicked) {
-          console.log('👆 Botão "Entrar" clicado em frame via JavaScript!');
-          await page.waitForTimeout(2500);
-          break;
+      if (await entrarBtn.isVisible({ timeout: 1500 }).catch(() => false)) {
+        const box = await entrarBtn.boundingBox().catch(() => null);
+        if (box) {
+          await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2).catch(() => {});
         }
-      } catch {}
+        await entrarBtn.click({ force: true }).catch(() => {});
+      }
+
+      await page.evaluate(() => {
+        const candidates = Array.from(document.querySelectorAll('button, a, div[role="button"], span, input'));
+        for (const el of candidates) {
+          const text = (el.textContent || (el as HTMLInputElement).value || '').trim();
+          if (/^entrar$/i.test(text)) {
+            el.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+            el.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
+            el.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+            (el as HTMLElement).click();
+          }
+        }
+      }).catch(() => {});
+
+      await page.waitForTimeout(2500);
+      continue;
     }
 
     // 2.1. Conta já salva/lembrada no navegador
@@ -204,26 +185,66 @@ async function handleLoginFlow(page: Page): Promise<void> {
       continue;
     }
 
-    // 6. Tela de código de verificação (MFA do Outlook)
-    const isMfaUrl = url.includes('mfa') || url.includes('challenge') || url.includes('code') || url.includes('verification');
-    let codeInput = page.locator('input[name*="code" i], input[name*="challenge" i], input[name*="otp" i], input[id*="code" i], input[id*="otp" i], input[autocomplete="one-time-code"], input[maxlength="6"], input[placeholder*="código" i]').first();
+    // 6. Tela "Selecione um método para verificar sua identidade" (conforme imagem do Onvio)
+    const isMethodSelection = await page.evaluate(() => {
+      const text = document.body.innerText || '';
+      return /selecione um método|verificar sua identidade|choose a verification method/i.test(text);
+    }).catch(() => false);
 
-    const isCodeVisible = await codeInput.isVisible({ timeout: 1000 }).catch(() => false);
+    if (isMethodSelection) {
+      console.log('🛡️ Detectada tela "Selecione um método para verificar sua identidade"!');
+
+      if (DOMINIO_RECOVERY_CODE) {
+        console.log('🔑 DOMINIO_RECOVERY_CODE configurado no .env. Clicando em "Código de recuperação"...');
+        const recoveryOption = page.locator('text=/código de recuperação|recuperação|recovery/i').first();
+        if (await recoveryOption.isVisible({ timeout: 2000 }).catch(() => false)) {
+          await recoveryOption.click({ force: true }).catch(() => {});
+          await page.waitForTimeout(2500);
+          continue;
+        }
+      } else {
+        console.log('📧 Selecionando método "E-mail" para envio do código de verificação...');
+        const emailOption = page.locator('text=/^\\s*e-mail|email\\s*$/i')
+          .or(page.getByText('E-mail', { exact: true }))
+          .or(page.locator('div:has-text("E-mail"), button:has-text("E-mail"), li:has-text("E-mail")'))
+          .first();
+
+        if (await emailOption.isVisible({ timeout: 2000 }).catch(() => false)) {
+          await emailOption.click({ force: true }).catch(() => {});
+          await page.waitForTimeout(2500);
+          continue;
+        }
+      }
+    }
+
+    // 7. Tela de código de verificação (MFA por E-mail ou Código de Recuperação)
+    const isMfaUrl = url.includes('mfa') || url.includes('challenge') || url.includes('code') || url.includes('verification') || url.includes('recover');
+    let codeInput = page.locator('input[name*="code" i], input[name*="challenge" i], input[name*="otp" i], input[id*="code" i], input[id*="otp" i], input[autocomplete="one-time-code"], input[placeholder*="código" i]').first();
+
+    const isCodeVisible = await codeInput.isVisible({ timeout: 1500 }).catch(() => false);
     if (isMfaUrl || isCodeVisible) {
       console.log('📬 Detectada tela de código de verificação.');
 
-      // Tenta obter o código automaticamente do Outlook
-      let extractedCode: string | null = null;
-      for (let attempt = 1; attempt <= 6; attempt++) {
-        console.log(`⏳ Aguardando e buscando código no Outlook (tentativa ${attempt}/6)...`);
-        extractedCode = await getOutlookVerificationCode();
-        if (extractedCode) break;
-        await page.waitForTimeout(4000);
+      let codeToFill = '';
+      if (DOMINIO_RECOVERY_CODE) {
+        console.log('🔑 Preenchendo com código de recuperação do .env...');
+        codeToFill = DOMINIO_RECOVERY_CODE;
+      } else {
+        // Tenta obter o código automaticamente do Outlook
+        for (let attempt = 1; attempt <= 8; attempt++) {
+          console.log(`⏳ Aguardando e buscando código no Outlook (tentativa ${attempt}/8)...`);
+          const extracted = await getOutlookVerificationCode();
+          if (extracted) {
+            codeToFill = extracted;
+            break;
+          }
+          await page.waitForTimeout(4000);
+        }
       }
 
-      if (extractedCode && isCodeVisible) {
-        console.log(`🎯 Inserindo código de verificação: ${extractedCode}...`);
-        await codeInput.fill(extractedCode);
+      if (codeToFill && isCodeVisible) {
+        console.log(`🎯 Inserindo código de verificação: ${codeToFill.replace(/.(?=.{2})/g, '*')}...`);
+        await codeInput.fill(codeToFill);
         await page.waitForTimeout(1000);
 
         // Marca a opção de lembrar este dispositivo para não pedir de novo
@@ -238,15 +259,16 @@ async function handleLoginFlow(page: Page): Promise<void> {
           .or(page.locator('button[type="submit"], input[type="submit"]'))
           .first();
 
-        if (await confirmBtn.isVisible({ timeout: 1500 }).catch(() => false)) {
+        if (await confirmBtn.isVisible({ timeout: 2000 }).catch(() => false)) {
           console.log('👆 Clicando para confirmar o código...');
           await confirmBtn.click({ force: true }).catch(() => {});
           await page.waitForTimeout(4000);
           continue;
         }
       } else {
-        console.log('ℹ️ Se o código chegou no seu celular/Outlook, você pode digitá-lo na tela.');
+        console.log('ℹ️ Código não obtido automaticamente. Caso você receba o código, digite-o na tela do navegador.');
       }
+    }
     }
 
     await page.waitForTimeout(2000);

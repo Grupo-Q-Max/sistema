@@ -187,3 +187,4 @@ export function AccountingMonthInput({ value, disabled, onSave, ariaLabel }: Pro
     </div>
   );
 }
+
