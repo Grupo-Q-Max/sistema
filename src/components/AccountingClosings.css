@@ -178,3 +178,149 @@
   border-color: rgba(239, 68, 68, 0.4);
   color: #fca5a5;
 }
+
+
+/* Componente de seleção de meses com data em COBRANÇA DOC. */
+.accounting-month-input-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 100%;
+}
+
+.accounting-month-select-row select.accounting-month-dropdown {
+  width: 100%;
+  padding: 6px 10px;
+  border-radius: 6px;
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  transition: all 0.2s;
+  background-color: #1e293b;
+  color: #f1f5f9;
+}
+
+.accounting-month-dropdown.done {
+  color: #4ade80 !important;
+  border-color: rgba(34, 197, 94, 0.4) !important;
+  background: rgba(34, 197, 94, 0.12) !important;
+}
+
+.accounting-month-dropdown.no-movement {
+  color: #93c5fd !important;
+  border-color: rgba(59, 130, 246, 0.4) !important;
+  background: rgba(59, 130, 246, 0.12) !important;
+}
+
+.accounting-month-dropdown.documents {
+  color: #c4b5fd !important;
+  border-color: rgba(168, 85, 247, 0.4) !important;
+  background: rgba(168, 85, 247, 0.12) !important;
+}
+
+.accounting-month-dropdown.collection {
+  color: #facc15 !important;
+  border-color: rgba(234, 179, 8, 0.4) !important;
+  background: rgba(234, 179, 8, 0.12) !important;
+}
+
+.accounting-month-dropdown.pending {
+  color: #94a3b8 !important;
+  border-color: rgba(148, 163, 184, 0.3) !important;
+}
+
+/* Painel de data ao lado / abaixo de Cobrança Doc */
+.accounting-cobranca-date-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  background: rgba(234, 179, 8, 0.08);
+  border: 1px dashed rgba(234, 179, 8, 0.4);
+  border-radius: 6px;
+  padding: 5px 8px;
+  animation: fadeIn 0.15s ease-out;
+}
+
+.accounting-cobranca-controls {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.cobranca-date-label {
+  font-size: 0.7rem;
+  color: #fde047;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.cobranca-input-container {
+  display: inline-flex;
+  align-items: center;
+  background: #0f172a;
+  border: 1px solid rgba(234, 179, 8, 0.35);
+  border-radius: 5px;
+  padding: 2px 6px;
+  position: relative;
+}
+
+.cobranca-date-text-input {
+  background: transparent;
+  border: none;
+  outline: none;
+  color: #fef08a;
+  font-size: 0.76rem;
+  font-weight: 600;
+  width: 82px;
+  text-align: center;
+}
+
+.cobranca-picker-label {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  color: #facc15;
+  margin-left: 2px;
+  position: relative;
+}
+
+.cobranca-native-date-hidden {
+  position: absolute;
+  opacity: 0;
+  width: 18px;
+  height: 18px;
+  left: 0;
+  top: 0;
+  cursor: pointer;
+}
+
+.cobranca-quick-today-btn {
+  background: rgba(234, 179, 8, 0.2);
+  border: 1px solid rgba(234, 179, 8, 0.4);
+  color: #fef08a;
+  font-size: 0.68rem;
+  font-weight: 600;
+  border-radius: 4px;
+  padding: 2px 6px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.cobranca-quick-today-btn:hover {
+  background: rgba(234, 179, 8, 0.35);
+  color: #ffffff;
+}
+
+.accounting-input-hint {
+  font-size: 0.68rem;
+  margin-top: 2px;
+}
+.accounting-input-hint.saving {
+  color: #818cf8;
+}
+.accounting-input-hint.error {
+  color: #f87171;
+}

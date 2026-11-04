@@ -71,7 +71,14 @@ export function validatePayrollValue(column:any,value:any):string|null {
     if (value === null || value === undefined || value === '') return null;
     const cfg = effectiveFieldConfig(column);
     const allowed = new Set([...cfg.options, ...(cfg.pendingOptions || []), 'N/A']);
-    if(typeof value!=='string'||!allowed.has(value)) return 'Escolha uma das opções configuradas.';
+    if (typeof value === 'object' && value !== null && value.status) {
+      if (allowed.has(value.status)) return null;
+    }
+    if (typeof value === 'string') {
+      if (allowed.has(value)) return null;
+      if (value.startsWith('COBRANÇA DOC.')) return null;
+    }
+    return 'Escolha uma das opções configuradas.';
   } else if(['TEXT','TEXTAREA','PASSWORD','DATE'].includes(column.inputType)) {
     if (value === null || value === undefined || value === '') return null;
     if (typeof value !== 'string' && (typeof value !== 'object' || value === null)) return 'Informe um texto ou status válido.';

@@ -9,6 +9,7 @@ import {BulkAssignResponsibleModal} from './BulkAssignResponsibleModal';
 import {ResponsibleWorkloadModal} from './ResponsibleWorkloadModal';
 import {ClosingSectorTabs,hasSectorAccess} from './ClosingSectorTabs';
 import {PayrollInput} from './PayrollClosings';
+import {AccountingMonthInput,parseMonthValue} from './AccountingMonthInput';
 import {useCompetenceCalendar} from './useCompetenceCalendar';
 import {TableSkeleton,ButtonSpinner} from './LoadingSkeleton';
 import {ACCOUNTING_API_VERSION,accountingYear,accountingMonth,NOT_CLIENT} from '../config/accountingColumns';
@@ -24,7 +25,14 @@ import './AccountingClosings.css';
 type Props={currentView:string;onNavigate:(view:string)=>void;currentUser?:CurrentUser|null;onLogout?:()=>void};
 type Row={company:any;closingId:string;columnsData:Record<string,any>;calculatedStatus:string;progressPercent:number};
 export const ACCOUNTING_HEADERS=['Código','Empresa / Certificado','Grupo','Responsável','CNPJ','Situação','Tributação'];
-function monthClass(value:any){return value==='OK - FINALIZADO'?'done':value==='SEM MOVIMENTO'?'no-movement':value==='DOC. REDE'?'documents':value==='COBRANÇA DOC.'?'collection':'pending';}
+function monthClass(value:any){
+  const str = typeof value === 'object' && value !== null ? (value.status || value.label || '') : String(value || '');
+  return str.startsWith('OK - FINALIZADO') ? 'done'
+    : str.startsWith('SEM MOVIMENTO') ? 'no-movement'
+    : str.startsWith('DOC. REDE') ? 'documents'
+    : str.startsWith('COBRANÇA DOC.') ? 'collection'
+    : 'pending';
+}
 export function AccountingClosings({currentView,onNavigate,currentUser,onLogout}:Props){
   const [progressOpen,setProgressOpen]=useState(false);const [monthsClosingId,setMonthsClosingId]=useState('');
   const [year,setYear]=useState(()=>accountingYear());
@@ -107,14 +115,16 @@ export function AccountingClosings({currentView,onNavigate,currentUser,onLogout}
 
         if (val === NOT_CLIENT) continue;
 
+        const valStr = typeof val === 'object' && val !== null ? (val.status || val.value || '') : String(val || '');
+
         totalEligible++;
-        if (val === 'OK - FINALIZADO') {
+        if (valStr.startsWith('OK - FINALIZADO')) {
           done++;
-        } else if (val === 'SEM MOVIMENTO') {
+        } else if (valStr.startsWith('SEM MOVIMENTO')) {
           noMovement++;
-        } else if (val === 'DOC. REDE') {
+        } else if (valStr.startsWith('DOC. REDE')) {
           docRede++;
-        } else if (val === 'COBRANÇA DOC.') {
+        } else if (valStr.startsWith('COBRANÇA DOC.')) {
           collection++;
         } else {
           pending++;
@@ -150,11 +160,13 @@ export function AccountingClosings({currentView,onNavigate,currentUser,onLogout}
         const val = row.columnsData?.[k];
         if (val === NOT_CLIENT) continue;
 
-        if (monthStatusFilter === 'DONE' && (val === 'OK - FINALIZADO' || val === 'SEM MOVIMENTO')) { hasMatch = true; break; }
-        if (monthStatusFilter === 'DOC_REDE' && val === 'DOC. REDE') { hasMatch = true; break; }
-        if (monthStatusFilter === 'SEM_MOVIMENTO' && val === 'SEM MOVIMENTO') { hasMatch = true; break; }
-        if (monthStatusFilter === 'COBRANCA' && val === 'COBRANÇA DOC.') { hasMatch = true; break; }
-        if (monthStatusFilter === 'PENDING' && (!val || val === 'Pendente')) { hasMatch = true; break; }
+        const valStr = typeof val === 'object' && val !== null ? (val.status || val.value || '') : String(val || '');
+
+        if (monthStatusFilter === 'DONE' && (valStr.startsWith('OK - FINALIZADO') || valStr.startsWith('SEM MOVIMENTO'))) { hasMatch = true; break; }
+        if (monthStatusFilter === 'DOC_REDE' && valStr.startsWith('DOC. REDE')) { hasMatch = true; break; }
+        if (monthStatusFilter === 'SEM_MOVIMENTO' && valStr.startsWith('SEM MOVIMENTO')) { hasMatch = true; break; }
+        if (monthStatusFilter === 'COBRANCA' && valStr.startsWith('COBRANÇA DOC.')) { hasMatch = true; break; }
+        if (monthStatusFilter === 'PENDING' && (!valStr || valStr === 'Pendente')) { hasMatch = true; break; }
       }
       matchMonthStatus = hasMatch;
     }
@@ -915,8 +927,8 @@ export function AccountingClosings({currentView,onNavigate,currentUser,onLogout}
         <td><button className="copy-badge-btn" title="Copiar CNPJ" onClick={()=>{void navigator.clipboard.writeText(company.cnpj||'').then(()=>setCopied('CNPJ copiado!')).catch(()=>setError('Não foi possível copiar.'));}}>{formatCnpj(company.cnpj||'')}<Copy size={12}/></button></td>
         <td><span className={`status-badge ${left(company)?'pending':'completed'}`}>{left(company)?`Saiu em ${new Date(company.exitDate).toLocaleDateString('pt-BR',{timeZone:'UTC'})}`:'Ativa'}</span></td>
         <td><span className={`tax-regime-pill ${company.taxRegime==='SIMPLES_NACIONAL'?'simples':company.taxRegime?.includes('PRESUMIDO')?'presumido':company.taxRegime?.includes('REAL')?'real':company.taxRegime==='MEI'?'mei':''}`}>{formatRegimeLabel(company.taxRegime||'')}</span></td>
-        {visibleColumns.map(column=>{if(column.isMonthsGroup){const values=column.months.map((monthColumn:any)=>row.columnsData[resolveColumnKey(monthColumn)||monthColumn.id]).filter((value:any)=>value!==NOT_CLIENT);const done=values.filter((value:any)=>['OK - FINALIZADO','SEM MOVIMENTO'].includes(value)).length;return <td key={column.id}><button type="button" className="accounting-months-button" onClick={()=>setMonthsClosingId(row.closingId)} aria-label={`Ver meses de ${company.name}`}><strong>Meses · {year}</strong><small>{values.length?`${done} / ${values.length} meses concluídos · abrir`:'Não é cliente no período · abrir'}</small></button></td>;}const key=resolveColumnKey(column)||column.id;const value=row.columnsData[key];const month=accountingMonth(column);const blocked=!!month&&Date.UTC(year,month-1,1)>latestPeriod.getTime();return <td key={column.id} className={month?`accounting-month ${monthClass(value)}`:''} title={blocked?'Esta competência abre no mês seguinte':value===NOT_CLIENT?'Definido pelas datas de obrigação e saída':undefined}>
-          {month&&value===NOT_CLIENT?<span className="obligation-btn na accounting-not-client">{NOT_CLIENT}</span>:key==='cont_observacao'?<button className="copy-badge-btn" style={{background:value?'rgba(99,102,241,.15)':undefined}} title={value||'Observações Contábil'} onClick={()=>{setNotes({row,column});setNoteDraft(value||'');setNoteError('');}}>{value?String(value).slice(0,16)+(String(value).length>16?'...':''):'+ Obs'}</button>:<PayrollInput column={column} value={value} disabled={!isRowEditable(row)||column.isEditable===false||blocked} onSave={next=>save(row,column,next)}/>}
+        {visibleColumns.map(column=>{if(column.isMonthsGroup){const values=column.months.map((monthColumn:any)=>row.columnsData[resolveColumnKey(monthColumn)||monthColumn.id]).filter((value:any)=>value!==NOT_CLIENT);const done=values.filter((value:any)=>['OK - FINALIZADO','SEM MOVIMENTO'].includes(parseMonthValue(value).status)).length;return <td key={column.id}><button type="button" className="accounting-months-button" onClick={()=>setMonthsClosingId(row.closingId)} aria-label={`Ver meses de ${company.name}`}><strong>Meses · {year}</strong><small>{values.length?`${done} / ${values.length} meses concluídos · abrir`:'Não é cliente no período · abrir'}</small></button></td>;}const key=resolveColumnKey(column)||column.id;const value=row.columnsData[key];const month=accountingMonth(column);const blocked=!!month&&Date.UTC(year,month-1,1)>latestPeriod.getTime();return <td key={column.id} className={month?`accounting-month ${monthClass(value)}`:''} title={blocked?'Esta competência abre no mês seguinte':value===NOT_CLIENT?'Definido pelas datas de obrigação e saída':undefined}>
+          {month&&value===NOT_CLIENT?<span className="obligation-btn na accounting-not-client">{NOT_CLIENT}</span>:month?<AccountingMonthInput value={value} disabled={!isRowEditable(row)||column.isEditable===false||blocked} onSave={next=>save(row,column,next)} ariaLabel={`${column.name} de ${company.name}`}/>:key==='cont_observacao'?<button className="copy-badge-btn" style={{background:value?'rgba(99,102,241,.15)':undefined}} title={value||'Observações Contábil'} onClick={()=>{setNotes({row,column});setNoteDraft(value||'');setNoteError('');}}>{value?String(value).slice(0,16)+(String(value).length>16?'...':''):'+ Obs'}</button>:<PayrollInput column={column} value={value} disabled={!isRowEditable(row)||column.isEditable===false||blocked} onSave={next=>save(row,column,next)}/>}
         </td>;})}
       </tr>;})}</tbody></table></div></>}</div>
     </>}
