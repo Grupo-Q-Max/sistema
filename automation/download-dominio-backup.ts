@@ -73,29 +73,61 @@ async function handleLoginFlow(page: Page): Promise<void> {
       return;
     }
 
+    console.log(`🔎 Analisando tela: ${url.replace('https://', '').slice(0, 45)}...`);
+
     // 2. Tela "Vamos começar" com o botão azul "Entrar" (conforme imagem do Onvio)
+    // Estratégia A: JavaScript nativo direto no DOM (ignora qualquer trava do Playwright)
+    const clickedViaJs = await page.evaluate(() => {
+      const candidates = Array.from(document.querySelectorAll('button, a, div, span, input'));
+      for (const el of candidates) {
+        const text = (el.textContent || (el as HTMLInputElement).value || '').trim();
+        if (/^entrar$/i.test(text)) {
+          (el as HTMLElement).click();
+          return true;
+        }
+      }
+      return false;
+    }).catch(() => false);
+
+    if (clickedViaJs) {
+      console.log('👆 Botão "Entrar" clicado com sucesso via JavaScript nativo!');
+      await page.waitForTimeout(3000);
+      continue;
+    }
+
+    // Estratégia B: Seletor Playwright direto no texto
     try {
-      const vamosComecarBtn = page.getByRole('button', { name: /entrar/i })
-        .or(page.locator('button, a, [role="button"], input[type="submit"], input[type="button"]').filter({ hasText: /entrar/i }))
+      const entrarBtn = page.getByText('Entrar', { exact: true })
+        .or(page.getByRole('button', { name: /entrar/i }))
+        .or(page.locator('button:has-text("Entrar"), a:has-text("Entrar"), [role="button"]:has-text("Entrar")'))
         .first();
-      if (await vamosComecarBtn.isVisible({ timeout: 1500 }).catch(() => false)) {
-        console.log('👆 Detectada tela "Vamos começar". Clicando no botão "Entrar"...');
-        await vamosComecarBtn.click({ force: true }).catch(() => {});
+
+      if (await entrarBtn.isVisible({ timeout: 1000 }).catch(() => false)) {
+        console.log('👆 Detectado botão "Entrar" pelo Playwright. Clicando...');
+        await entrarBtn.click({ force: true }).catch(() => {});
         await page.waitForTimeout(3000);
         continue;
       }
     } catch {}
 
-    // 2.0. Verifica se o botão "Entrar" está dentro de algum iframe do Onvio
+    // Estratégia C: Busca o botão dentro de qualquer frame/iframe da página
     for (const frame of page.frames()) {
       try {
-        const frameBtn = frame.getByRole('button', { name: /entrar/i })
-          .or(frame.locator('button, a, [role="button"]').filter({ hasText: /entrar/i }))
-          .first();
-        if (await frameBtn.isVisible({ timeout: 500 }).catch(() => false)) {
-          console.log('👆 Botão "Entrar" detectado em frame. Clicando...');
-          await frameBtn.click({ force: true }).catch(() => {});
-          await page.waitForTimeout(2000);
+        const frameClicked = await frame.evaluate(() => {
+          const els = Array.from(document.querySelectorAll('button, a, div, span, input'));
+          for (const el of els) {
+            const text = (el.textContent || (el as HTMLInputElement).value || '').trim();
+            if (/^entrar$/i.test(text)) {
+              (el as HTMLElement).click();
+              return true;
+            }
+          }
+          return false;
+        }).catch(() => false);
+
+        if (frameClicked) {
+          console.log('👆 Botão "Entrar" clicado em frame via JavaScript!');
+          await page.waitForTimeout(2500);
           break;
         }
       } catch {}
