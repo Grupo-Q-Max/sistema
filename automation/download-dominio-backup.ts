@@ -74,25 +74,52 @@ async function handleLoginFlow(page: Page): Promise<void> {
 
     // 2. Tela "Vamos começar" com o botão azul "Entrar" (conforme imagem do Onvio)
     try {
-      const vamosComecarBtn = page.locator('button:has-text("Entrar"), a:has-text("Entrar")')
-        .filter({ hasText: /^Entrar$/i })
+      const vamosComecarBtn = page.getByRole('button', { name: /entrar/i })
+        .or(page.locator('button, a, [role="button"], input[type="submit"], input[type="button"]').filter({ hasText: /entrar/i }))
         .first();
-      if (await vamosComecarBtn.isVisible({ timeout: 1500 })) {
+      if (await vamosComecarBtn.isVisible({ timeout: 1500 }).catch(() => false)) {
         console.log('👆 Detectada tela "Vamos começar". Clicando no botão "Entrar"...');
-        await vamosComecarBtn.click();
+        await vamosComecarBtn.click({ force: true }).catch(() => {});
         await page.waitForTimeout(3000);
         continue;
       }
     } catch {}
 
+    // 2.0. Verifica se o botão "Entrar" está dentro de algum iframe do Onvio
+    for (const frame of page.frames()) {
+      try {
+        const frameBtn = frame.getByRole('button', { name: /entrar/i })
+          .or(frame.locator('button, a, [role="button"]').filter({ hasText: /entrar/i }))
+          .first();
+        if (await frameBtn.isVisible({ timeout: 500 }).catch(() => false)) {
+          console.log('👆 Botão "Entrar" detectado em frame. Clicando...');
+          await frameBtn.click({ force: true }).catch(() => {});
+          await page.waitForTimeout(2000);
+          break;
+        }
+      } catch {}
+    }
+
     // 2.1. Conta já salva/lembrada no navegador
     try {
       const savedAccount = page.locator('.account-tile, [data-testid="account-item"], button:has-text("@"), div[role="button"]:has-text("@")').first();
-      if (await savedAccount.isVisible({ timeout: 1000 })) {
+      if (await savedAccount.isVisible({ timeout: 1000 }).catch(() => false)) {
         console.log('👆 Conta salva encontrada no navegador. Clicando na conta...');
-        await savedAccount.click();
+        await savedAccount.click({ force: true }).catch(() => {});
         await page.waitForTimeout(2000);
         continue;
+      }
+    } catch {}
+
+    // 2.2. Marcar opção de lembrar dispositivo / manter conectado se visível
+    try {
+      const rememberCheckbox = page.locator('input[type="checkbox"]').first();
+      if (await rememberCheckbox.isVisible({ timeout: 500 }).catch(() => false)) {
+        const isChecked = await rememberCheckbox.isChecked().catch(() => true);
+        if (!isChecked) {
+          console.log('☑️ Marcando opção para lembrar este dispositivo / manter conectado...');
+          await rememberCheckbox.check({ force: true }).catch(() => {});
+        }
       }
     } catch {}
 
