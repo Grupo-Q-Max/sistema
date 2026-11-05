@@ -26,6 +26,7 @@ export type ProgressRecord = {
   filled: boolean;
   eligible: boolean;
   blocked: boolean;
+  monthName?: string;
 };
 
 export type ProgressColumn = {
@@ -154,16 +155,15 @@ export function buildClosingProgress(rows:any[],columns:any[],sector:'FISCAL'|'D
   const filled=records.filter(record=>record.filled).length;
 
   let valueBreakdown: ValueBreakdownItem[] | undefined = undefined;
-  if (total > 0) {
-    const countsMap = new Map<string, { label: string; key: string; badgeClass: string; count: number }>();
-
-    if (sector === 'CONTABIL' && month) {
-      countsMap.set('DONE', { label: 'CONCLUÍDO', key: 'DONE', badgeClass: 'done', count: 0 });
-      countsMap.set('DOC_REDE', { label: 'DOC. REDE', key: 'DOC_REDE', badgeClass: 'doc-rede', count: 0 });
-      countsMap.set('SEM_MOVIMENTO', { label: 'SEM MOVIMENTO', key: 'SEM_MOVIMENTO', badgeClass: 'no-movement', count: 0 });
-      countsMap.set('COBRANCA', { label: 'COBRANÇA DOC.', key: 'COBRANCA', badgeClass: 'collection', count: 0 });
-      countsMap.set('PENDING', { label: 'PENDENTE', key: 'PENDING', badgeClass: 'pending', count: 0 });
-    }
+  // Detalhamento por status de preenchimento é exclusivo para os meses do Contábil
+  if (total > 0 && sector === 'CONTABIL' && month) {
+    const countsMap = new Map<string, { label: string; key: string; badgeClass: string; count: number }>([
+      ['DONE', { label: 'CONCLUÍDO', key: 'DONE', badgeClass: 'done', count: 0 }],
+      ['DOC_REDE', { label: 'DOC. REDE', key: 'DOC_REDE', badgeClass: 'doc-rede', count: 0 }],
+      ['SEM_MOVIMENTO', { label: 'SEM MOVIMENTO', key: 'SEM_MOVIMENTO', badgeClass: 'no-movement', count: 0 }],
+      ['COBRANCA', { label: 'COBRANÇA DOC.', key: 'COBRANCA', badgeClass: 'collection', count: 0 }],
+      ['PENDING', { label: 'PENDENTE', key: 'PENDING', badgeClass: 'pending', count: 0 }],
+    ]);
 
     for (const rec of records) {
       if (!rec.eligible) continue;
@@ -259,7 +259,7 @@ export function buildClosingProgress(rows:any[],columns:any[],sector:'FISCAL'|'D
        done: groupDone,
        filled: groupFilled,
        percent: groupTotal ? Math.round(groupDone / groupTotal * 100) : 0,
-       records: monthCols.flatMap(m => m.records),
+       records: monthCols.flatMap(m => m.records.map(r => ({ ...r, monthName: m.name }))),
        valueBreakdown: consolidatedBreakdown,
        isGroup: true,
        subColumns: monthCols

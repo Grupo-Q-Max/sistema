@@ -277,3 +277,476 @@
 .accounting-months-button{min-width:150px;display:flex;flex-direction:column;gap:6px;padding:10px 12px;border:1px solid #a78bfa;border-radius:8px;background:#ede9fe;color:#6d28d9;cursor:pointer;font:inherit;font-size:.78rem;text-align:left}.accounting-months-button small{font-size:.68rem;color:#64748b}.accounting-months-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}.accounting-months-card{padding:14px;border:1px solid #e2e8f0;border-radius:10px;background:#f8fafc;color:#334155}.accounting-months-card h4{margin:0 0 12px;display:flex;gap:6px;align-items:center;color:#4338ca}.accounting-months-card small{display:block;margin-top:8px;color:#64748b;font-size:.7rem}.accounting-months-card .payroll-input-cell select{background:#fff!important;color:#334155!important;border-color:#cbd5e1!important;width:100%}
 @media(max-width:800px){.accounting-months-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.closing-progress-heading{flex-wrap:wrap}.closing-progress-meter{width:100%}.closing-progress-search{flex-wrap:wrap}}@media(max-width:500px){.accounting-months-grid{grid-template-columns:1fr}.closing-progress-grid{grid-template-columns:1fr}.closing-progress-search input{flex-basis:100%}}
 .accounting-months-card.done{border-top:3px solid #10b981;background:#f0fdf4}.accounting-months-card.pending{border-top:3px solid #a78bfa}.accounting-months-card.excluded{background:#f1f5f9;border-top:3px solid #94a3b8}
+
+/* =========================================================================
+   MODAL DE DETALHAMENTO DOS 12 MESES (CONTÁBIL)
+   ========================================================================= */
+.months-detail-modal {
+  max-width: 1100px !important;
+  width: 95vw !important;
+  max-height: 88vh !important;
+  display: flex !important;
+  flex-direction: column !important;
+  background: #0b0f19 !important;
+  border: 1px solid rgba(168, 85, 247, 0.35) !important;
+  border-radius: 16px !important;
+  box-shadow: 0 25px 60px -15px rgba(0, 0, 0, 0.85), 0 0 35px rgba(168, 85, 247, 0.25) !important;
+  overflow: hidden !important;
+  padding: 0 !important;
+  animation: monthsModalIn 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes monthsModalIn {
+  from { opacity: 0; transform: scale(0.96) translateY(8px); }
+  to { opacity: 1; transform: scale(1) translateY(0); }
+}
+
+.months-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 18px 24px;
+  background: linear-gradient(180deg, rgba(30, 27, 75, 0.8) 0%, rgba(15, 23, 42, 0.95) 100%);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.months-modal-title-wrap {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.months-modal-icon {
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, rgba(168, 85, 247, 0.25), rgba(99, 102, 241, 0.25));
+  border: 1px solid rgba(168, 85, 247, 0.4);
+  color: #c084fc;
+  flex-shrink: 0;
+}
+
+.months-modal-title {
+  margin: 0;
+  font-size: 1.18rem;
+  font-weight: 700;
+  color: #f8fafc;
+  letter-spacing: -0.3px;
+}
+
+.months-modal-subtitle {
+  margin: 3px 0 0;
+  font-size: 0.82rem;
+  color: #94a3b8;
+}
+
+.months-modal-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.months-overall-badge {
+  padding: 5px 14px;
+  border-radius: 9999px;
+  font-size: 0.8rem;
+  font-weight: 700;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  background: rgba(255, 255, 255, 0.06);
+  color: #e2e8f0;
+}
+
+.months-overall-badge.good {
+  color: #4ade80;
+  background: rgba(34, 197, 94, 0.15);
+  border-color: rgba(74, 222, 128, 0.4);
+}
+
+.months-overall-badge.medium {
+  color: #fde047;
+  background: rgba(234, 179, 8, 0.15);
+  border-color: rgba(250, 204, 21, 0.4);
+}
+
+.months-overall-badge.low {
+  color: #f87171;
+  background: rgba(239, 68, 68, 0.15);
+  border-color: rgba(248, 113, 113, 0.4);
+}
+
+.months-modal-body {
+  padding: 20px 24px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  flex: 1;
+}
+
+/* STRIP DE MESES */
+.months-selector-strip {
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+  padding-bottom: 6px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  scrollbar-width: thin;
+}
+
+.month-tab-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 13px;
+  border-radius: 8px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  background: rgba(30, 41, 59, 0.65);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  color: #cbd5e1;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.15s ease;
+  user-select: none;
+}
+
+.month-tab-btn:hover {
+  background: rgba(51, 65, 85, 0.8);
+  color: #fff;
+  border-color: rgba(255, 255, 255, 0.2);
+  transform: translateY(-1px);
+}
+
+.month-tab-btn.active {
+  background: linear-gradient(135deg, rgba(99, 102, 241, 0.25), rgba(168, 85, 247, 0.35));
+  border-color: #a855f7;
+  color: #f3e8ff;
+  box-shadow: 0 0 14px rgba(168, 85, 247, 0.35);
+}
+
+.month-tab-btn.disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.month-tab-badge {
+  padding: 1px 5px;
+  border-radius: 4px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  background: rgba(0, 0, 0, 0.35);
+  color: #94a3b8;
+}
+
+.month-tab-badge.good { color: #4ade80; }
+.month-tab-badge.medium { color: #fde047; }
+.month-tab-badge.low { color: #f87171; }
+
+/* KPIS INTERATIVOS DO MÊS */
+.months-kpi-summary {
+  background: rgba(15, 23, 42, 0.55);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 12px;
+  padding: 14px 16px;
+}
+
+.months-kpi-title-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.months-kpi-title-row h4 {
+  margin: 0;
+  font-size: 0.96rem;
+  color: #f1f5f9;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.months-kpi-title-row h4 strong {
+  color: #c084fc;
+}
+
+.months-kpi-title-row h4 span {
+  color: #94a3b8;
+  font-size: 0.85rem;
+  font-weight: 400;
+}
+
+.months-kpi-hint {
+  font-size: 0.74rem;
+  color: #64748b;
+  font-style: italic;
+}
+
+.months-kpi-cards-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 10px;
+}
+
+.month-kpi-card {
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(30, 41, 59, 0.5);
+  text-align: left;
+  cursor: pointer;
+  transition: all 0.18s ease;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  user-select: none;
+}
+
+.month-kpi-card:hover {
+  transform: translateY(-2px);
+  border-color: rgba(255, 255, 255, 0.25);
+  background: rgba(30, 41, 59, 0.75);
+}
+
+.month-kpi-card.active {
+  border-color: #a855f7 !important;
+  box-shadow: 0 0 16px rgba(168, 85, 247, 0.4) !important;
+  background: rgba(46, 16, 101, 0.35) !important;
+}
+
+.kpi-card-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.kpi-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.kpi-dot.all { background: #94a3b8; }
+.kpi-dot.done { background: #4ade80; }
+.kpi-dot.doc-rede { background: #c4b5fd; }
+.kpi-dot.no-movement { background: #93c5fd; }
+.kpi-dot.collection { background: #fde047; }
+.kpi-dot.pending { background: #f87171; }
+
+.kpi-label {
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.3px;
+  color: #94a3b8;
+}
+
+.kpi-card-val {
+  font-size: 1.28rem;
+  font-weight: 700;
+  color: #f8fafc;
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+}
+
+.kpi-pct {
+  font-size: 0.74rem;
+  font-weight: 600;
+  color: #94a3b8;
+}
+
+.kpi-card-sub {
+  font-size: 0.69rem;
+  color: #64748b;
+}
+
+/* BARRA DE PESQUISA DO MODAL */
+.months-modal-filter-bar {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+}
+
+.months-modal-search-box {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  min-width: 260px;
+  background: rgba(30, 41, 59, 0.65);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  padding: 7px 12px;
+}
+
+.months-modal-search-box input {
+  background: transparent;
+  border: none;
+  outline: none;
+  color: #f1f5f9;
+  font-size: 0.82rem;
+  width: 100%;
+}
+
+.months-modal-search-box input::placeholder {
+  color: #64748b;
+}
+
+.search-clear-btn {
+  background: transparent;
+  border: none;
+  color: #94a3b8;
+  cursor: pointer;
+  padding: 0;
+  display: flex;
+  align-items: center;
+}
+
+.months-modal-filter-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.months-modal-filter-actions select {
+  background: rgba(30, 41, 59, 0.7);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
+  padding: 7px 12px;
+  font-size: 0.8rem;
+  color: #cbd5e1;
+  outline: none;
+  cursor: pointer;
+}
+
+.months-modal-counter {
+  font-size: 0.78rem;
+  color: #94a3b8;
+  white-space: nowrap;
+}
+
+.months-modal-counter strong {
+  color: #f8fafc;
+}
+
+/* TABELA DE EMPRESAS NO MODAL */
+.months-modal-table-wrap {
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 10px;
+  overflow: hidden;
+  max-height: 380px;
+  overflow-y: auto;
+  background: rgba(15, 23, 42, 0.4);
+}
+
+.months-modal-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.82rem;
+}
+
+.months-modal-table thead {
+  position: sticky;
+  top: 0;
+  background: #1e293b;
+  z-index: 2;
+}
+
+.months-modal-table th {
+  padding: 10px 14px;
+  text-align: left;
+  color: #94a3b8;
+  font-weight: 600;
+  font-size: 0.76rem;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.months-modal-table td {
+  padding: 9px 14px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  color: #cbd5e1;
+}
+
+.months-modal-table tbody tr:hover {
+  background: rgba(255, 255, 255, 0.035);
+}
+
+.company-code-badge {
+  font-family: monospace;
+  font-weight: 700;
+  color: #94a3b8;
+  font-size: 0.8rem;
+}
+
+.company-name-text {
+  font-weight: 600;
+  color: #f1f5f9;
+}
+
+.month-name-tag {
+  font-size: 0.74rem;
+  font-weight: 600;
+  padding: 2px 7px;
+  border-radius: 4px;
+  background: rgba(99, 102, 241, 0.15);
+  color: #a5b4fc;
+  border: 1px solid rgba(99, 102, 241, 0.3);
+}
+
+.month-status-pill {
+  padding: 3px 9px;
+  border-radius: 6px;
+  font-size: 0.74rem;
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  letter-spacing: 0.2px;
+}
+
+.month-status-pill.done {
+  background: rgba(34, 197, 94, 0.15);
+  color: #4ade80;
+  border: 1px solid rgba(74, 222, 128, 0.35);
+}
+
+.month-status-pill.doc-rede {
+  background: rgba(168, 85, 247, 0.15);
+  color: #c4b5fd;
+  border: 1px solid rgba(196, 181, 253, 0.35);
+}
+
+.month-status-pill.no-movement {
+  background: rgba(59, 130, 246, 0.15);
+  color: #93c5fd;
+  border: 1px solid rgba(147, 197, 253, 0.35);
+}
+
+.month-status-pill.collection {
+  background: rgba(234, 179, 8, 0.15);
+  color: #fde047;
+  border: 1px solid rgba(250, 204, 21, 0.35);
+}
+
+.month-status-pill.pending {
+  background: rgba(239, 68, 68, 0.15);
+  color: #fca5a5;
+  border: 1px solid rgba(248, 113, 113, 0.35);
+}
+
+.months-modal-empty {
+  text-align: center;
+  padding: 32px 16px;
+  color: #64748b;
+  font-style: italic;
+}
