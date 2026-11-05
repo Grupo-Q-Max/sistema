@@ -190,9 +190,61 @@ async function handleLoginFlow(page: Page): Promise<void> {
       }
     } catch {}
 
-    // 5. Se o login foi concluído e caiu no portal suporte
+    // 5. Se estiver em transição de loopback do Onvio, aguarda o SSO concluir naturalmente
+    if (url.includes('loopback')) {
+      console.log('⏳ Aguardando conclusão do redirecionamento do Onvio (loopback SSO)...');
+      await page.waitForTimeout(4000);
+      continue;
+    }
+
+    // 5.1. Tratamento específico caso caia na tela "invalido.html" do Suporte Domínio
+    if (url.includes('invalido.html')) {
+      console.log('⚠️ Detectada tela de sessão inválida (invalido.html) do Suporte Domínio.');
+
+      const pageInfo = await page.evaluate(() => {
+        const text = (document.body.innerText || '').trim();
+        const links = Array.from(document.querySelectorAll('a')).map(a => `${(a.innerText || '').trim()} (${a.href})`).filter(s => s.length > 5);
+        return { text: text.slice(0, 200), links };
+      }).catch(() => ({ text: '', links: [] }));
+
+      console.log(`📄 Conteúdo da tela inválida: ${pageInfo.text || 'Sem texto'}`);
+      if (pageInfo.links.length > 0) {
+        console.log(`🔗 Links disponíveis na tela: ${pageInfo.links.slice(0, 3).join(', ')}`);
+      }
+
+      // Tenta clicar em algum link de retorno ou início
+      const homeLink = page.locator('a:has-text("Início"), a:has-text("Voltar"), a:has-text("Página Inicial"), a:has-text("Central"), a:has-text("Home")').first();
+      if (await homeLink.isVisible({ timeout: 1500 }).catch(() => false)) {
+        console.log('👆 Clicando no link da tela para retornar à Central do Suporte...');
+        await homeLink.click();
+        await page.waitForTimeout(3000);
+        continue;
+      }
+
+      // Se não houver link funcional, acessa a Central do Suporte para restabelecer a sessão
+      console.log('🔄 Acessando a página principal do Suporte Domínio para criar sessão válida...');
+      await page.goto('https://suporte.dominioatendimento.com/central.html', { waitUntil: 'domcontentloaded' }).catch(() => {});
+      await page.waitForTimeout(3500);
+      continue;
+    }
+
+    // 5.2. Se estiver na Central do Suporte ou qualquer tela do suporte (mas ainda não no bkp-realizado)
     if (url.includes('suporte.dominioatendimento.com') && !url.includes('bkp-realizado') && !url.includes('login')) {
-      console.log('➡️ Navegando direto para a página de backups...');
+      console.log('🧭 Navegando pelo portal do Suporte Domínio para a área de Backups...');
+
+      // Procura link/menu de Backups
+      const bkpMenu = page.locator('a:has-text("Backup Realizado"), a:has-text("Backups Realizados"), a:has-text("Download de Backup"), a:has-text("Backup em Nuvem"), a:has-text("Backup")')
+        .or(page.locator('[title*="Backup" i], [aria-label*="Backup" i]'))
+        .first();
+
+      if (await bkpMenu.isVisible({ timeout: 2000 }).catch(() => false)) {
+        console.log('👆 Clicando no menu/item de Backup...');
+        await bkpMenu.click({ force: true }).catch(() => {});
+        await page.waitForTimeout(3500);
+        continue;
+      }
+
+      console.log('➡️ Navegando diretamente para a página de backups...');
       await page.goto(TARGET_URL, { waitUntil: 'domcontentloaded' }).catch(() => {});
       await page.waitForTimeout(3000);
       continue;
