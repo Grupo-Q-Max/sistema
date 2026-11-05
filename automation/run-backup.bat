@@ -10,3 +10,4 @@ call npx tsx automation/download-dominio-backup.ts --headless >> "%USERPROFILE%\
 echo [INFO] Finalizado com codigo: %ERRORLEVEL% >> "%USERPROFILE%\Desktop\backups_dominio\execucao.log" 2>&1
 echo ==================================================== >> "%USERPROFILE%\Desktop\backups_dominio\execucao.log" 2>&1
 endlocal
+

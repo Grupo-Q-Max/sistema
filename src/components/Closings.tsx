@@ -149,6 +149,7 @@ export function Closings({ currentView, onNavigate, currentUser, onLogout }: Clo
   const [regimeFilter, setRegimeFilter] = useState('ALL');
   const [responsibleFilter, setResponsibleFilter] = useState('ALL');
   const [certFilter, setCertFilter] = useState('ALL');
+  const [cityFilter, setCityFilter] = useState('ALL');
   const [workloadOpen, setWorkloadOpen] = useState(false);
   const [focusModeIndex, setFocusModeIndex] = useState<number | null>(null);
 
@@ -687,6 +688,15 @@ export function Closings({ currentView, onNavigate, currentUser, onLogout }: Clo
     };
   }, [scopedRows]);
 
+  const distinctCities = useMemo(() => {
+    const set = new Set<string>();
+    for (const r of scopedRows) {
+      const city = r.company?.city?.trim();
+      if (city) set.add(city);
+    }
+    return Array.from(set).sort((a, b) => a.localeCompare(b, 'pt-BR'));
+  }, [scopedRows]);
+
   const filteredRows = useMemo(() => {
     const list = scopedRows.filter((r) => {
       const c = r.company;
@@ -744,7 +754,14 @@ export function Closings({ currentView, onNavigate, currentUser, onLogout }: Clo
         else if (certFilter === 'NO_CERT') matchCert = !c.hasClientCertificate;
       }
 
-      return matchSearch && matchStatus && matchRegime && matchResponsible && matchInstallment && matchCert;
+      const matchCity =
+        cityFilter === 'ALL'
+          ? true
+          : cityFilter === 'NONE'
+            ? !c.city?.trim()
+            : c.city?.trim() === cityFilter;
+
+      return matchSearch && matchStatus && matchRegime && matchResponsible && matchInstallment && matchCert && matchCity;
     });
 
     // Ordenação
@@ -778,7 +795,7 @@ export function Closings({ currentView, onNavigate, currentUser, onLogout }: Clo
     });
 
     return list;
-  }, [scopedRows, deferredSearchTerm, statusFilter, regimeFilter, responsibleFilter, certFilter, obligationFilters, sortConfig, popupColumns, installmentFilter, installmentSummaries, viewInstallments]);
+  }, [scopedRows, deferredSearchTerm, statusFilter, regimeFilter, responsibleFilter, certFilter, cityFilter, obligationFilters, sortConfig, popupColumns, installmentFilter, installmentSummaries, viewInstallments]);
 
   // Ações em Massa (Bulk Actions)
   const [selectedClosingIds, setSelectedClosingIds] = useState<Set<string>>(new Set());
@@ -1185,6 +1202,19 @@ export function Closings({ currentView, onNavigate, currentUser, onLogout }: Clo
             </div>
 
             <div className="closings-filters">
+              <select
+                className="closings-select"
+                aria-label="Filtrar município"
+                value={cityFilter}
+                onChange={(e) => setCityFilter(e.target.value)}
+              >
+                <option value="ALL">Município: Todos</option>
+                <option value="NONE">Sem Município</option>
+                {distinctCities.map((city) => (
+                  <option key={city} value={city}>{city}</option>
+                ))}
+              </select>
+
               {viewInstallments && <select className="closings-select" aria-label="Filtrar parcelamentos" value={installmentFilter} onChange={event => setInstallmentFilter(event.target.value)}>{[{ value: 'ALL', label: 'Parcelamentos: Todos' }, { value: 'HAS_PLAN', label: 'Com parcelamento' }, { value: 'PENDING', label: 'Pendente' }, { value: 'OVERDUE', label: 'Atrasado / atrasos anteriores' }, { value: 'PAID', label: 'Pago no mês' }, { value: 'NO_INSTALLMENT', label: 'Sem parcela no mês' }, { value: 'NA', label: 'N/A — sem parcelamento' }].map(item => <option key={item.value} value={item.value}>{item.label}</option>)}</select>}
               {viewInstallments && <button className="btn-secondary-light fiscal-create-installment" onClick={() => { setInstallmentCreate(false); setInstallmentFocus(null); setAllInstallmentsOpen(true); }}>Consultar parcelamentos</button>}
               {canCreateInstallment(currentUser) && <button className="btn-primary-gradient fiscal-create-installment" onClick={() => { setInstallmentCreate(true); setInstallmentFocus(null); setChooseInstallmentCompany(true); }}><Plus size={17} />Criar parcelamento</button>}

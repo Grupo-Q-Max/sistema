@@ -29,3 +29,4 @@ foreach ($Time in $Times) {
 
 Write-Host "`nTodas as rotinas foram programadas no Windows Task Scheduler!" -ForegroundColor Green
 Write-Host "Para conferir ou gerenciar, abra o 'Agendador de Tarefas' do Windows." -ForegroundColor Cyan
+

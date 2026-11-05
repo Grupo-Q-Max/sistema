@@ -167,6 +167,22 @@ export function DominioStagingModal({ isOpen, onClose, onSuccess }: DominioStagi
     }
   };
 
+  const handleSeedSample = async () => {
+    setActionLoading(true);
+    try {
+      const res = await fetch(`${API}/api/dominio-staging/seed-sample`, { method: 'POST' });
+      if (res.ok) {
+        showToast('Dados de teste gerados com sucesso!');
+        fetchItems();
+        window.dispatchEvent(new CustomEvent('dominio-staging-updated'));
+      }
+    } catch {
+      showToast('Erro ao gerar dados de teste.');
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
   const getSectorBadgeClass = (s: string) => {
     if (s === 'CONTABIL') return 'badge-contabil';
     if (s === 'FISCAL') return 'badge-fiscal';

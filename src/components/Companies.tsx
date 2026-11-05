@@ -184,6 +184,7 @@ export function Companies({ currentView, onNavigate, currentUser, onLogout }: Co
   const [filterRegime, setFilterRegime] = useState('ALL');
   const [filterType, setFilterType] = useState('ALL');
   const [filterCert, setFilterCert] = useState('ALL');
+  const [filterSituation, setFilterSituation] = useState<'ACTIVE' | 'INACTIVE' | 'ALL'>('ACTIVE');
 
   // Modal State
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -706,6 +707,14 @@ export function Companies({ currentView, onNavigate, currentUser, onLogout }: Co
         (c.groupName && c.groupName.toLowerCase().includes(search)) ||
         (c.city && c.city.toLowerCase().includes(search));
 
+      const isCompanyActive = !c.exitDate;
+      const matchSituation =
+        filterSituation === 'ALL'
+          ? true
+          : filterSituation === 'ACTIVE'
+            ? isCompanyActive
+            : !isCompanyActive;
+
       const matchRegime = filterRegime === 'ALL' || c.taxRegime === filterRegime;
       const matchType = filterType === 'ALL' || c.companyType === filterType;
       const matchCert =
@@ -713,7 +722,7 @@ export function Companies({ currentView, onNavigate, currentUser, onLogout }: Co
         (filterCert === 'SIM' && c.hasClientCertificate) ||
         (filterCert === 'NAO' && !c.hasClientCertificate);
 
-      return matchSearch && matchRegime && matchType && matchCert;
+      return matchSearch && matchSituation && matchRegime && matchType && matchCert;
     }).sort((a, b) => compareCodes(a.code, b.code, true));
   }, [companies, searchTerm, filterRegime, filterType, filterCert, onlyMyCompanies, currentUser, isPrivileged]);
 
@@ -842,6 +851,20 @@ export function Companies({ currentView, onNavigate, currentUser, onLogout }: Co
                   />
                   <span>Minhas empresas</span>
                 </label>
+
+                <select
+                  className="companies-filter-select"
+                  value={filterSituation}
+                  onChange={(e) => setFilterSituation(e.target.value as any)}
+                  style={{
+                    fontWeight: 600,
+                    color: filterSituation === 'ACTIVE' ? '#34d399' : filterSituation === 'INACTIVE' ? '#f87171' : undefined
+                  }}
+                >
+                  <option value="ACTIVE">Situação: Apenas Ativas</option>
+                  <option value="INACTIVE">Situação: Inativas (Saíram)</option>
+                  <option value="ALL">Situação: Todas as Empresas</option>
+                </select>
 
                 <select
                   className="companies-filter-select"
