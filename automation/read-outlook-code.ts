@@ -40,61 +40,111 @@ async function fetchViaOutlookWeb(context: BrowserContext): Promise<string | nul
   try {
     mailTab = await context.newPage();
     const targetUrl = process.env.OUTLOOK_SHARED_URL || 'https://outlook.cloud.microsoft/mail/sistemas@grupoqmax.com.br/?ui=pt-BR&rs=BR';
-    console.log(`🌐 Verificando caixa compartilhada no Outlook Web: sistemas@grupoqmax.com.br...`);
+    console.log(`🌐 Acessando caixa compartilhada no Outlook Web: sistemas@grupoqmax.com.br...`);
 
-    await mailTab.goto(targetUrl, { waitUntil: 'domcontentloaded', timeout: 30000 }).catch(() => {});
+    await mailTab.goto(targetUrl, { waitUntil: 'domcontentloaded', timeout: 45000 }).catch(() => {});
+    await mailTab.bringToFront().catch(() => {});
+    await mailTab.waitForTimeout(2500);
 
-    // Se estiver na tela de login da Microsoft, aguarda o usuário logar na primeira vez para salvar os cookies
-    if (mailTab.url().includes('login.microsoftonline.com') || mailTab.url().includes('login.live.com')) {
+    // Verifica se precisa de login na conta Microsoft
+    const checkNeedsLogin = async (): Promise<boolean> => {
+      if (!mailTab || mailTab.isClosed()) return false;
+      const currentUrl = mailTab.url();
+      if (/login\.microsoft|login\.live|login\.windows|signin|oauth2/i.test(currentUrl)) return true;
+      return await mailTab.evaluate(() => {
+        const hasLoginInput = !!document.querySelector('input[type="email"], input[name="loginfmt"], #i0116, #i0118, #idSIButton9');
+        const text = (document.body.innerText || '').toLowerCase();
+        const hasLoginText = text.includes('insira sua senha') || text.includes('entrar na sua conta') || text.includes('escolha uma conta') || text.includes('pick an account');
+        return hasLoginInput || hasLoginText;
+      }).catch(() => false);
+    };
+
+    let needsLogin = await checkNeedsLogin();
+
+    if (needsLogin) {
       console.log('\n================================================================');
-      console.log('⚠️  ATENÇÃO: Faça login na sua conta Microsoft no navegador!');
-      console.log('    Marque "Manter conectado (Sim)" para salvar os cookies.');
+      console.log('⚠️  LOGIN NO OUTLOOK WEB NECESSÁRIO (PRIMEIRA VEZ)');
+      console.log('    1. A aba do Outlook Web foi aberta no seu navegador.');
+      console.log('    2. Digite seu e-mail e senha da Microsoft.');
+      console.log('    3. Marque "Continuar conectado? (Sim)" para salvar a sessão.');
+      console.log('    ⏳ Aguardando você concluir o login (até 3 minutos)...');
       console.log('================================================================\n');
 
-      const loggedIn = await mailTab.waitForURL(
-        url => url.toString().includes('outlook.cloud.microsoft') || url.toString().includes('outlook.office.com'),
-        { timeout: 70000 }
-      ).then(() => true).catch(() => false);
+      const maxLoginWaitMs = 180000; // 3 minutos para logar com calma
+      const loginStart = Date.now();
 
-      if (!loggedIn) {
-        console.log('ℹ️ Tempo limite aguardando login no Outlook Web.');
-        await mailTab.close().catch(() => {});
-        return null;
+      while (Date.now() - loginStart < maxLoginWaitMs) {
+        if (!mailTab || mailTab.isClosed()) {
+          console.log('⚠️ A aba do Outlook foi fechada manualmente.');
+          return null;
+        }
+
+        const stillNeedsLogin = await checkNeedsLogin();
+        const url = mailTab.url();
+        const isInsideMailbox = /outlook\.(cloud\.microsoft|office\.com|office365\.com)\/mail/i.test(url) && !stillNeedsLogin;
+
+        if (isInsideMailbox) {
+          console.log('✅ Login no Outlook Web concluído com sucesso!');
+          console.log('💾 Sessão gravada no perfil DominioBotProfile (não pedirá login nas próximas vezes).');
+          await mailTab.waitForTimeout(4000);
+          break;
+        }
+
+        await mailTab.waitForTimeout(2000);
       }
+    }
 
-      console.log('✅ Login no Outlook Web concluído! Sessão gravada no perfil.');
+    // Garante que está na caixa compartilhada sistemas@grupoqmax.com.br
+    const currentUrl = mailTab.url();
+    if (!currentUrl.includes('sistemas@grupoqmax.com.br')) {
+      console.log('📬 Navegando para a caixa compartilhada sistemas@grupoqmax.com.br...');
+      await mailTab.goto(targetUrl, { waitUntil: 'domcontentloaded', timeout: 30000 }).catch(() => {});
       await mailTab.waitForTimeout(4000);
     }
 
-    // Aguarda a lista de mensagens carregar
-    await mailTab.waitForTimeout(3500);
+    console.log('🔍 Aguardando e monitorando o e-mail da Thomson Reuters na caixa de entrada...');
 
-    // Procura mensagem recente da Thomson Reuters
-    const emailItem = mailTab.locator(
-      '[role="option"], [data-convid], div[aria-label*="Thomson Reuters" i], div[aria-label*="autenticação" i], span:has-text("Thomson Reuters"), span:has-text("autenticação de dois fatores")'
-    ).first();
+    // Monitora a chegada do e-mail por até 45 segundos
+    const searchStart = Date.now();
+    while (Date.now() - searchStart < 45000) {
+      if (!mailTab || mailTab.isClosed()) return null;
 
-    if (await emailItem.isVisible({ timeout: 6000 }).catch(() => false)) {
-      console.log('📩 Mensagem recente da Thomson Reuters localizada. Abrindo...');
-      await emailItem.click({ force: true }).catch(() => {});
-      await mailTab.waitForTimeout(2000);
+      // Procura mensagem recente da Thomson Reuters
+      const emailItem = mailTab.locator(
+        '[role="option"], [data-convid], div[aria-label*="Thomson Reuters" i], div[aria-label*="autenticação" i], span:has-text("Thomson Reuters"), span:has-text("autenticação de dois fatores"), div:has-text("Thomson Reuters")'
+      ).first();
 
-      // Extrai o texto da mensagem exibida
-      const bodyText = await mailTab.evaluate(() => {
-        const bodyEl = document.querySelector('[role="main"], [aria-label*="Conteúdo da mensagem" i], .ReadingPaneContainer, #ItemHeaderTitle') || document.body;
-        return bodyEl ? bodyEl.innerText || '' : '';
-      }).catch(() => '');
+      if (await emailItem.isVisible({ timeout: 2000 }).catch(() => false)) {
+        console.log('📩 E-mail da Thomson Reuters localizado! Abrindo mensagem...');
+        await emailItem.click({ force: true }).catch(() => {});
+        await mailTab.waitForTimeout(2500);
 
-      // Padrão do e-mail da Thomson Reuters: "Aqui está seu código de autenticação de dois fatores para Onvio: \n 338794"
-      const onvioMatch = bodyText.match(/para Onvio:?\s*(\d{6})/i) ||
-        bodyText.match(/dois fatores:?\s*(\d{6})/i) ||
-        bodyText.match(/(?<!\d)(\d{6})(?!\d)/);
+        // Extrai o texto da mensagem exibida
+        const bodyText = await mailTab.evaluate(() => {
+          const bodyEl = document.querySelector('[role="main"], [aria-label*="Conteúdo da mensagem" i], .ReadingPaneContainer, #ItemHeaderTitle') || document.body;
+          return bodyEl ? bodyEl.innerText || '' : '';
+        }).catch(() => '');
 
-      if (onvioMatch && onvioMatch[1]) {
-        const code = onvioMatch[1];
-        await mailTab.close().catch(() => {});
-        return code;
+        // Padrão: "Aqui está seu código de autenticação de dois fatores para Onvio: \n 338794"
+        const onvioMatch = bodyText.match(/para Onvio:?\s*(\d{6})/i) ||
+          bodyText.match(/dois fatores:?\s*(\d{6})/i) ||
+          bodyText.match(/(?<!\d)(\d{6})(?!\d)/);
+
+        if (onvioMatch && onvioMatch[1]) {
+          const code = onvioMatch[1];
+          console.log(`🎯 Código extraído com sucesso: ${code}`);
+          await mailTab.close().catch(() => {});
+          return code;
+        }
       }
+
+      // Tenta clicar no botão de atualizar pasta se existir
+      const refreshBtn = mailTab.locator('button[aria-label*="Atualizar" i], button[title*="Atualizar" i]').first();
+      if (await refreshBtn.isVisible({ timeout: 1000 }).catch(() => false)) {
+        await refreshBtn.click({ force: true }).catch(() => {});
+      }
+
+      await mailTab.waitForTimeout(3000);
     }
   } catch (err) {
     console.warn('Aviso ao consultar Outlook Web:', err);
