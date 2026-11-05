@@ -50,6 +50,11 @@ export function DominioStagingModal({ isOpen, onClose, onSuccess }: DominioStagi
   const [statusFilter, setStatusFilter] = useState<'PENDING' | 'APPROVED' | 'REJECTED' | 'ALL'>('PENDING');
   const [actionLoading, setActionLoading] = useState(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const [confirmModal, setConfirmModal] = useState<{
+    isOpen: boolean;
+    action: 'APPROVE' | 'REJECT';
+    items: StagingItem[];
+  } | null>(null);
 
   const fetchItems = async () => {
     setLoading(true);
@@ -97,6 +102,41 @@ export function DominioStagingModal({ isOpen, onClose, onSuccess }: DominioStagi
   const showToast = (msg: string) => {
     setToastMessage(msg);
     setTimeout(() => setToastMessage(null), 4000);
+  };
+
+  const requestApprove = (ids?: string[]) => {
+    const targetIds = ids || Array.from(selectedIds);
+    if (targetIds.length === 0) return;
+    const targetItems = items.filter(i => targetIds.includes(i.id));
+    setConfirmModal({
+      isOpen: true,
+      action: 'APPROVE',
+      items: targetItems
+    });
+  };
+
+  const requestReject = (ids?: string[]) => {
+    const targetIds = ids || Array.from(selectedIds);
+    if (targetIds.length === 0) return;
+    const targetItems = items.filter(i => targetIds.includes(i.id));
+    setConfirmModal({
+      isOpen: true,
+      action: 'REJECT',
+      items: targetItems
+    });
+  };
+
+  const executeConfirmedAction = async () => {
+    if (!confirmModal || confirmModal.items.length === 0) return;
+    const ids = confirmModal.items.map(i => i.id);
+    const action = confirmModal.action;
+    setConfirmModal(null);
+
+    if (action === 'APPROVE') {
+      await handleApprove(ids);
+    } else {
+      await handleReject(ids);
+    }
   };
 
   const handleApprove = async (ids?: string[]) => {
@@ -404,7 +444,7 @@ export function DominioStagingModal({ isOpen, onClose, onSuccess }: DominioStagi
                 <button
                   className="btn-staging-approve"
                   disabled={selectedIds.size === 0 || actionLoading}
-                  onClick={() => handleApprove()}
+                  onClick={() => requestApprove()}
                 >
                   <CheckCircle2 size={16} />
                   Aprovar Selecionados ({selectedIds.size})
@@ -412,7 +452,7 @@ export function DominioStagingModal({ isOpen, onClose, onSuccess }: DominioStagi
                 <button
                   className="btn-staging-reject"
                   disabled={selectedIds.size === 0 || actionLoading}
-                  onClick={() => handleReject()}
+                  onClick={() => requestReject()}
                 >
                   <XCircle size={16} />
                   Rejeitar Selecionados
@@ -556,7 +596,7 @@ export function DominioStagingModal({ isOpen, onClose, onSuccess }: DominioStagi
                             <button
                               className="btn-icon-approve"
                               title="Aprovar e Integrar ao Fechamento"
-                              onClick={() => handleApprove([item.id])}
+                              onClick={() => requestApprove([item.id])}
                               disabled={actionLoading}
                             >
                               <CheckCircle2 size={18} />
@@ -564,7 +604,7 @@ export function DominioStagingModal({ isOpen, onClose, onSuccess }: DominioStagi
                             <button
                               className="btn-icon-reject"
                               title="Rejeitar Alteração"
-                              onClick={() => handleReject([item.id])}
+                              onClick={() => requestReject([item.id])}
                               disabled={actionLoading}
                             >
                               <XCircle size={18} />
@@ -597,6 +637,124 @@ export function DominioStagingModal({ isOpen, onClose, onSuccess }: DominioStagi
           </button>
         </div>
       </div>
+
+      {/* POPUP DE CONFIRMAÇÃO DETALHADO */}
+      {confirmModal && confirmModal.isOpen && (
+        <div className="dominio-confirm-overlay" onClick={() => setConfirmModal(null)}>
+          <div
+            className={`dominio-confirm-card ${confirmModal.action === 'APPROVE' ? 'approve' : 'reject'}`}
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="dominio-confirm-header">
+              <div className={`dominio-confirm-icon-box ${confirmModal.action === 'APPROVE' ? 'approve' : 'reject'}`}>
+                {confirmModal.action === 'APPROVE' ? <CheckCircle2 size={24} /> : <XCircle size={24} />}
+              </div>
+              <div className="dominio-confirm-title-area">
+                <h3>
+                  {confirmModal.action === 'APPROVE'
+                    ? `Confirmar Aprovação (${confirmModal.items.length} ${confirmModal.items.length === 1 ? 'item' : 'itens'})`
+                    : `Confirmar Rejeição (${confirmModal.items.length} ${confirmModal.items.length === 1 ? 'item' : 'itens'})`}
+                </h3>
+                <p>
+                  {confirmModal.action === 'APPROVE'
+                    ? 'As alterações abaixo serão gravadas com sucesso no Fechamento Pro.'
+                    : 'As alterações propostas serão descartadas sem modificar o Fechamento Pro.'}
+                </p>
+              </div>
+            </div>
+
+            <div className="dominio-confirm-body">
+              <div className="dominio-confirm-summary-box">
+                {confirmModal.action === 'APPROVE' ? (
+                  <span>
+                    ℹ️ Você está prestes a <strong>aprovar e aplicar {confirmModal.items.length} alteração(ões)</strong> originadas do sistema Domínio. Confira detalhadamente o que vai mudar:
+                  </span>
+                ) : (
+                  <span>
+                    ⚠️ Você está prestes a <strong>rejeitar {confirmModal.items.length} proposta(s)</strong> do Domínio. As tabelas manterão seus valores atuais.
+                  </span>
+                )}
+              </div>
+
+              <div className="dominio-confirm-items-list">
+                {confirmModal.items.map(item => {
+                  const target = getTargetColumnDescription(item);
+                  const displayCode = item.companyCode ? (formatCompanyCode(item.companyCode) || item.companyCode) : '—';
+                  const isUnregistered = !item.companyId || item.currentValue === 'NÃO CADASTRADA' || item.sector === 'CADASTRO';
+
+                  return (
+                    <div key={item.id} className="dominio-confirm-item-row">
+                      <div className="dominio-confirm-item-top">
+                        <div className="dominio-confirm-comp-name">
+                          <span className="dominio-company-code">#{displayCode}</span>
+                          <span>{item.companyName}</span>
+                        </div>
+                        <div style={{ display: 'flex', gap: 6 }}>
+                          <span className={`sector-tag ${getSectorBadgeClass(item.sector)}`}>
+                            {item.sector}
+                          </span>
+                          <span className="period-tag">{item.referencePeriod}</span>
+                        </div>
+                      </div>
+
+                      <div style={{ fontSize: 12, color: '#38bdf8' }}>
+                        📍 <strong>{target.table}:</strong> Coluna "{target.column}" — <span style={{ color: '#94a3b8' }}>{target.impact}</span>
+                      </div>
+
+                      <div className="dominio-confirm-diff-box">
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                          <span style={{ color: '#64748b' }}>Atual:</span>
+                          <span className="dominio-confirm-from">
+                            {isUnregistered ? 'Não cadastrada' : (item.currentValue || 'Vazio')}
+                          </span>
+                        </div>
+                        <ArrowRight size={13} className="text-slate-500" />
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                          <span style={{ color: '#64748b' }}>Novo:</span>
+                          <span className="dominio-confirm-to">
+                            {item.sector === 'CADASTRO' || item.columnKey === 'nova_empresa'
+                              ? 'Criar cadastro da empresa'
+                              : item.proposedValue}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div className="dominio-confirm-footer">
+              <button
+                className="btn-confirm-cancel"
+                onClick={() => setConfirmModal(null)}
+                disabled={actionLoading}
+              >
+                Cancelar
+              </button>
+              {confirmModal.action === 'APPROVE' ? (
+                <button
+                  className="btn-confirm-approve-action"
+                  onClick={executeConfirmedAction}
+                  disabled={actionLoading}
+                >
+                  <CheckCircle2 size={16} />
+                  Sim, Aprovar e Gravar no Banco
+                </button>
+              ) : (
+                <button
+                  className="btn-confirm-reject-action"
+                  onClick={executeConfirmedAction}
+                  disabled={actionLoading}
+                >
+                  <XCircle size={16} />
+                  Sim, Rejeitar e Descartar
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
