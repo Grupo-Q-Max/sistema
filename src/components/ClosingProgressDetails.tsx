@@ -52,6 +52,7 @@ export function MonthsProgressModal({
     <div className="closing-modal-backdrop notranslate" onClick={onClose}>
       <section
         className="closing-modal-content months-detail-modal notranslate"
+        style={{ maxWidth: 1100, width: '94vw', maxHeight: '90vh' }}
         role="dialog"
         aria-modal="true"
         onClick={e => e.stopPropagation()}
@@ -85,42 +86,48 @@ export function MonthsProgressModal({
         </div>
 
         <div className="closing-modal-body months-modal-body">
-          {/* BARRA HORIZONTAL DE SELEÇÃO DE MÊS */}
-          <div className="months-selector-strip">
-            <button
-              type="button"
-              className={`month-tab-btn ${selectedSubKey === 'ALL' ? 'active' : ''}`}
-              onClick={() => {
-                setSelectedSubKey('ALL');
-                setCategoryFilter('ALL');
-              }}
-            >
-              <span className="month-tab-name">Todos os Meses</span>
-              <span className="month-tab-badge">{groupColumn.percent}%</span>
-            </button>
+          {/* SELEÇÃO DOS 12 MESES EM GRADE VISÍVEL */}
+          <div className="months-navigation-panel">
+            <div className="months-nav-header">
+              <span className="months-nav-title">Clique no mês desejado para ver os detalhes:</span>
+              <button
+                type="button"
+                className={`month-tab-btn all-months-btn ${selectedSubKey === 'ALL' ? 'active' : ''}`}
+                onClick={() => {
+                  setSelectedSubKey('ALL');
+                  setCategoryFilter('ALL');
+                }}
+              >
+                <Calendar size={13} />
+                <span className="month-tab-name">Todos os Meses (Consolidado)</span>
+                <span className="month-tab-badge">{groupColumn.percent}%</span>
+              </button>
+            </div>
 
-            {subColumns.map(sc => {
-              const isSelected = selectedSubKey === sc.key;
-              const isFuture = sc.total === 0;
-              return (
-                <button
-                  key={sc.key}
-                  type="button"
-                  className={`month-tab-btn ${isSelected ? 'active' : ''} ${isFuture ? 'disabled' : ''}`}
-                  disabled={isFuture}
-                  title={isFuture ? 'Competência futura' : `${sc.name}: ${sc.done}/${sc.total} (${sc.percent}%)`}
-                  onClick={() => {
-                    setSelectedSubKey(sc.key);
-                    setCategoryFilter('ALL');
-                  }}
-                >
-                  <span className="month-tab-name">{sc.name}</span>
-                  <span className={`month-tab-badge ${sc.percent >= 80 ? 'good' : sc.percent >= 50 ? 'medium' : sc.percent > 0 ? 'low' : ''}`}>
-                    {isFuture ? '—' : `${sc.percent}%`}
-                  </span>
-                </button>
-              );
-            })}
+            <div className="months-grid-selector">
+              {subColumns.map(sc => {
+                const isSelected = selectedSubKey === sc.key;
+                const isFuture = sc.total === 0;
+                return (
+                  <button
+                    key={sc.key}
+                    type="button"
+                    className={`month-tab-btn ${isSelected ? 'active' : ''} ${isFuture ? 'disabled' : ''}`}
+                    disabled={isFuture}
+                    title={isFuture ? 'Competência futura' : `${sc.name}: ${sc.done}/${sc.total} (${sc.percent}%)`}
+                    onClick={() => {
+                      setSelectedSubKey(sc.key);
+                      setCategoryFilter('ALL');
+                    }}
+                  >
+                    <span className="month-tab-name">{sc.name}</span>
+                    <span className={`month-tab-badge ${sc.percent >= 80 ? 'good' : sc.percent >= 50 ? 'medium' : sc.percent > 0 ? 'low' : ''}`}>
+                      {isFuture ? '—' : `${sc.percent}%`}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
           </div>
 
           {/* PAINEL DE STATUS / KPIS INTERATIVOS */}
