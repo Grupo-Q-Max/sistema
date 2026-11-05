@@ -450,6 +450,72 @@ async function handleLoginFlow(page: Page): Promise<void> {
   throw new Error('Tempo limite excedido aguardando login.');
 }
 
+// Tenta baixar o primeiro registro que aparece diretamente na tela atual (o backup mais recente)
+async function tryDownloadFromCurrentView(page: Page): Promise<string | null> {
+  try {
+    // 1. Se houver botão Pesquisar, clica para atualizar a grade
+    const pesquisarBtn = page.locator('button:has-text("Pesquisar"), input[value*="Pesquisar" i], a:has-text("Pesquisar"), input[type="submit"][value*="Pesquisar" i]')
+      .or(page.getByRole('button', { name: /pesquisar/i }))
+      .first();
+
+    if (await pesquisarBtn.isVisible({ timeout: 2500 }).catch(() => false)) {
+      console.log('🔍 Acionando botão Pesquisar na tela principal...');
+      await pesquisarBtn.click({ force: true }).catch(() => {});
+      await page.waitForTimeout(3500);
+    }
+
+    // 2. Localiza as linhas da tabela que contenham botão/link de download
+    const rows = page.locator('table tbody tr').filter({
+      has: page.locator('td a, td button, td [onclick], td img')
+    });
+
+    const count = await rows.count().catch(() => 0);
+    if (count === 0) {
+      console.log('ℹ️ Nenhum arquivo listado diretamente na tela principal.');
+      return null;
+    }
+
+    // Pega a PRIMEIRA linha da tabela (o último backup gerado no topo da lista)
+    const targetRow = rows.first();
+    const rowText = (await targetRow.innerText().catch(() => '')).replace(/\s+/g, ' ').trim();
+    console.log(`📋 Último backup localizado (1ª linha): ${rowText.slice(0, 90)}...`);
+
+    // Botão de download na linha
+    const downloadBtn = targetRow.locator('td:nth-child(2) a, td:nth-child(2) button, a, button, [onclick], [title*="Download" i], [title*="Baixar" i], img').first();
+
+    if (!await downloadBtn.isVisible({ timeout: 3000 }).catch(() => false)) {
+      console.log('⚠️ Botão de download não encontrado na primeira linha.');
+      return null;
+    }
+
+    console.log(`⬇️ Iniciando download do último backup disponível...`);
+
+    const [ download ] = await Promise.all([
+      page.waitForEvent('download', { timeout: 600000 }), // até 10 min
+      downloadBtn.click({ force: true })
+    ]);
+
+    const suggestedName = download.suggestedFilename() || `backup_${Date.now()}.dom`;
+    const finalPath = path.join(BACKUP_DIR, suggestedName);
+
+    console.log(`📥 Gravando em disco: ${suggestedName}...`);
+    await download.saveAs(finalPath);
+
+    const stats = fs.statSync(finalPath);
+    const sizeMb = (stats.size / 1024 / 1024).toFixed(2);
+
+    console.log(`\n🎉 SUCESSO! BACKUP CONCLUÍDO!`);
+    console.log(`📄 Arquivo: ${suggestedName}`);
+    console.log(`📦 Tamanho: ${sizeMb} MB`);
+    console.log(`📍 Caminho: ${finalPath}`);
+
+    return finalPath;
+  } catch (err) {
+    console.warn('Aviso ao consultar tela principal de backups:', err);
+    return null;
+  }
+}
+
 // Tenta baixar o primeiro backup disponível de uma aba específica
 async function tryDownloadFromTab(page: Page, tabName: string): Promise<string | null> {
   try {
@@ -534,24 +600,31 @@ function tabTextPattern(tab: string): RegExp {
   return /completo/i;
 }
 
-// Localiza e baixa o último backup gerado (prioriza Modificações que é mais recente e leve)
+// Localiza e baixa o último backup gerado (o primeiro que aparece na listagem, seja Completo ou Modificação)
 async function downloadLatestBackup(page: Page): Promise<string | null> {
   console.log(`\n====================================================`);
   console.log(`🎯 LOCALIZANDO O ÚLTIMO BACKUP DO DOMÍNIO`);
   console.log(`====================================================`);
 
-  // 1. Tenta a aba SOMENTE MODIFICAÇÕES (mais recente e rápida)
-  console.log('⚡ Checando primeiro por backup de Modificações (mais recente e leve)...');
-  const modBackup = await tryDownloadFromTab(page, 'SOMENTE MODIFICAÇÕES');
-  if (modBackup) {
-    return modBackup;
+  // 1. Tenta baixar o primeiro registro que aparece diretamente na listagem principal
+  console.log('⚡ Checando a lista principal de backups (primeiro item exibido na tela)...');
+  const directBackup = await tryDownloadFromCurrentView(page);
+  if (directBackup) {
+    return directBackup;
   }
 
-  // 2. Se não houver modificações recentes, baixa o Completo
-  console.log('ℹ️ Sem arquivo de modificações recente; checando aba "COMPLETO"...');
+  // 2. Se a tela padrão não exibiu, checa a aba "COMPLETO"
+  console.log('ℹ️ Listagem padrão não retornou; checando aba "COMPLETO"...');
   const compBackup = await tryDownloadFromTab(page, 'COMPLETO');
   if (compBackup) {
     return compBackup;
+  }
+
+  // 3. Fallback: checa a aba "SOMENTE MODIFICAÇÕES"
+  console.log('ℹ️ Checando aba "SOMENTE MODIFICAÇÕES"...');
+  const modBackup = await tryDownloadFromTab(page, 'SOMENTE MODIFICAÇÕES');
+  if (modBackup) {
+    return modBackup;
   }
 
   return null;
