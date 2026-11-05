@@ -102,46 +102,69 @@ async function fetchViaOutlookWeb(context: BrowserContext): Promise<string | nul
       await mailTab.waitForTimeout(4000);
     }
 
-    console.log('🔍 Aguardando e monitorando o e-mail da Thomson Reuters na caixa de entrada...');
+    console.log('🔍 Monitorando e abrindo o e-mail da Thomson Reuters na caixa de entrada...');
 
-    // Monitora a chegada do e-mail por até 45 segundos
+    // Monitora a chegada e leitura do e-mail por até 60 segundos
     const searchStart = Date.now();
-    while (Date.now() - searchStart < 45000) {
+    while (Date.now() - searchStart < 60000) {
       if (!mailTab || mailTab.isClosed()) return null;
 
-      // Procura mensagem recente da Thomson Reuters
-      const emailItem = mailTab.locator(
-        '[role="option"], [data-convid], div[aria-label*="Thomson Reuters" i], div[aria-label*="autenticação" i], span:has-text("Thomson Reuters"), span:has-text("autenticação de dois fatores"), div:has-text("Thomson Reuters")'
-      ).first();
+      // 1. Primeiro verifica se o código já está visível em algum lugar da tela
+      const pageText = await mailTab.evaluate(() => document.body.innerText || '').catch(() => '');
+      const instantMatch = pageText.match(/para Onvio:?\s*(\d{6})/i) ||
+        pageText.match(/dois fatores[\s\S]{1,60}?(\d{6})/i);
 
-      if (await emailItem.isVisible({ timeout: 2000 }).catch(() => false)) {
-        console.log('📩 E-mail da Thomson Reuters localizado! Abrindo mensagem...');
-        await emailItem.click({ force: true }).catch(() => {});
-        await mailTab.waitForTimeout(2500);
+      if (instantMatch && instantMatch[1]) {
+        const code = instantMatch[1];
+        console.log(`🎯 Código extraído diretamente da tela: ${code}`);
+        await mailTab.close().catch(() => {});
+        return code;
+      }
 
-        // Extrai o texto da mensagem exibida
-        const bodyText = await mailTab.evaluate(() => {
-          const bodyEl = document.querySelector('[role="main"], [aria-label*="Conteúdo da mensagem" i], .ReadingPaneContainer, #ItemHeaderTitle') || document.body;
+      // 2. Localiza especificamente o item da Thomson Reuters pelo assunto ou remetente
+      const emailSubject = mailTab.locator('span:has-text("Seu código de autenticação de dois fatores"), div:has-text("Seu código de autenticação de dois fatores")')
+        .or(mailTab.locator('text=/Seu código de autenticação de dois fatores/i'))
+        .first();
+
+      const emailSender = mailTab.locator('span:has-text("Thomson Reuters"), div:has-text("Thomson Reuters")').first();
+
+      const targetItem = (await emailSubject.isVisible({ timeout: 1500 }).catch(() => false))
+        ? emailSubject
+        : (await emailSender.isVisible({ timeout: 1500 }).catch(() => false))
+          ? emailSender
+          : null;
+
+      if (targetItem) {
+        console.log('📩 E-mail da Thomson Reuters localizado na lista! Abrindo para leitura...');
+
+        // Clica no assunto com force
+        await targetItem.click({ force: true }).catch(() => {});
+        await mailTab.waitForTimeout(500);
+
+        // Pressiona Enter no teclado para forçar o Outlook a abrir no painel de leitura
+        await mailTab.keyboard.press('Enter').catch(() => {});
+        await mailTab.waitForTimeout(1500);
+
+        // Se ainda não abriu, tenta duplo clique
+        await targetItem.dblclick({ force: true }).catch(() => {});
+        await mailTab.waitForTimeout(1500);
+
+        // Extrai o texto do corpo da mensagem
+        const updatedText = await mailTab.evaluate(() => {
+          const bodyEl = document.querySelector('[role="main"], [aria-label*="Conteúdo da mensagem" i], .ReadingPaneContainer, #ItemHeaderTitle, div[tabindex="-1"]') || document.body;
           return bodyEl ? bodyEl.innerText || '' : '';
         }).catch(() => '');
 
-        // Padrão: "Aqui está seu código de autenticação de dois fatores para Onvio: \n 338794"
-        const onvioMatch = bodyText.match(/para Onvio:?\s*(\d{6})/i) ||
-          bodyText.match(/dois fatores:?\s*(\d{6})/i) ||
-          bodyText.match(/(?<!\d)(\d{6})(?!\d)/);
+        const onvioMatch = updatedText.match(/para Onvio:?\s*(\d{6})/i) ||
+          updatedText.match(/dois fatores:?\s*(\d{6})/i) ||
+          updatedText.match(/(?<!\d)(\d{6})(?!\d)/);
 
         if (onvioMatch && onvioMatch[1]) {
           const code = onvioMatch[1];
-          console.log(`🎯 Código extraído com sucesso: ${code}`);
+          console.log(`🎯 Código extraído com sucesso do e-mail: ${code}`);
           await mailTab.close().catch(() => {});
           return code;
         }
-      }
-
-      // Tenta clicar no botão de atualizar pasta se existir
-      const refreshBtn = mailTab.locator('button[aria-label*="Atualizar" i], button[title*="Atualizar" i]').first();
-      if (await refreshBtn.isVisible({ timeout: 1000 }).catch(() => false)) {
-        await refreshBtn.click({ force: true }).catch(() => {});
       }
 
       await mailTab.waitForTimeout(3000);
