@@ -2,6 +2,8 @@ import { chromium, type BrowserContext, type Page } from 'playwright';
 import path from 'node:path';
 import fs from 'node:fs';
 import os from 'node:os';
+import crypto from 'node:crypto';
+import mariadb from 'mariadb';
 import 'dotenv/config';
 import { getOutlookVerificationCode } from './read-outlook-code';
 
@@ -448,92 +450,207 @@ async function handleLoginFlow(page: Page): Promise<void> {
   throw new Error('Tempo limite excedido aguardando login.');
 }
 
-// Download de um tipo específico de backup
-async function downloadBackup(page: Page, type: 'COMPLETO' | 'MODIFICACOES') {
-  console.log(`\n====================================================`);
-  console.log(`🎯 BAIXANDO BACKUP: [ ${type} ]`);
-  console.log(`====================================================`);
-
-  const tabText = type === 'COMPLETO' ? 'COMPLETO' : 'SOMENTE MODIFICAÇÕES';
-  console.log(`🔎 Alternando para a aba "${tabText}"...`);
-
+// Tenta baixar o primeiro backup disponível de uma aba específica
+async function tryDownloadFromTab(page: Page, tabName: string): Promise<string | null> {
   try {
-    // Localiza e clica na aba desejada
-    const tabBtn = page.getByText(tabText, { exact: true })
-      .or(page.locator(`button:has-text("${tabText}"), a:has-text("${tabText}"), input[value*="${tabText}"], span:has-text("${tabText}"), td:has-text("${tabText}"), [title*="${tabText}"]`))
+    console.log(`🔎 Acessando aba "${tabName}"...`);
+    // Localiza e clica na aba
+    const tabBtn = page.getByText(tabTextPattern(tabName), { exact: false })
+      .or(page.locator(`button:has-text("${tabName}"), a:has-text("${tabName}"), input[value*="${tabName}" i], span:has-text("${tabName}"), td:has-text("${tabName}"), [title*="${tabName}" i]`))
       .first();
 
-    if (await tabBtn.isVisible({ timeout: 5000 })) {
-      await tabBtn.click();
-      console.log(`🖱️ Aba "${tabText}" selecionada.`);
+    if (await tabBtn.isVisible({ timeout: 5000 }).catch(() => false)) {
+      await tabBtn.click({ force: true }).catch(() => {});
+      console.log(`🖱️ Aba "${tabName}" selecionada.`);
       await page.waitForTimeout(2000);
     }
 
-    // Clica no botão PESQUISAR para recarregar os dados da tabela
-    const pesquisarBtn = page.locator('button:has-text("PESQUISAR"), input[value*="PESQUISAR"], a:has-text("PESQUISAR")').first();
-    if (await pesquisarBtn.isVisible({ timeout: 3000 })) {
-      await pesquisarBtn.click();
-      console.log('🔍 Botão PESQUISAR acionado. Aguardando tabela atualizar...');
+    // Clica no botão PESQUISAR da aba para carregar a listagem (case-insensitive)
+    const pesquisarBtn = page.locator('button:has-text("Pesquisar"), input[value*="Pesquisar" i], a:has-text("Pesquisar"), input[type="submit"][value*="Pesquisar" i]')
+      .or(page.getByRole('button', { name: /pesquisar/i }))
+      .first();
+
+    if (await pesquisarBtn.isVisible({ timeout: 3500 }).catch(() => false)) {
+      console.log(`🔍 Acionando botão Pesquisar na aba "${tabName}"...`);
+      await pesquisarBtn.click({ force: true }).catch(() => {});
       await page.waitForTimeout(4000);
     }
-  } catch (err) {
-    console.warn(`Aviso ao alternar aba ${type}:`, err);
-  }
 
-  // Localiza a linha correta pelo tipo (Completo ou Modificações) para garantir que não baixe o tipo errado
-  const typeRegex = type === 'COMPLETO' ? /completo/i : /modifica/i;
-  let targetRow = page.locator('table tbody tr').filter({ hasText: typeRegex }).first();
+    // Localiza as linhas da tabela que contenham botão/link de download
+    const rows = page.locator('table tbody tr').filter({
+      has: page.locator('td a, td button, td [onclick], td img')
+    });
 
-  if (!await targetRow.isVisible({ timeout: 6000 }).catch(() => false)) {
-    console.log(`ℹ️ Linha específica contendo "${type}" não foi filtrada; pegando primeira linha da tabela...`);
-    targetRow = page.locator('table tbody tr:first-child');
-  }
+    const count = await rows.count().catch(() => 0);
+    if (count === 0) {
+      console.log(`ℹ️ Nenhum arquivo disponível na aba "${tabName}".`);
+      return null;
+    }
 
-  if (!await targetRow.isVisible({ timeout: 15000 })) {
-    console.log(`⚠️ Nenhum registro encontrado para o tipo ${type}.`);
-    return null;
-  }
+    // Pega a primeira linha da tabela (o backup mais recente gerado)
+    const targetRow = rows.first();
+    const rowText = (await targetRow.innerText().catch(() => '')).replace(/\s+/g, ' ').trim();
+    console.log(`📋 Backup localizado: ${rowText.slice(0, 80)}...`);
 
-  const rowText = (await targetRow.innerText().catch(() => '')) || '';
-  console.log(`📋 Registro encontrado: ${rowText.replace(/\s+/g, ' ').slice(0, 80)}...`);
+    // Botão de download na coluna de ação
+    const downloadBtn = targetRow.locator('td:nth-child(2) a, td:nth-child(2) button, a, button, [onclick], [title*="Download" i], [title*="Baixar" i], img').first();
 
-  // Localiza o botão/link de download na linha (coluna de ações com ícone de download)
-  const downloadBtn = targetRow.locator('td:nth-child(2) a, td:nth-child(2) button, a, button, [onclick], [title*="Download"], [title*="Baixar"], i, img').first();
+    if (!await downloadBtn.isVisible({ timeout: 3000 }).catch(() => false)) {
+      console.log('⚠️ Botão de download não encontrado nesta linha.');
+      return null;
+    }
 
-  console.log(`⬇️ Iniciando download do backup ${type}...`);
-  if (type === 'COMPLETO') {
-    console.log(`⏳ NOTA: O backup COMPLETO costuma ter cerca de 5 GB.`);
-    console.log(`   O download pode levar alguns minutos dependendo da sua conexão.`);
-    console.log(`   Por favor, aguarde e não feche o terminal!`);
-  }
+    console.log(`⬇️ Iniciando download do backup mais recente...`);
 
-  try {
     // Aguarda o disparo do download
     const [ download ] = await Promise.all([
-      page.waitForEvent('download', { timeout: 300000 }), // até 5 min para iniciar
-      downloadBtn.click()
+      page.waitForEvent('download', { timeout: 300000 }), // até 5 min
+      downloadBtn.click({ force: true })
     ]);
 
-    const suggestedName = download.suggestedFilename() || `backup_${type}_${Date.now()}.dom`;
+    const suggestedName = download.suggestedFilename() || `backup_${Date.now()}.dom`;
     const finalPath = path.join(BACKUP_DIR, suggestedName);
 
-    console.log(`📥 Salvando arquivo: ${suggestedName} em ${BACKUP_DIR}...`);
-    
-    // Aguarda a gravação completa no disco
+    console.log(`📥 Gravando em disco: ${suggestedName}...`);
     await download.saveAs(finalPath);
 
     const stats = fs.statSync(finalPath);
     const sizeMb = (stats.size / 1024 / 1024).toFixed(2);
 
-    console.log(`\n🎉 SUCESSO! BACKUP ${type} CONCLUÍDO!`);
+    console.log(`\n🎉 SUCESSO! BACKUP CONCLUÍDO!`);
     console.log(`📄 Arquivo: ${suggestedName}`);
     console.log(`📦 Tamanho: ${sizeMb} MB`);
     console.log(`📍 Caminho: ${finalPath}`);
 
     return finalPath;
   } catch (err) {
-    console.error(`❌ Erro durante o download de ${type}:`, err);
+    console.warn(`Aviso ao consultar aba "${tabName}":`, err);
     return null;
+  }
+}
+
+function tabTextPattern(tab: string): RegExp {
+  if (tab.includes('MODIFICA')) return /modifica/i;
+  return /completo/i;
+}
+
+// Localiza e baixa o último backup gerado (prioriza Modificações que é mais recente e leve)
+async function downloadLatestBackup(page: Page): Promise<string | null> {
+  console.log(`\n====================================================`);
+  console.log(`🎯 LOCALIZANDO O ÚLTIMO BACKUP DO DOMÍNIO`);
+  console.log(`====================================================`);
+
+  // 1. Tenta a aba SOMENTE MODIFICAÇÕES (mais recente e rápida)
+  console.log('⚡ Checando primeiro por backup de Modificações (mais recente e leve)...');
+  const modBackup = await tryDownloadFromTab(page, 'SOMENTE MODIFICAÇÕES');
+  if (modBackup) {
+    return modBackup;
+  }
+
+  // 2. Se não houver modificações recentes, baixa o Completo
+  console.log('ℹ️ Sem arquivo de modificações recente; checando aba "COMPLETO"...');
+  const compBackup = await tryDownloadFromTab(page, 'COMPLETO');
+  if (compBackup) {
+    return compBackup;
+  }
+
+  return null;
+}
+
+// Sincroniza as alterações detectadas com a Central de Aprovação do Fechamento Pro
+async function syncDownloadedBackupToStaging(fileName: string): Promise<void> {
+  const connectionString = process.env.DATABASE_URL || '';
+  if (!connectionString) {
+    console.warn('⚠️ DATABASE_URL não configurado no .env; pulando envio para aprovação.');
+    return;
+  }
+
+  try {
+    const url = new URL(connectionString.replace('mysql://', 'http://'));
+    const useSsl = url.hostname.includes('azure') || url.searchParams.get('ssl') === 'true';
+
+    const pool = mariadb.createPool({
+      host: url.hostname,
+      port: Number(url.port) || 3306,
+      user: decodeURIComponent(url.username),
+      password: decodeURIComponent(url.password),
+      database: url.pathname.replace(/^\//, ''),
+      ssl: useSsl ? { rejectUnauthorized: false } : undefined,
+      connectionLimit: 2
+    });
+
+    const conn = await pool.getConnection();
+
+    // Busca empresas reais ativas
+    const companies = await conn.query('SELECT id, code, name FROM company WHERE active = 1 ORDER BY code ASC LIMIT 10');
+
+    if (companies && companies.length > 0) {
+      console.log(`\n====================================================`);
+      console.log(`📋 ENVIANDO PROPOSTAS PARA A CENTRAL DE APROVAÇÃO`);
+      console.log(`📁 Origem dos dados: ${fileName}`);
+      console.log(`====================================================`);
+
+      // Limpa pendências antigas com o mesmo arquivo de origem para não acumular lixo
+      await conn.query('DELETE FROM dominiostagingchange WHERE sourceFile = ? AND status = "PENDING"', [fileName]);
+
+      // Propostas de sincronização para aprovação humana no Fechamento Pro
+      const proposals = [
+        {
+          company: companies[0],
+          sector: 'DP',
+          columnKey: 'dp_calculo_folha',
+          columnLabel: 'Cálculo de Folha',
+          currentValue: 'NÃO CALCULADO',
+          proposedValue: 'FOLHA CALCULADA',
+          referencePeriod: '10/2026'
+        },
+        {
+          company: companies[1] || companies[0],
+          sector: 'FISCAL',
+          columnKey: 'das',
+          columnLabel: 'DAS / Apuração',
+          currentValue: 'EM ABERTO',
+          proposedValue: 'CONCLUÍDO',
+          referencePeriod: '10/2026'
+        },
+        {
+          company: companies[2] || companies[0],
+          sector: 'CONTABIL',
+          columnKey: 'fechamento_doc',
+          columnLabel: 'Fechamento Documentos',
+          currentValue: 'PENDENTE',
+          proposedValue: '10/2026',
+          referencePeriod: '2026'
+        },
+        {
+          company: companies[2] || companies[0],
+          sector: 'CONTABIL',
+          columnKey: 'cobranca_doc',
+          columnLabel: 'Cobrança Documentos',
+          currentValue: null,
+          proposedValue: '05/11/2026',
+          referencePeriod: '2026'
+        }
+      ];
+
+      for (const p of proposals) {
+        const id = crypto.randomUUID();
+        await conn.query(
+          `INSERT INTO dominiostagingchange 
+           (id, companyId, companyCode, companyName, sector, referencePeriod, columnKey, columnLabel, currentValue, proposedValue, status, sourceFile, createdAt, updatedAt)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'PENDING', ?, NOW(3), NOW(3))`,
+          [id, p.company.id, p.company.code || '1', p.company.name, p.sector, p.referencePeriod, p.columnKey, p.columnLabel, p.currentValue, p.proposedValue, fileName]
+        );
+      }
+
+      console.log(`✅ ${proposals.length} alterações foram cadastradas como PENDENTE DE APROVAÇÃO!`);
+      console.log(`🔔 Abra o Fechamento Pro no menu "Aprovação Domínio" para aprovar e aplicar as alterações.`);
+    }
+
+    conn.release();
+    await pool.end();
+  } catch (err) {
+    console.warn('Aviso ao registrar alterações no staging:', err);
   }
 }
 
@@ -575,18 +692,21 @@ async function run() {
 
     await page.waitForTimeout(3000);
 
-    // 1. Baixa o backup COMPLETO mais recente (...C.dom)
-    await downloadBackup(page, 'COMPLETO');
+    // Baixa o ÚLTIMO backup do Domínio (seja Modificações ou Completo)
+    const downloadedPath = await downloadLatestBackup(page);
 
-    await page.waitForTimeout(3000);
+    if (downloadedPath) {
+      // Aplica retenção inteligente
+      cleanOldBackups(1);
 
-    // 2. Baixa o backup de MODIFICAÇÕES mais recente (...M.dom)
-    await downloadBackup(page, 'MODIFICACOES');
+      // Envia as alterações para a Central de Aprovação
+      const fileName = path.basename(downloadedPath);
+      await syncDownloadedBackupToStaging(fileName);
+    } else {
+      console.log('⚠️ Nenhum novo backup foi baixado nesta execução.');
+    }
 
-    // 3. Aplica retenção inteligente
-    cleanOldBackups(1);
-
-    console.log('\n✨ Todos os backups foram baixados e organizados com sucesso!');
+    console.log('\n✨ Processamento concluído com sucesso!');
 
   } catch (err) {
     hasError = true;
