@@ -133,6 +133,13 @@
 }
 .mini-breakdown-pill.pending strong { color: #fecaca; }
 
+.mini-breakdown-pill.pending-issue {
+  color: #fb923c;
+  background: rgba(249, 115, 22, 0.15);
+  border-color: rgba(249, 115, 22, 0.3);
+}
+.mini-breakdown-pill.pending-issue strong { color: #fdba74; }
+
 /* Barra de chips dentro do painel expandido */
 .closing-progress-breakdown-chips {
   display: flex;
@@ -255,6 +262,17 @@
 .progress-chip.pending.active, .progress-chip.pending:hover {
   background: rgba(239, 68, 68, 0.25);
   border-color: rgba(248, 113, 113, 0.65);
+}
+
+.progress-chip.pending-issue {
+  color: #fb923c;
+  border-color: rgba(251, 146, 60, 0.3);
+  background: rgba(249, 115, 22, 0.1);
+}
+.progress-chip.pending-issue .chip-dot { background: #fb923c; }
+.progress-chip.pending-issue.active, .progress-chip.pending-issue:hover {
+  background: rgba(249, 115, 22, 0.25);
+  border-color: rgba(251, 146, 60, 0.65);
 }
 .accounting-months-button{min-width:150px;display:flex;flex-direction:column;gap:6px;padding:10px 12px;border:1px solid #a78bfa;border-radius:8px;background:#ede9fe;color:#6d28d9;cursor:pointer;font:inherit;font-size:.78rem;text-align:left}.accounting-months-button small{font-size:.68rem;color:#64748b}.accounting-months-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}.accounting-months-card{padding:14px;border:1px solid #e2e8f0;border-radius:10px;background:#f8fafc;color:#334155}.accounting-months-card h4{margin:0 0 12px;display:flex;gap:6px;align-items:center;color:#4338ca}.accounting-months-card small{display:block;margin-top:8px;color:#64748b;font-size:.7rem}.accounting-months-card .payroll-input-cell select{background:#fff!important;color:#334155!important;border-color:#cbd5e1!important;width:100%}
 @media(max-width:800px){.accounting-months-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.closing-progress-heading{flex-wrap:wrap}.closing-progress-meter{width:100%}.closing-progress-search{flex-wrap:wrap}}@media(max-width:500px){.accounting-months-grid{grid-template-columns:1fr}.closing-progress-grid{grid-template-columns:1fr}.closing-progress-search input{flex-basis:100%}}

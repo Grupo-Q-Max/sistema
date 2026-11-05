@@ -1234,15 +1234,17 @@ export function Closings({ currentView, onNavigate, currentUser, onLogout }: Clo
                 Copiar CNPJs
               </button>
 
-              <button
-                type="button"
-                className="btn-secondary-light"
-                onClick={() => setWorkloadOpen(true)}
-                title="Ver ranking e distribuição de empresas por responsável"
-              >
-                <BarChart3 size={15} />
-                Carga da Equipe
-              </button>
+              {isPrivileged && (
+                <button
+                  type="button"
+                  className="btn-secondary-light"
+                  onClick={() => setWorkloadOpen(true)}
+                  title="Ver ranking e distribuição de empresas por responsável"
+                >
+                  <BarChart3 size={15} />
+                  Carga da Equipe
+                </button>
+              )}
 
               <button
                 type="button"
@@ -1292,18 +1294,20 @@ export function Closings({ currentView, onNavigate, currentUser, onLogout }: Clo
                 <option value="MEI">MEI</option>
               </select>
 
-              <select
-                className="closings-select"
-                value={responsibleFilter}
-                onChange={(e) => setResponsibleFilter(e.target.value)}
-              >
-                <option value="ALL">Responsável: Todos</option>
-                {fiscalUsers.map((u) => (
-                  <option key={u.id} value={u.id}>
-                    {u.name || u.email}
-                  </option>
-                ))}
-              </select>
+              {isPrivileged && (
+                <select
+                  className="closings-select"
+                  value={responsibleFilter}
+                  onChange={(e) => setResponsibleFilter(e.target.value)}
+                >
+                  <option value="ALL">Responsável: Todos</option>
+                  {fiscalUsers.map((u) => (
+                    <option key={u.id} value={u.id}>
+                      {u.name || u.email}
+                    </option>
+                  ))}
+                </select>
+              )}
 
               <select
                 className="closings-select"
@@ -1523,53 +1527,55 @@ export function Closings({ currentView, onNavigate, currentUser, onLogout }: Clo
                       </th>
 
                       {/* 5. Responsável com Ícone de Filtro */}
-                      <th style={{ minWidth: '130px' }}>
-                        <div className="th-header-cell">
-                          <span>Responsável</span>
-                          <div className="th-filter-wrapper">
-                            <button
-                              className={`th-filter-icon-btn ${responsibleFilter !== 'ALL' ? 'has-filter' : ''}`}
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setOpenHeaderFilter(openHeaderFilter === 'responsible' ? null : 'responsible');
-                              }}
-                              title="Filtrar por responsável"
-                            >
-                              <Filter size={12} />
-                            </button>
-                            {openHeaderFilter === 'responsible' && (
-                              <div className="th-filter-popover" onClick={(e) => e.stopPropagation()}>
-                                <div style={{ fontSize: '0.72rem', color: '#94a3b8', padding: '4px 8px', fontWeight: 700, borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
-                                  Filtrar Responsável:
-                                </div>
-                                <button
-                                  className={`th-filter-popover-item ${responsibleFilter === 'ALL' ? 'active' : ''}`}
-                                  onClick={() => {
-                                    setResponsibleFilter('ALL');
-                                    setOpenHeaderFilter(null);
-                                  }}
-                                >
-                                  <span>Todos</span>
-                                  {responsibleFilter === 'ALL' && <Check size={12} />}
-                                </button>
-                                {fiscalUsers.map((u) => (
+                      {isPrivileged && (
+                        <th style={{ minWidth: '130px' }}>
+                          <div className="th-header-cell">
+                            <span>Responsável</span>
+                            <div className="th-filter-wrapper">
+                              <button
+                                className={`th-filter-icon-btn ${responsibleFilter !== 'ALL' ? 'has-filter' : ''}`}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setOpenHeaderFilter(openHeaderFilter === 'responsible' ? null : 'responsible');
+                                }}
+                                title="Filtrar por responsável"
+                              >
+                                <Filter size={12} />
+                              </button>
+                              {openHeaderFilter === 'responsible' && (
+                                <div className="th-filter-popover" onClick={(e) => e.stopPropagation()}>
+                                  <div style={{ fontSize: '0.72rem', color: '#94a3b8', padding: '4px 8px', fontWeight: 700, borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
+                                    Filtrar Responsável:
+                                  </div>
                                   <button
-                                    key={u.id}
-                                    className={`th-filter-popover-item ${responsibleFilter === u.id ? 'active' : ''}`}
+                                    className={`th-filter-popover-item ${responsibleFilter === 'ALL' ? 'active' : ''}`}
                                     onClick={() => {
-                                      setResponsibleFilter(u.id);
+                                      setResponsibleFilter('ALL');
                                       setOpenHeaderFilter(null);
                                     }}
                                   >
-                                    <span>{u.name || u.email}</span>
-                                    {responsibleFilter === u.id && <Check size={12} />}
+                                    <span>Todos</span>
+                                    {responsibleFilter === 'ALL' && <Check size={12} />}
                                   </button>
-                                ))}
-                              </div>
-                            )}
+                                  {fiscalUsers.map((u) => (
+                                    <button
+                                      key={u.id}
+                                      className={`th-filter-popover-item ${responsibleFilter === u.id ? 'active' : ''}`}
+                                      onClick={() => {
+                                        setResponsibleFilter(u.id);
+                                        setOpenHeaderFilter(null);
+                                      }}
+                                    >
+                                      <span>{u.name || u.email}</span>
+                                      {responsibleFilter === u.id && <Check size={12} />}
+                                    </button>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
                           </div>
-                        </div>
-                      </th>
+                        </th>
+                      )}
 
                       <th>CNPJ</th>
                       <th>Observações</th>
@@ -1652,7 +1658,7 @@ export function Closings({ currentView, onNavigate, currentUser, onLogout }: Clo
                   <tbody>
                     {filteredRows.length === 0 ? (
                       <tr>
-                        <td colSpan={7 + popupColumns.length + (viewInstallments ? 1 : 0)} style={{ textAlign: 'center', padding: '40px', color: '#94a3b8' }}>
+                        <td colSpan={(isPrivileged ? 7 : 6) + popupColumns.length + (viewInstallments ? 1 : 0)} style={{ textAlign: 'center', padding: '40px', color: '#94a3b8' }}>
                           Nenhuma empresa encontrada com os filtros selecionados.
                         </td>
                       </tr>
@@ -1771,21 +1777,23 @@ export function Closings({ currentView, onNavigate, currentUser, onLogout }: Clo
                             </td>
 
                             {/* 5. Responsável (Select editável) */}
-                            <td>
-                              <select
-                                className="table-user-select"
-                                disabled={!isRowEditable(r)}
-                                value={currentRespId}
-                                onChange={(e) => handleResponsibleChange(c.id, e.target.value)}
-                              >
-                                <option value="">Não atribuído</option>
-                                {fiscalUsers.map((u) => (
-                                  <option key={u.id} value={u.id} disabled={u.active === false}>
-                                    {u.name || u.email}
-                                  </option>
-                                ))}
-                              </select>
-                            </td>
+                            {isPrivileged && (
+                              <td>
+                                <select
+                                  className="table-user-select"
+                                  disabled={!isRowEditable(r)}
+                                  value={currentRespId}
+                                  onChange={(e) => handleResponsibleChange(c.id, e.target.value)}
+                                >
+                                  <option value="">Não atribuído</option>
+                                  {fiscalUsers.map((u) => (
+                                    <option key={u.id} value={u.id} disabled={u.active === false}>
+                                      {u.name || u.email}
+                                    </option>
+                                  ))}
+                                </select>
+                              </td>
+                            )}
 
                             {/* 6. CNPJ com Copiar */}
                             <td>
@@ -2280,14 +2288,16 @@ export function Closings({ currentView, onNavigate, currentUser, onLogout }: Clo
               >
                 Desmarcar
               </button>
-              <button
-                type="button"
-                className="bulk-btn-assign"
-                onClick={() => setBulkAssignOpen(true)}
-              >
-                <Users size={15} />
-                Atribuir Responsável
-              </button>
+              {isPrivileged && (
+                <button
+                  type="button"
+                  className="bulk-btn-assign"
+                  onClick={() => setBulkAssignOpen(true)}
+                >
+                  <Users size={15} />
+                  Atribuir Responsável
+                </button>
+              )}
               <button
                 type="button"
                 className="bulk-btn-trigger"

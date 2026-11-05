@@ -12,6 +12,7 @@ import {
   ExternalLink
 } from 'lucide-react';
 import { API } from '../api';
+import type { CurrentUser } from '../types/auth';
 import './Company360Modal.css';
 
 export interface Company360ModalProps {
@@ -19,6 +20,7 @@ export interface Company360ModalProps {
   onClose: () => void;
   onNavigateToCompany?: (companyId: string) => void;
   onNavigateToSector?: (sector: string, companyId: string) => void;
+  currentUser?: CurrentUser | null;
 }
 
 export function Company360Modal({
@@ -26,7 +28,9 @@ export function Company360Modal({
   onClose,
   onNavigateToCompany,
   onNavigateToSector,
+  currentUser,
 }: Company360ModalProps) {
+  const isPrivileged = currentUser?.role === 'ADMIN' || currentUser?.role === 'SOCIO';
   const currentYear = new Date().getUTCFullYear();
   const [year, setYear] = useState<number>(currentYear);
   const [data, setData] = useState<any>(null);
@@ -137,20 +141,22 @@ export function Company360Modal({
                 </span>
               </div>
 
-              <div className="c360-kpi-card">
-                <span className="c360-kpi-label">Equipe Responsável</span>
-                <div className="c360-resp-chips">
-                  {company?.responsibles?.length === 0 ? (
-                    <span className="text-muted">Nenhum definido</span>
-                  ) : (
-                    company?.responsibles?.map((r: any, i: number) => (
-                      <span key={i} className="c360-resp-tag">
-                        <strong>{r.sector}:</strong> {r.name}
-                      </span>
-                    ))
-                  )}
+              {isPrivileged && (
+                <div className="c360-kpi-card">
+                  <span className="c360-kpi-label">Equipe Responsável</span>
+                  <div className="c360-resp-chips">
+                    {company?.responsibles?.length === 0 ? (
+                      <span className="text-muted">Nenhum definido</span>
+                    ) : (
+                      company?.responsibles?.map((r: any, i: number) => (
+                        <span key={i} className="c360-resp-tag">
+                          <strong>{r.sector}:</strong> {r.name}
+                        </span>
+                      ))
+                    )}
+                  </div>
                 </div>
-              </div>
+              )}
             </div>
 
             {/* TABELA / GRADE DOS 12 MESES */}

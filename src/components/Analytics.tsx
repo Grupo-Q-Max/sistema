@@ -138,6 +138,7 @@ function HBar({ data, color, height }: { data: NamedValue[]; color: string; heig
 interface AnalyticsProps { currentView: string; onNavigate: (view: string) => void; currentUser?: CurrentUser | null; onLogout?: () => void }
 
 export function Analytics({ currentView, onNavigate, currentUser, onLogout }: AnalyticsProps) {
+  const isPrivileged = currentUser?.role === 'ADMIN' || currentUser?.role === 'SOCIO';
   const [months, setMonths] = useState(12);
   const [data, setData] = useState<AnalyticsData | null>(null);
   const [progress, setProgress] = useState<SectorProgress[]>([]);
@@ -430,67 +431,69 @@ export function Analytics({ currentView, onNavigate, currentUser, onLogout }: An
             </Panel>
 
             {/* Equipe */}
-            <div className="an-grid two-one">
-              <Panel
-                title="Carga por responsável"
-                subtitle={k.formerTeamMembers ? `Empresas vinculadas por setor · ${k.activeTeamMembers || 0} ativos · ${k.formerTeamMembers} ex-colaborador(es)` : "Empresas vinculadas por setor (top 12)"}
-                icon={Briefcase}
-              >
-                {workloadTop.length === 0 ? <div className="an-empty">Nenhum responsável vinculado.</div> : (
-                  <ResponsiveContainer width="100%" height={Math.max(260, workloadTop.length * 32)}>
-                    <BarChart data={workloadTop} layout="vertical" margin={{ left: 8, right: 24, top: 4, bottom: 4 }}>
-                      <CartesianGrid horizontal={false} stroke="rgba(255,255,255,0.05)" />
-                      <XAxis type="number" {...AXIS} allowDecimals={false} />
-                      <YAxis type="category" dataKey="name" {...AXIS} width={140} tick={{ fill: 'rgba(255,255,255,0.75)', fontSize: 12 }} />
-                      <Tooltip {...TOOLTIP_STYLE} formatter={(v: any, n: any) => [nf.format(v), SECTOR_META[n]?.label || n]} />
-                      <Legend formatter={(v: any) => SECTOR_META[v]?.label || v} wrapperStyle={{ fontSize: 12 }} />
-                      {['FISCAL', 'DP', 'CONTABIL', 'CUSHMAN', 'GERAL'].map((s, i, arr) => (
-                        <Bar key={s} dataKey={s} stackId="w" fill={SECTOR_META[s].color} barSize={16} radius={i === arr.length - 1 ? [0, 6, 6, 0] : 0} />
-                      ))}
-                    </BarChart>
-                  </ResponsiveContainer>
-                )}
-
-                {/* Tabela de Detalhamento da Carga da Equipe */}
-                {workloadTop.length > 0 && (
-                  <div className="workload-summary-table-wrap" style={{ marginTop: '16px', overflowX: 'auto', borderTop: '1px solid rgba(255,255,255,0.08)', paddingTop: '12px' }}>
-                    <table className="workload-summary-table" style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
-                      <thead>
-                        <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.1)', color: '#94a3b8', textAlign: 'left' }}>
-                          <th style={{ padding: '8px 6px' }}>Colaborador</th>
-                          <th style={{ padding: '8px 6px', textAlign: 'center' }}>Fiscal</th>
-                          <th style={{ padding: '8px 6px', textAlign: 'center' }}>DP</th>
-                          <th style={{ padding: '8px 6px', textAlign: 'center' }}>Contábil</th>
-                          <th style={{ padding: '8px 6px', textAlign: 'center' }}>Cushman</th>
-                          <th style={{ padding: '8px 6px', textAlign: 'right' }}>Total Carteira</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {workloadTop.map((w, idx) => (
-                          <tr key={idx} style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
-                            <td style={{ padding: '8px 6px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                              <span style={{ width: '22px', height: '22px', borderRadius: '50%', background: 'linear-gradient(135deg, #d90f81, #8b5cf6)', color: '#fff', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: '10px', fontWeight: 700 }}>
-                                {w.name[0]?.toUpperCase() || 'U'}
-                              </span>
-                              <strong style={{ color: '#f1f5f9' }}>{w.name}</strong>
-                              {w.isFormer && <span style={{ fontSize: '10px', color: '#f87171', background: 'rgba(239,68,68,0.15)', padding: '1px 5px', borderRadius: '4px' }}>Inativo</span>}
-                            </td>
-                            <td style={{ padding: '8px 6px', textAlign: 'center', color: '#34d399' }}>{w.FISCAL || '—'}</td>
-                            <td style={{ padding: '8px 6px', textAlign: 'center', color: '#60a5fa' }}>{w.DP || '—'}</td>
-                            <td style={{ padding: '8px 6px', textAlign: 'center', color: '#a78bfa' }}>{w.CONTABIL || '—'}</td>
-                            <td style={{ padding: '8px 6px', textAlign: 'center', color: '#f87171' }}>{w.CUSHMAN || '—'}</td>
-                            <td style={{ padding: '8px 6px', textAlign: 'right', fontWeight: 700, color: '#f8fafc' }}>
-                              <span style={{ padding: '2px 8px', borderRadius: '6px', background: 'rgba(255,255,255,0.06)' }}>
-                                {w.total} empresas
-                              </span>
-                            </td>
-                          </tr>
+            <div className={`an-grid ${isPrivileged ? 'two-one' : ''}`}>
+              {isPrivileged && (
+                <Panel
+                  title="Carga por responsável"
+                  subtitle={k.formerTeamMembers ? `Empresas vinculadas por setor · ${k.activeTeamMembers || 0} ativos · ${k.formerTeamMembers} ex-colaborador(es)` : "Empresas vinculadas por setor (top 12)"}
+                  icon={Briefcase}
+                >
+                  {workloadTop.length === 0 ? <div className="an-empty">Nenhum responsável vinculado.</div> : (
+                    <ResponsiveContainer width="100%" height={Math.max(260, workloadTop.length * 32)}>
+                      <BarChart data={workloadTop} layout="vertical" margin={{ left: 8, right: 24, top: 4, bottom: 4 }}>
+                        <CartesianGrid horizontal={false} stroke="rgba(255,255,255,0.05)" />
+                        <XAxis type="number" {...AXIS} allowDecimals={false} />
+                        <YAxis type="category" dataKey="name" {...AXIS} width={140} tick={{ fill: 'rgba(255,255,255,0.75)', fontSize: 12 }} />
+                        <Tooltip {...TOOLTIP_STYLE} formatter={(v: any, n: any) => [nf.format(v), SECTOR_META[n]?.label || n]} />
+                        <Legend formatter={(v: any) => SECTOR_META[v]?.label || v} wrapperStyle={{ fontSize: 12 }} />
+                        {['FISCAL', 'DP', 'CONTABIL', 'CUSHMAN', 'GERAL'].map((s, i, arr) => (
+                          <Bar key={s} dataKey={s} stackId="w" fill={SECTOR_META[s].color} barSize={16} radius={i === arr.length - 1 ? [0, 6, 6, 0] : 0} />
                         ))}
-                      </tbody>
-                    </table>
-                  </div>
-                )}
-              </Panel>
+                      </BarChart>
+                    </ResponsiveContainer>
+                  )}
+
+                  {/* Tabela de Detalhamento da Carga da Equipe */}
+                  {workloadTop.length > 0 && (
+                    <div className="workload-summary-table-wrap" style={{ marginTop: '16px', overflowX: 'auto', borderTop: '1px solid rgba(255,255,255,0.08)', paddingTop: '12px' }}>
+                      <table className="workload-summary-table" style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
+                        <thead>
+                          <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.1)', color: '#94a3b8', textAlign: 'left' }}>
+                            <th style={{ padding: '8px 6px' }}>Colaborador</th>
+                            <th style={{ padding: '8px 6px', textAlign: 'center' }}>Fiscal</th>
+                            <th style={{ padding: '8px 6px', textAlign: 'center' }}>DP</th>
+                            <th style={{ padding: '8px 6px', textAlign: 'center' }}>Contábil</th>
+                            <th style={{ padding: '8px 6px', textAlign: 'center' }}>Cushman</th>
+                            <th style={{ padding: '8px 6px', textAlign: 'right' }}>Total Carteira</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {workloadTop.map((w, idx) => (
+                            <tr key={idx} style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
+                              <td style={{ padding: '8px 6px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                <span style={{ width: '22px', height: '22px', borderRadius: '50%', background: 'linear-gradient(135deg, #d90f81, #8b5cf6)', color: '#fff', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: '10px', fontWeight: 700 }}>
+                                  {w.name[0]?.toUpperCase() || 'U'}
+                                </span>
+                                <strong style={{ color: '#f1f5f9' }}>{w.name}</strong>
+                                {w.isFormer && <span style={{ fontSize: '10px', color: '#f87171', background: 'rgba(239,68,68,0.15)', padding: '1px 5px', borderRadius: '4px' }}>Inativo</span>}
+                              </td>
+                              <td style={{ padding: '8px 6px', textAlign: 'center', color: '#34d399' }}>{w.FISCAL || '—'}</td>
+                              <td style={{ padding: '8px 6px', textAlign: 'center', color: '#60a5fa' }}>{w.DP || '—'}</td>
+                              <td style={{ padding: '8px 6px', textAlign: 'center', color: '#a78bfa' }}>{w.CONTABIL || '—'}</td>
+                              <td style={{ padding: '8px 6px', textAlign: 'center', color: '#f87171' }}>{w.CUSHMAN || '—'}</td>
+                              <td style={{ padding: '8px 6px', textAlign: 'right', fontWeight: 700, color: '#f8fafc' }}>
+                                <span style={{ padding: '2px 8px', borderRadius: '6px', background: 'rgba(255,255,255,0.06)' }}>
+                                  {w.total} empresas
+                                </span>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </Panel>
+              )}
               <Panel title="Setores contratados" subtitle="Empresas ativas com cada setor" icon={Layers}>
                 <HBar data={data.distribution.sectors.map(s => ({ name: SECTOR_META[s.name]?.label || s.name, value: s.value }))} color="#8b5cf6" height={240} />
                 <div className="an-mini-stats">

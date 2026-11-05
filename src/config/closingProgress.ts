@@ -1,5 +1,5 @@
 import {isColumnComplete,isColumnFilled,isColumnActive,MONTH_NAMES} from './columnVisibility';
-import {accountingMonth,isClientMonth,NOT_CLIENT,accountingColumnComplete,annualColumnActive,accountingColumnReleased} from './accountingColumns';
+import {accountingMonth,resolveAccountingKey,isClientMonth,NOT_CLIENT,accountingColumnComplete,annualColumnActive,accountingColumnReleased} from './accountingColumns';
 import {resolveColumnKey} from './payrollColumns';
 import {effectivePopup} from './fiscalPopups';
 import {formatCompanyCode} from '../utils/codeSort';
@@ -44,9 +44,10 @@ export type ProgressColumn = {
 
 export function normalizeRecordCategory(rawVal: any, _sector?: string, isMonth?: boolean): { label: string; key: string; badgeClass: string } {
   const str = typeof rawVal === 'object' && rawVal !== null
-    ? (rawVal.status || rawVal.value || '')
+    ? (rawVal.status || rawVal.value || rawVal.label || '')
     : String(rawVal || '').trim();
 
+  // 1. Mês contábil ou status com prefixos contábeis
   if (isMonth || str.startsWith('OK') || str.startsWith('DOC.') || str.startsWith('SEM') || str.startsWith('COBRANÇA')) {
     if (str.startsWith('OK - FINALIZADO') || str === 'OK' || str.startsWith('OK')) {
       return { label: 'CONCLUÍDO', key: 'DONE', badgeClass: 'done' };
@@ -65,14 +66,35 @@ export function normalizeRecordCategory(rawVal: any, _sector?: string, isMonth?:
     }
   }
 
-  if (str === 'Enviado' || str === 'Concluído') {
+  // 2. Status comuns a Fiscal / DP / Cushman / Geral
+  if (str === 'CONCLUIDO' || str === 'Concluído' || str === 'OK - DATA' || str === 'OK' || str.startsWith('Concluído')) {
+    return { label: 'CONCLUÍDO', key: 'DONE', badgeClass: 'done' };
+  }
+  if (str === 'SEM_MOVIMENTO' || str === 'Sem movimento' || str === 'OK - SEM MOVIMENTO') {
+    return { label: 'SEM MOVIMENTO', key: 'SEM_MOVIMENTO', badgeClass: 'no-movement' };
+  }
+  if (str === 'PENDENCIA' || str === 'Pendência' || str.startsWith('Pendência') || str.startsWith('PENDÊNCIA')) {
+    return { label: 'PENDÊNCIA', key: 'PENDING_ISSUE', badgeClass: 'pending-issue' };
+  }
+  if (str === 'Enviado' || str === 'Finalizado' || str === 'Transmitido' || str === 'Calculada') {
     return { label: str, key: 'DONE', badgeClass: 'done' };
   }
-  if (!str || str === 'Pendente' || str === 'Não preenchido') {
-    return { label: 'Pendente', key: 'PENDING', badgeClass: 'pending' };
+  if (str === 'Marcado' || str === 'Sim' || rawVal === true) {
+    return { label: 'Marcado (Sim)', key: 'CHECKED', badgeClass: 'done' };
+  }
+  if (str === 'Não marcado' || str === 'Não' || rawVal === false) {
+    return { label: 'Não marcado', key: 'UNCHECKED', badgeClass: 'neutral' };
+  }
+  if (str === 'N/A' || str === 'Não aplicável') {
+    return { label: 'N/A', key: 'NA', badgeClass: 'neutral' };
+  }
+  if (!str || str === 'Pendente' || str === 'Não preenchido' || str === 'EM ABERTO' || str === 'NÃO CALCULADO') {
+    return { label: 'PENDENTE', key: 'PENDING', badgeClass: 'pending' };
   }
 
-  return { label: str, key: str.toUpperCase().replace(/\s+/g, '_'), badgeClass: 'neutral' };
+  const cleanLabel = str.length > 25 ? str.slice(0, 25) + '...' : str;
+  const key = str.toUpperCase().replace(/\s+/g, '_').slice(0, 30);
+  return { label: cleanLabel, key, badgeClass: 'neutral' };
 }
 
 const statusLabels:Record<string,string>={CONCLUIDO:'Concluído',SEM_MOVIMENTO:'Sem movimento','OK - DATA':'Concluído com data','OK - SEM MOVIMENTO':'Sem movimento','N/A':'N/A',PENDENTE:'Pendente',PENDENCIA:'Pendência','PENDÊNCIA':'Pendência'};
@@ -97,8 +119,8 @@ export function groupAccountingColumns(columns:any[]):any[]{
 }
 export function buildClosingProgress(rows:any[],columns:any[],sector:'FISCAL'|'DP'|'CONTABIL'|'CUSHMAN',period:Date,latest:Date):ProgressColumn[]{
  const rawColumns: ProgressColumn[] = columns.map(column=>{
-  const key=resolveColumnKey(column)||column.columnKey||column.id;
-  const month=sector==='CONTABIL'?accountingMonth(column):null;
+  const key = (sector === 'CONTABIL' ? resolveAccountingKey(column) : null) || resolveColumnKey(column) || column.columnKey || column.id;
+  const month = sector === 'CONTABIL' ? accountingMonth(column) : null;
   const colName = (sector === 'CONTABIL' && month) ? MONTH_NAMES[month - 1] : column.name;
   const tracked=column.countsProgress===true||(column.countsProgress===undefined&&sector==='FISCAL');
   const records: ProgressRecord[] = rows.map(row=>{
@@ -132,14 +154,16 @@ export function buildClosingProgress(rows:any[],columns:any[],sector:'FISCAL'|'D
   const filled=records.filter(record=>record.filled).length;
 
   let valueBreakdown: ValueBreakdownItem[] | undefined = undefined;
-  if (sector === 'CONTABIL' && month) {
-    const countsMap = new Map<string, { label: string; key: string; badgeClass: string; count: number }>([
-      ['DONE', { label: 'CONCLUÍDO', key: 'DONE', badgeClass: 'done', count: 0 }],
-      ['DOC_REDE', { label: 'DOC. REDE', key: 'DOC_REDE', badgeClass: 'doc-rede', count: 0 }],
-      ['SEM_MOVIMENTO', { label: 'SEM MOVIMENTO', key: 'SEM_MOVIMENTO', badgeClass: 'no-movement', count: 0 }],
-      ['COBRANCA', { label: 'COBRANÇA DOC.', key: 'COBRANCA', badgeClass: 'collection', count: 0 }],
-      ['PENDING', { label: 'PENDENTE', key: 'PENDING', badgeClass: 'pending', count: 0 }],
-    ]);
+  if (total > 0) {
+    const countsMap = new Map<string, { label: string; key: string; badgeClass: string; count: number }>();
+
+    if (sector === 'CONTABIL' && month) {
+      countsMap.set('DONE', { label: 'CONCLUÍDO', key: 'DONE', badgeClass: 'done', count: 0 });
+      countsMap.set('DOC_REDE', { label: 'DOC. REDE', key: 'DOC_REDE', badgeClass: 'doc-rede', count: 0 });
+      countsMap.set('SEM_MOVIMENTO', { label: 'SEM MOVIMENTO', key: 'SEM_MOVIMENTO', badgeClass: 'no-movement', count: 0 });
+      countsMap.set('COBRANCA', { label: 'COBRANÇA DOC.', key: 'COBRANCA', badgeClass: 'collection', count: 0 });
+      countsMap.set('PENDING', { label: 'PENDENTE', key: 'PENDING', badgeClass: 'pending', count: 0 });
+    }
 
     for (const rec of records) {
       if (!rec.eligible) continue;
@@ -156,10 +180,20 @@ export function buildClosingProgress(rows:any[],columns:any[],sector:'FISCAL'|'D
       }
     }
 
-    valueBreakdown = Array.from(countsMap.values()).map(item => ({
-      ...item,
-      percent: total ? Math.round((item.count / total) * 100) : 0
-    }));
+    if (countsMap.size > 0) {
+      valueBreakdown = Array.from(countsMap.values())
+        .sort((a, b) => {
+          if (a.key === 'DONE') return -1;
+          if (b.key === 'DONE') return 1;
+          if (a.key === 'PENDING') return 1;
+          if (b.key === 'PENDING') return -1;
+          return b.count - a.count;
+        })
+        .map(item => ({
+          ...item,
+          percent: total ? Math.round((item.count / total) * 100) : 0
+        }));
+    }
   }
 
   return {
@@ -176,9 +210,16 @@ export function buildClosingProgress(rows:any[],columns:any[],sector:'FISCAL'|'D
  });
 
  if (sector === 'CONTABIL') {
-   const monthCols = rawColumns.filter(c => c.key.startsWith('cont_mes_'));
+   const monthCols: ProgressColumn[] = [];
+   const nonMonthCols: ProgressColumn[] = [];
+   rawColumns.forEach((c, idx) => {
+     if (accountingMonth(columns[idx]) !== null || c.key.startsWith('cont_mes_')) {
+       monthCols.push(c);
+     } else {
+       nonMonthCols.push(c);
+     }
+   });
    if (monthCols.length > 0) {
-     const nonMonthCols = rawColumns.filter(c => !c.key.startsWith('cont_mes_'));
 
      const groupTotal = monthCols.reduce((sum, c) => sum + c.total, 0);
      const groupDone = monthCols.reduce((sum, c) => sum + c.done, 0);

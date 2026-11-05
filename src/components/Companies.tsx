@@ -2060,14 +2060,16 @@ export function Companies({ currentView, onNavigate, currentUser, onLogout }: Co
               </span>
             </div>
             <div className="bulk-bar-actions">
-              <button
-                type="button"
-                className="bulk-btn-assign"
-                onClick={() => setIsBulkAssignOpen(true)}
-              >
-                <Users size={16} />
-                <span>Atribuir Responsável em Massa</span>
-              </button>
+              {isPrivileged && (
+                <button
+                  type="button"
+                  className="bulk-btn-assign"
+                  onClick={() => setIsBulkAssignOpen(true)}
+                >
+                  <Users size={16} />
+                  <span>Atribuir Responsável em Massa</span>
+                </button>
+              )}
               <button
                 type="button"
                 className="bulk-btn-clear"

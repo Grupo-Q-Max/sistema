@@ -777,10 +777,12 @@ export function PayrollClosings({ currentView, onNavigate, currentUser, onLogout
                     <option value="ALL">Tributação: Todas</option>
                     {regimes.map(regime => <option key={regime} value={regime}>{formatRegimeLabel(regime)}</option>)}
                   </select>
-                  <select className="closings-select" aria-label="Filtrar responsável" value={responsibleFilter} onChange={e => setResponsibleFilter(e.target.value)}>
-                    <option value="ALL">Responsável: Todos</option>
-                    {users.map(user => <option key={user.id} value={user.id}>{user.name || user.email}</option>)}
-                  </select>
+                  {isPrivileged && (
+                    <select className="closings-select" aria-label="Filtrar responsável" value={responsibleFilter} onChange={e => setResponsibleFilter(e.target.value)}>
+                      <option value="ALL">Responsável: Todos</option>
+                      {users.map(user => <option key={user.id} value={user.id}>{user.name || user.email}</option>)}
+                    </select>
+                  )}
                   <select className="closings-select" aria-label="Filtrar certificado" value={certFilter} onChange={e => setCertFilter(e.target.value)}>
                     <option value="ALL">Certificados: Todos</option>
                     <option value="EXPIRING">Vencendo ou Vencidos</option>
@@ -802,10 +804,12 @@ export function PayrollClosings({ currentView, onNavigate, currentUser, onLogout
                     <Copy size={15} />
                     Copiar CNPJs
                   </button>
-                  <button type="button" className="btn-secondary-light" onClick={() => setWorkloadOpen(true)} title="Ver ranking e distribuição de empresas por responsável">
-                    <BarChart3 size={15} />
-                    Carga da Equipe
-                  </button>
+                  {isPrivileged && (
+                    <button type="button" className="btn-secondary-light" onClick={() => setWorkloadOpen(true)} title="Ver ranking e distribuição de empresas por responsável">
+                      <BarChart3 size={15} />
+                      Carga da Equipe
+                    </button>
+                  )}
                   <button
                     type="button"
                     className={`btn-secondary-light ${focusModeIndex !== null ? 'active' : ''}`}
@@ -913,13 +917,13 @@ export function PayrollClosings({ currentView, onNavigate, currentUser, onLogout
                       <table className="closings-table payroll-table" style={{ minWidth: `${1080 + columns.length * 170}px` }}>
                         <thead>
                           <tr>
-                            {PAYROLL_BASE_HEADERS.map(renderHeader)}
+                            {(isPrivileged ? PAYROLL_BASE_HEADERS : PAYROLL_BASE_HEADERS.filter(h => h !== 'Responsável')).map(renderHeader)}
                             {columns.map(column => <th key={column.id} title={visibilitySummary(column)}>{column.name}</th>)}
                           </tr>
                         </thead>
                         <tbody>
                           {filtered.length === 0 ? (
-                            <tr><td colSpan={PAYROLL_BASE_HEADERS.length + columns.length} className="payroll-empty">Nenhuma empresa encontrada nesta competência.</td></tr>
+                            <tr><td colSpan={(isPrivileged ? PAYROLL_BASE_HEADERS.length : PAYROLL_BASE_HEADERS.length - 1) + columns.length} className="payroll-empty">Nenhuma empresa encontrada nesta competência.</td></tr>
                           ) : (
                             filtered.map(row => {
                               const c = row.company;
@@ -968,7 +972,9 @@ export function PayrollClosings({ currentView, onNavigate, currentUser, onLogout
                                   </td>
                                   <td><span className={`tax-regime-pill ${c.taxRegime === 'SIMPLES_NACIONAL' ? 'simples' : c.taxRegime?.includes('PRESUMIDO') ? 'presumido' : c.taxRegime?.includes('REAL') ? 'real' : c.taxRegime === 'MEI' ? 'mei' : ''}`}>{formatRegimeLabel(c.taxRegime || '')}</span></td>
                                   <td title={`Progresso: ${row.progressPercent}%`}><span className={`status-badge ${row.calculatedStatus === 'COMPLETED' ? 'completed' : row.calculatedStatus === 'IN_PROGRESS' ? 'in-progress' : 'pending'}`}>{STATUS_LABELS[row.calculatedStatus] || row.calculatedStatus}</span></td>
-                                  <td><select className="table-user-select" aria-label={`Responsável DP de ${c.name}`} disabled={!isRowEditable(row) || pending > 0} value={getResponsible(c)?.userId || ''} onChange={e => { void changeResponsible(row, e.target.value); }}><option value="">Não atribuído</option>{users.map(user => <option key={user.id} value={user.id} disabled={user.active === false}>{user.name || user.email}</option>)}</select></td>
+                                  {isPrivileged && (
+                                    <td><select className="table-user-select" aria-label={`Responsável DP de ${c.name}`} disabled={!isRowEditable(row) || pending > 0} value={getResponsible(c)?.userId || ''} onChange={e => { void changeResponsible(row, e.target.value); }}><option value="">Não atribuído</option>{users.map(user => <option key={user.id} value={user.id} disabled={user.active === false}>{user.name || user.email}</option>)}</select></td>
+                                  )}
                                   <td><button type="button" className="copy-badge-btn" title="Copiar CNPJ" onClick={() => { void navigator.clipboard.writeText(c.cnpj || '').then(() => setCopyMessage('CNPJ copiado!')).catch(() => setError('Não foi possível copiar o CNPJ.')); }}>{formatCnpj(c.cnpj || '')}<Copy size={12} /></button></td>
                                   {columns.map(column => {
                                     const key = resolveColumnKey(column) || column.id;
@@ -1346,14 +1352,16 @@ export function PayrollClosings({ currentView, onNavigate, currentUser, onLogout
               </span>
             </div>
             <div className="bulk-bar-actions">
-              <button
-                type="button"
-                className="bulk-btn-assign"
-                onClick={() => setBulkAssignOpen(true)}
-              >
-                <Users size={16} />
-                <span>Atribuir Responsável em Massa</span>
-              </button>
+              {isPrivileged && (
+                <button
+                  type="button"
+                  className="bulk-btn-assign"
+                  onClick={() => setBulkAssignOpen(true)}
+                >
+                  <Users size={16} />
+                  <span>Atribuir Responsável em Massa</span>
+                </button>
+              )}
               <button
                 type="button"
                 className="bulk-btn-clear"
