@@ -317,7 +317,6 @@ async function handleLoginFlow(page: Page): Promise<void> {
         console.log('ℹ️ Código não obtido automaticamente. Caso você receba o código, digite-o na tela do navegador.');
       }
     }
-    }
 
     await page.waitForTimeout(2000);
   }
