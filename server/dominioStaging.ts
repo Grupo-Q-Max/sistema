@@ -329,6 +329,40 @@ export function registerDominioStaging(app: any, prisma: any) {
   });
 
   // ==========================================
+  // LIMPEZA DE DADOS DE TESTE DO STAGING
+  // ==========================================
+  app.post('/api/dominio-staging/clean-tests', async (_req: any, res: any) => {
+    try {
+      const deletedStaging = await prisma.dominioStagingChange.deleteMany({
+        where: {
+          OR: [
+            { companyName: { contains: 'EXEMPLO' } },
+            { columnKey: 'nova_empresa' },
+            { status: 'PENDING' }
+          ]
+        }
+      });
+
+      const deletedCompany = await prisma.company.deleteMany({
+        where: {
+          OR: [
+            { name: { contains: 'EXEMPLO' } },
+            { code: '1099' }
+          ]
+        }
+      });
+
+      res.json({
+        success: true,
+        message: `Limpeza concluída! ${deletedStaging.count} itens de teste removidos do staging e ${deletedCompany.count} empresas de teste removidas.`
+      });
+    } catch (error: any) {
+      console.error('Erro ao limpar testes do staging:', error);
+      res.status(500).json({ error: 'Erro ao limpar dados de teste.' });
+    }
+  });
+
+  // ==========================================
   // 5. SEED DE TESTE / SIMULAÇÃO DE ALTERAÇÕES
   // ==========================================
   app.post('/api/dominio-staging/seed-sample', async (_req: any, res: any) => {

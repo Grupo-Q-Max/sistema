@@ -11,7 +11,8 @@ import {
   RotateCcw,
   Layers,
   Database,
-  Building2
+  Building2,
+  Trash2
 } from 'lucide-react';
 import { API } from '../api';
 import './DominioStagingModal.css';
@@ -148,17 +149,19 @@ export function DominioStagingModal({ isOpen, onClose, onSuccess }: DominioStagi
     }
   };
 
-  const handleSeedSample = async () => {
+  const handleCleanTests = async () => {
+    if (!window.confirm('Deseja realmente limpar todos os dados de teste pendentes?')) return;
     setActionLoading(true);
     try {
-      const res = await fetch(`${API}/api/dominio-staging/seed-sample`, { method: 'POST' });
+      const res = await fetch(`${API}/api/dominio-staging/clean-tests`, { method: 'POST' });
+      const data = await res.json();
       if (res.ok) {
-        showToast('Dados de teste do Domínio criados com sucesso!');
+        showToast(data.message || 'Dados de teste limpos com sucesso!');
         fetchItems();
         window.dispatchEvent(new CustomEvent('dominio-staging-updated'));
       }
     } catch {
-      showToast('Erro ao gerar dados de teste.');
+      showToast('Erro ao limpar dados de teste.');
     } finally {
       setActionLoading(false);
     }
@@ -305,6 +308,16 @@ export function DominioStagingModal({ isOpen, onClose, onSuccess }: DominioStagi
                 </button>
               </>
             )}
+            <button
+              className="btn-staging-refresh"
+              onClick={handleCleanTests}
+              disabled={actionLoading}
+              title="Limpar todos os dados de teste pendentes"
+              style={{ background: 'rgba(239, 68, 68, 0.15)', color: '#f87171', border: '1px solid rgba(239, 68, 68, 0.3)', padding: '7px 10px', display: 'flex', alignItems: 'center', gap: 5, borderRadius: 8, fontSize: 12, cursor: 'pointer' }}
+            >
+              <Trash2 size={14} />
+              <span>Limpar Testes</span>
+            </button>
             <button
               className="btn-staging-refresh"
               onClick={fetchItems}
