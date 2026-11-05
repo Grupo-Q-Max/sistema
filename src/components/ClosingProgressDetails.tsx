@@ -1,26 +1,31 @@
 import {useEffect,useState} from 'react';
-import {ListChecks,ChevronDown,ChevronUp,Search,CheckCircle2} from 'lucide-react';
+import {ListChecks,ChevronDown,ChevronUp,Search,CheckCircle2,Layers} from 'lucide-react';
 import {buildClosingProgress,summarizeClosingProgress,type ProgressColumn} from '../config/closingProgress';
 import './ClosingProgressDetails.css';
 export function ProgressDetailsPanel({title,items,overall,completed,open,onToggle,loading=false,counts}:{title:string;items:ProgressColumn[];overall:number;completed?:number;open:boolean;onToggle:()=>void;loading?:boolean;counts?:{done:number;total:number;rowCount:number}}){
   const [selected,setSelected]=useState('');
+  const [selectedSubKey,setSelectedSubKey]=useState('');
   const [search,setSearch]=useState('');
   const [filter,setFilter]=useState('ALL');
   const [categoryFilter,setCategoryFilter]=useState('ALL');
   const [mode,setMode]=useState<'FIELDS'|'COMPANIES'>('FIELDS');
 
   const item=items.find(column=>column.key===selected);
+  const effectiveItem = (item?.isGroup && item?.subColumns)
+    ? (item.subColumns.find(sc => sc.key === selectedSubKey) || item.subColumns.find(sc => sc.total > 0) || item.subColumns[0])
+    : item;
 
   useEffect(()=>{
     if(!open){
       setSelected('');
+      setSelectedSubKey('');
       setSearch('');
       setFilter('ALL');
       setCategoryFilter('ALL');
     }
   },[open]);
 
-  const records=item?.records.filter(record=>{
+  const records=effectiveItem?.records.filter(record=>{
     const matchSearch=[record.name,record.code,record.value].join(' ').toLocaleLowerCase('pt-BR').includes(search.trim().toLocaleLowerCase('pt-BR'));
     if(!matchSearch)return false;
     if(categoryFilter!=='ALL'&&record.categoryKey!==categoryFilter)return false;
@@ -55,51 +60,97 @@ export function ProgressDetailsPanel({title,items,overall,completed,open,onToggl
     </div>
     {open&&!loading&&<>
       <div className="closing-progress-grid">
-        {items.map(column=>(
-          <button
-            type="button"
-            key={column.key}
-            className={`closing-progress-card ${column.key===selected?'selected':''}`}
-            aria-expanded={column.key===selected}
-            onClick={()=>{
-              setSelected(column.key===selected?'':column.key);
-              setSearch('');
-              setFilter('ALL');
-              setCategoryFilter('ALL');
-            }}
-          >
-            <div>
-              <strong>{column.name}</strong>
-              <span>{column.total?column.percent+'%':'—'}</span>
-            </div>
-            <div className={`closing-progress-bar ${column.percent>=80?'good':column.percent>=50?'medium':'low'}`}>
-              <span style={{width:column.percent+'%'}}/>
-            </div>
-            <p>
-              {column.total?<>{column.tracked?'Feitos':'Preenchidos'}: <strong>{column.tracked?column.done:column.filled}</strong> / {column.total}</>:'Sem itens aplicáveis no período'}
-            </p>
-            {column.valueBreakdown && column.valueBreakdown.length > 0 && (
-              <div className="closing-progress-card-breakdown">
-                {column.valueBreakdown
-                  .filter(vb => vb.count > 0 && vb.key !== 'DONE')
-                  .map(vb => (
-                    <span key={vb.key} className={`mini-breakdown-pill ${vb.badgeClass}`}>
-                      {vb.label}: <strong>{vb.count}</strong>
-                    </span>
-                  ))}
+        {items.map(column=>{
+          const isSelected = column.key === selected;
+          return (
+            <button
+              type="button"
+              key={column.key}
+              className={`closing-progress-card ${isSelected?'selected':''} ${column.isGroup?'is-group-card':''}`}
+              aria-expanded={isSelected}
+              onClick={()=>{
+                if (isSelected) {
+                  setSelected('');
+                  setSelectedSubKey('');
+                } else {
+                  setSelected(column.key);
+                  if (column.isGroup && column.subColumns) {
+                    const firstActive = column.subColumns.find(sc => sc.total > 0) || column.subColumns[0];
+                    setSelectedSubKey(firstActive?.key || '');
+                  }
+                }
+                setSearch('');
+                setFilter('ALL');
+                setCategoryFilter('ALL');
+              }}
+            >
+              <div>
+                <strong>{column.name}</strong>
+                <span>{column.total?column.percent+'%':'—'}</span>
               </div>
-            )}
-            {!column.tracked&&<small>Informativo · não conta no progresso</small>}
-          </button>
-        ))}
+              <div className={`closing-progress-bar ${column.percent>=80?'good':column.percent>=50?'medium':'low'}`}>
+                <span style={{width:column.percent+'%'}}/>
+              </div>
+              <p>
+                {column.total?<>{column.tracked?'Feitos':'Preenchidos'}: <strong>{column.tracked?column.done:column.filled}</strong> / {column.total}</>:'Sem itens aplicáveis no período'}
+              </p>
+              {column.isGroup && (
+                <div className="group-expand-badge">
+                  <Layers size={13} />
+                  <span>12 Meses agrupados (Clique para ver meses)</span>
+                </div>
+              )}
+              {column.valueBreakdown && column.valueBreakdown.length > 0 && (
+                <div className="closing-progress-card-breakdown">
+                  {column.valueBreakdown
+                    .filter(vb => vb.count > 0 && vb.key !== 'DONE')
+                    .map(vb => (
+                      <span key={vb.key} className={`mini-breakdown-pill ${vb.badgeClass}`}>
+                        {vb.label}: <strong>{vb.count}</strong>
+                      </span>
+                    ))}
+                </div>
+              )}
+              {!column.tracked&&<small>Informativo · não conta no progresso</small>}
+            </button>
+          );
+        })}
       </div>
       {items.length>0&&!items.some(column=>column.tracked&&column.total>0)&&<p className="closing-progress-empty">Nenhuma obrigação configurada para progresso se aplica a este período. Os campos informativos mostram o preenchimento separadamente.</p>}
       {!items.length&&<p className="closing-progress-empty">Nenhuma coluna ativa para detalhar nesta competência.</p>}
-      {item&&(
+      {item && effectiveItem && (
         <div className="closing-progress-expanded">
-          <h4><CheckCircle2 size={18}/>{item.name} · detalhes do preenchimento</h4>
+          <h4>
+            <CheckCircle2 size={18}/>
+            {item.isGroup ? `Meses · ${effectiveItem.name}` : item.name} · detalhes do preenchimento
+          </h4>
+
+          {/* NAVEGAÇÃO DOS MESES EXPANDIDOS */}
+          {item.isGroup && item.subColumns && (
+            <div className="progress-subtabs-bar">
+              {item.subColumns.map(sc => {
+                const isSubActive = effectiveItem.key === sc.key;
+                return (
+                  <button
+                    key={sc.key}
+                    type="button"
+                    className={`progress-subtab-pill ${isSubActive ? 'active' : ''} ${sc.total === 0 ? 'disabled' : ''}`}
+                    onClick={() => {
+                      setSelectedSubKey(sc.key);
+                      setCategoryFilter('ALL');
+                    }}
+                    disabled={sc.total === 0}
+                    title={sc.total === 0 ? 'Competência futura' : `${sc.name}: ${sc.done}/${sc.total} concluídos`}
+                  >
+                    <span className="subtab-name">{sc.name}</span>
+                    <span className="subtab-pct">{sc.total ? sc.percent + '%' : '—'}</span>
+                  </button>
+                );
+              })}
+            </div>
+          )}
           
-          {item.valueBreakdown && item.valueBreakdown.length > 0 && (
+          {effectiveItem.valueBreakdown && effectiveItem.valueBreakdown.length > 0 && (
             <div className="closing-progress-breakdown-chips">
               <button
                 type="button"
@@ -108,9 +159,9 @@ export function ProgressDetailsPanel({title,items,overall,completed,open,onToggl
                 title="Mostrar todas as empresas aplicáveis"
               >
                 <span className="chip-label">TODOS</span>
-                <strong>{item.total}</strong>
+                <strong>{effectiveItem.total}</strong>
               </button>
-              {item.valueBreakdown.map(vb => (
+              {effectiveItem.valueBreakdown.map(vb => (
                 <button
                   key={vb.key}
                   type="button"
@@ -120,7 +171,7 @@ export function ProgressDetailsPanel({title,items,overall,completed,open,onToggl
                 >
                   <span className="chip-dot" />
                   <span className="chip-label">{vb.label}</span>
-                  <strong>{vb.count} / {item.total}</strong>
+                  <strong>{vb.count} / {effectiveItem.total}</strong>
                   <span className="chip-pct">{vb.percent}%</span>
                 </button>
               ))}

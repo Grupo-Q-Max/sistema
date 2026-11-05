@@ -38,6 +38,8 @@ export type ProgressColumn = {
   percent: number;
   records: ProgressRecord[];
   valueBreakdown?: ValueBreakdownItem[];
+  isGroup?: boolean;
+  subColumns?: ProgressColumn[];
 };
 
 export function normalizeRecordCategory(rawVal: any, _sector?: string, isMonth?: boolean): { label: string; key: string; badgeClass: string } {
@@ -94,7 +96,7 @@ export function groupAccountingColumns(columns:any[]):any[]{
  return columns.flatMap(column=>{if(accountingMonth(column)===null)return [column];if(inserted)return [];inserted=true;return [{id:'accounting-months-group',name:'Meses',isMonthsGroup:true,months}];});
 }
 export function buildClosingProgress(rows:any[],columns:any[],sector:'FISCAL'|'DP'|'CONTABIL'|'CUSHMAN',period:Date,latest:Date):ProgressColumn[]{
- return columns.map(column=>{
+ const rawColumns: ProgressColumn[] = columns.map(column=>{
   const key=resolveColumnKey(column)||column.columnKey||column.id;
   const month=sector==='CONTABIL'?accountingMonth(column):null;
   const colName = (sector === 'CONTABIL' && month) ? MONTH_NAMES[month - 1] : column.name;
@@ -172,11 +174,72 @@ export function buildClosingProgress(rows:any[],columns:any[],sector:'FISCAL'|'D
     valueBreakdown
   };
  });
+
+ if (sector === 'CONTABIL') {
+   const monthCols = rawColumns.filter(c => c.key.startsWith('cont_mes_'));
+   if (monthCols.length > 0) {
+     const nonMonthCols = rawColumns.filter(c => !c.key.startsWith('cont_mes_'));
+
+     const groupTotal = monthCols.reduce((sum, c) => sum + c.total, 0);
+     const groupDone = monthCols.reduce((sum, c) => sum + c.done, 0);
+     const groupFilled = monthCols.reduce((sum, c) => sum + c.filled, 0);
+
+     const consMap = new Map<string, { label: string; key: string; badgeClass: string; count: number }>([
+       ['DONE', { label: 'CONCLUÍDO', key: 'DONE', badgeClass: 'done', count: 0 }],
+       ['DOC_REDE', { label: 'DOC. REDE', key: 'DOC_REDE', badgeClass: 'doc-rede', count: 0 }],
+       ['SEM_MOVIMENTO', { label: 'SEM MOVIMENTO', key: 'SEM_MOVIMENTO', badgeClass: 'no-movement', count: 0 }],
+       ['COBRANCA', { label: 'COBRANÇA DOC.', key: 'COBRANCA', badgeClass: 'collection', count: 0 }],
+       ['PENDING', { label: 'PENDENTE', key: 'PENDING', badgeClass: 'pending', count: 0 }],
+     ]);
+
+     for (const mCol of monthCols) {
+       if (mCol.valueBreakdown) {
+         for (const vb of mCol.valueBreakdown) {
+           const target = consMap.get(vb.key);
+           if (target) {
+             target.count += vb.count;
+           } else {
+             consMap.set(vb.key, { label: vb.label, key: vb.key, badgeClass: vb.badgeClass, count: vb.count });
+           }
+         }
+       }
+     }
+
+     const consolidatedBreakdown: ValueBreakdownItem[] = Array.from(consMap.values()).map(item => ({
+       ...item,
+       percent: groupTotal ? Math.round((item.count / groupTotal) * 100) : 0
+     }));
+
+     const groupColumn: ProgressColumn = {
+       key: 'accounting_months_group',
+       name: 'Meses (12 Meses)',
+       tracked: true,
+       total: groupTotal,
+       done: groupDone,
+       filled: groupFilled,
+       percent: groupTotal ? Math.round(groupDone / groupTotal * 100) : 0,
+       records: monthCols.flatMap(m => m.records),
+       valueBreakdown: consolidatedBreakdown,
+       isGroup: true,
+       subColumns: monthCols
+     };
+
+     const obsIdx = nonMonthCols.findIndex(c => c.key === 'cont_observacao');
+     const insertAt = obsIdx >= 0 ? obsIdx + 1 : 0;
+     nonMonthCols.splice(insertAt, 0, groupColumn);
+     return nonMonthCols;
+   }
+ }
+
+ return rawColumns;
 }
 
 // Conta obrigações aplicáveis antes de arredondar: cards e detalhes usam a mesma base.
 export function summarizeClosingProgress(items:ProgressColumn[],_rowCount:number) {
- const tracked=items.filter(item=>item.tracked);const progressTotal=tracked.reduce((sum,item)=>sum+item.total,0);const progressDone=tracked.reduce((sum,item)=>sum+item.done,0);
+ const allCols = items.flatMap(item => item.isGroup && item.subColumns ? item.subColumns : [item]);
+ const tracked=allCols.filter(item=>item.tracked);
+ const progressTotal=tracked.reduce((sum,item)=>sum+item.total,0);
+ const progressDone=tracked.reduce((sum,item)=>sum+item.done,0);
  const companies=new Map<string,{total:number;done:number;filled:number}>();
  for(const item of tracked)for(const record of item.records){if(!record.eligible)continue;const counts=companies.get(record.id)||{total:0,done:0,filled:0};counts.total++;counts.done+=Number(record.complete);counts.filled+=Number(record.filled);companies.set(record.id,counts);}
  const applicableCounts=[...companies.values()].filter(counts=>counts.total>0);

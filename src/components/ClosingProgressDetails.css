@@ -6,6 +6,78 @@
 .closing-progress-expanded{margin-top:20px;border-top:1px solid #e2e8f0;padding-top:18px}.closing-progress-expanded h4{display:flex;gap:8px;align-items:center;margin:0 0 14px;color:#4338ca}.closing-progress-search{display:flex;gap:10px;align-items:center;margin-bottom:14px}.closing-progress-search input,.closing-progress-search select{padding:10px;border:1px solid #cbd5e1;border-radius:8px;background:#fff;color:#334155;font:inherit;font-size:.8rem}.closing-progress-search input{flex:1;min-width:0}.closing-progress-records{max-height:380px;overflow:auto;border:1px solid #e2e8f0;border-radius:8px}.closing-progress-records table{width:100%;border-collapse:collapse;font-size:.8rem}.closing-progress-records th{padding:12px;text-align:left;background:#f1f5f9;position:sticky;top:0;z-index:1}.closing-progress-records td{padding:12px;border-top:1px solid #e2e8f0;vertical-align:top;white-space:normal;overflow-wrap:anywhere}.closing-progress-records td:nth-child(2){min-width:220px}.closing-progress-records small{display:block;margin-top:5px;color:#64748b}.closing-progress-status{display:inline-block;padding:5px 8px;border-radius:6px;background:#fef3c7;color:#92400e;font-size:.72rem}.closing-progress-status.done{background:#dcfce7;color:#166534}.closing-progress-status.excluded{background:#e2e8f0;color:#475569}.closing-progress-empty{padding:18px;text-align:center;color:#64748b;font-size:.8rem}
 .closing-stat-card.progress-clickable{cursor:pointer}.closing-stat-card.progress-clickable:focus-visible{outline:3px solid #818cf8;outline-offset:3px}.closing-stat-card.progress-clickable:hover{border-color:#818cf8}
 
+/* Subtabs dos meses dentro do painel expandido */
+.progress-subtabs-bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  overflow-x: auto;
+  padding-bottom: 8px;
+  margin-bottom: 12px;
+}
+
+.progress-subtab-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border-radius: 8px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  cursor: pointer;
+  background: rgba(15, 23, 42, 0.75);
+  color: #94a3b8;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  transition: all 0.15s;
+  white-space: nowrap;
+}
+
+.progress-subtab-pill:hover:not(:disabled) {
+  background: rgba(30, 41, 59, 0.95);
+  color: #fff;
+  border-color: rgba(255, 255, 255, 0.2);
+}
+
+.progress-subtab-pill.active {
+  background: #3b82f6;
+  color: #fff;
+  border-color: #60a5fa;
+  box-shadow: 0 0 12px rgba(59, 130, 246, 0.4);
+}
+
+.progress-subtab-pill.disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.progress-subtab-pill .subtab-pct {
+  font-size: 0.7rem;
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: rgba(0, 0, 0, 0.3);
+  font-weight: 500;
+}
+
+.progress-subtab-pill.active .subtab-pct {
+  background: rgba(0, 0, 0, 0.25);
+  color: #fff;
+}
+
+/* Badge indicando grupo no card */
+.group-expand-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin-top: 6px;
+  padding: 3px 8px;
+  border-radius: 6px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: #818cf8;
+  background: rgba(129, 140, 248, 0.12);
+  border: 1px solid rgba(129, 140, 248, 0.25);
+}
+
 /* Mini pills nos cards superiores */
 .closing-progress-card-breakdown {
   display: flex;
