@@ -423,22 +423,6 @@ export function registerDominioStaging(app: any, prisma: any) {
           currentValue: 'NÃO CALCULADO',
           proposedValue: 'FOLHA CALCULADA',
           referencePeriod: '10/2026'
-        },
-        {
-          company: { id: null, code: '1099', name: 'NOVA EMPRESA EXEMPLO DOMÍNIO LTDA' },
-          sector: 'CADASTRO',
-          columnKey: 'nova_empresa',
-          columnLabel: 'Cadastro de Nova Empresa',
-          currentValue: 'NÃO CADASTRADA',
-          proposedValue: JSON.stringify({
-            code: '1099',
-            name: 'NOVA EMPRESA EXEMPLO DOMÍNIO LTDA',
-            tradeName: 'EXEMPLO DOMÍNIO',
-            cnpj: '45.987.654/0001-23',
-            taxRegime: 'SIMPLES_NACIONAL',
-            city: 'São Paulo'
-          }),
-          referencePeriod: '2026'
         }
       ];
 
