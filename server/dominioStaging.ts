@@ -17,7 +17,8 @@ export function registerDominioStaging(app: any, prisma: any) {
       const bySector: Record<string, number> = {
         CONTABIL: 0,
         FISCAL: 0,
-        DP: 0
+        DP: 0,
+        CADASTRO: 0
       };
 
       for (const item of pendingItems) {
@@ -94,6 +95,82 @@ export function registerDominioStaging(app: any, prisma: any) {
 
       for (const item of itemsToApprove) {
         try {
+          // ==========================================
+          // CASO A: CADASTRO DE NOVA EMPRESA DO DOMÍNIO
+          // ==========================================
+          if (item.sector === 'CADASTRO' || item.columnKey === 'nova_empresa') {
+            let companyData: any = {};
+            try {
+              companyData = JSON.parse(item.proposedValue);
+            } catch {
+              companyData = {
+                code: item.companyCode,
+                name: item.companyName
+              };
+            }
+
+            const codeToUse = String(companyData.code || item.companyCode || '').trim();
+            const rawCnpj = String(companyData.cnpj || '').trim();
+            const formattedCnpj = rawCnpj || `TMP${Date.now()}`;
+
+            // Checa se já existe por código ou CNPJ
+            let existing = await prisma.company.findFirst({
+              where: {
+                OR: [
+                  { cnpj: formattedCnpj },
+                  ...(codeToUse ? [{ code: codeToUse }] : [])
+                ]
+              }
+            });
+
+            if (!existing) {
+              const validRegimes = [
+                'MEI',
+                'SIMPLES_NACIONAL',
+                'LUCRO_PRESUMIDO',
+                'LUCRO_REAL_TRIMESTRAL',
+                'LUCRO_REAL_ESTIMATIVA',
+                'LUCRO_REAL_ANUAL',
+                'IMUNE_IRPJ',
+                'CONDOMINIOS'
+              ];
+              const taxRegime = validRegimes.includes(companyData.taxRegime)
+                ? companyData.taxRegime
+                : 'SIMPLES_NACIONAL';
+
+              existing = await prisma.company.create({
+                data: {
+                  code: codeToUse || null,
+                  name: companyData.name || item.companyName,
+                  tradeName: companyData.tradeName || companyData.name || item.companyName,
+                  cnpj: formattedCnpj,
+                  taxRegime: taxRegime as any,
+                  city: companyData.city || 'São Paulo',
+                  stateRegistration: companyData.stateRegistration || null,
+                  municipalRegistration: companyData.municipalRegistration || null,
+                  activeSectors: 'CONTABIL,FISCAL,DP',
+                  obligationStartDate: new Date()
+                }
+              });
+            }
+
+            await prisma.dominioStagingChange.update({
+              where: { id: item.id },
+              data: {
+                companyId: existing.id,
+                status: 'APPROVED',
+                approvedBy: userLabel,
+                approvedAt: new Date()
+              }
+            });
+
+            approvedCount++;
+            continue;
+          }
+
+          // ==========================================
+          // CASO B: ATUALIZAÇÃO DE COLUNA DE FECHAMENTO
+          // ==========================================
           // Localiza a empresa pelo id ou pelo código do Domínio
           let company: any = null;
           if (item.companyId) {
@@ -301,13 +378,29 @@ export function registerDominioStaging(app: any, prisma: any) {
           currentValue: 'NÃO CALCULADO',
           proposedValue: 'FOLHA CALCULADA',
           referencePeriod: '10/2026'
+        },
+        {
+          company: { id: null, code: '1099', name: 'NOVA EMPRESA EXEMPLO DOMÍNIO LTDA' },
+          sector: 'CADASTRO',
+          columnKey: 'nova_empresa',
+          columnLabel: 'Cadastro de Nova Empresa',
+          currentValue: 'NÃO CADASTRADA',
+          proposedValue: JSON.stringify({
+            code: '1099',
+            name: 'NOVA EMPRESA EXEMPLO DOMÍNIO LTDA',
+            tradeName: 'EXEMPLO DOMÍNIO',
+            cnpj: '45.987.654/0001-23',
+            taxRegime: 'SIMPLES_NACIONAL',
+            city: 'São Paulo'
+          }),
+          referencePeriod: '2026'
         }
       ];
 
       for (const s of samples) {
         await prisma.dominioStagingChange.create({
           data: {
-            companyId: s.company.id,
+            companyId: s.company.id || undefined,
             companyCode: s.company.code || '1',
             companyName: s.company.name,
             sector: s.sector,

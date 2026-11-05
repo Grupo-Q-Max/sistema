@@ -630,6 +630,22 @@ async function syncDownloadedBackupToStaging(fileName: string): Promise<void> {
           currentValue: null,
           proposedValue: '05/11/2026',
           referencePeriod: '2026'
+        },
+        {
+          company: { id: null, code: '1099', name: 'NOVA EMPRESA EXEMPLO DOMÍNIO LTDA' },
+          sector: 'CADASTRO',
+          columnKey: 'nova_empresa',
+          columnLabel: 'Cadastro de Nova Empresa',
+          currentValue: 'NÃO CADASTRADA',
+          proposedValue: JSON.stringify({
+            code: '1099',
+            name: 'NOVA EMPRESA EXEMPLO DOMÍNIO LTDA',
+            tradeName: 'EXEMPLO DOMÍNIO',
+            cnpj: '45.987.654/0001-23',
+            taxRegime: 'SIMPLES_NACIONAL',
+            city: 'São Paulo'
+          }),
+          referencePeriod: '2026'
         }
       ];
 
@@ -639,7 +655,7 @@ async function syncDownloadedBackupToStaging(fileName: string): Promise<void> {
           `INSERT INTO dominiostagingchange 
            (id, companyId, companyCode, companyName, sector, referencePeriod, columnKey, columnLabel, currentValue, proposedValue, status, sourceFile, createdAt, updatedAt)
            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'PENDING', ?, NOW(3), NOW(3))`,
-          [id, p.company.id, p.company.code || '1', p.company.name, p.sector, p.referencePeriod, p.columnKey, p.columnLabel, p.currentValue, p.proposedValue, fileName]
+          [id, p.company.id || null, p.company.code || '1', p.company.name, p.sector, p.referencePeriod, p.columnKey, p.columnLabel, p.currentValue, p.proposedValue, fileName]
         );
       }
 

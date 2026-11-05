@@ -10,7 +10,8 @@ import {
   CheckCheck,
   RotateCcw,
   Layers,
-  Database
+  Database,
+  Building2
 } from 'lucide-react';
 import { API } from '../api';
 import './DominioStagingModal.css';
@@ -20,7 +21,7 @@ interface StagingItem {
   companyId?: string | null;
   companyCode?: string | null;
   companyName: string;
-  sector: 'CONTABIL' | 'FISCAL' | 'DP';
+  sector: 'CONTABIL' | 'FISCAL' | 'DP' | 'CADASTRO';
   referencePeriod: string;
   columnKey: string;
   columnLabel: string;
@@ -42,7 +43,7 @@ export function DominioStagingModal({ isOpen, onClose, onSuccess }: DominioStagi
   const [items, setItems] = useState<StagingItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
-  const [sectorFilter, setSectorFilter] = useState<'ALL' | 'CONTABIL' | 'FISCAL' | 'DP'>('ALL');
+  const [sectorFilter, setSectorFilter] = useState<'ALL' | 'CONTABIL' | 'FISCAL' | 'DP' | 'CADASTRO'>('ALL');
   const [statusFilter, setStatusFilter] = useState<'PENDING' | 'APPROVED' | 'REJECTED' | 'ALL'>('PENDING');
   const [actionLoading, setActionLoading] = useState(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
@@ -166,7 +167,31 @@ export function DominioStagingModal({ isOpen, onClose, onSuccess }: DominioStagi
   const getSectorBadgeClass = (s: string) => {
     if (s === 'CONTABIL') return 'badge-contabil';
     if (s === 'FISCAL') return 'badge-fiscal';
+    if (s === 'CADASTRO') return 'badge-cadastro';
     return 'badge-dp';
+  };
+
+  const renderProposedValue = (item: StagingItem) => {
+    if (item.sector === 'CADASTRO' || item.columnKey === 'nova_empresa') {
+      try {
+        const parsed = JSON.parse(item.proposedValue);
+        return (
+          <div className="dominio-new-company-preview">
+            <div className="dominio-new-company-badge">
+              <Building2 size={12} /> Nova Empresa Detectada
+            </div>
+            <div className="dominio-new-company-details">
+              {parsed.cnpj && <span><strong>CNPJ:</strong> {parsed.cnpj}</span>}
+              {parsed.taxRegime && <span><strong>Regime:</strong> {parsed.taxRegime.replace(/_/g, ' ')}</span>}
+              {parsed.city && <span><strong>Cidade:</strong> {parsed.city}</span>}
+            </div>
+          </div>
+        );
+      } catch {
+        return <span className="val-proposed">{item.proposedValue}</span>;
+      }
+    }
+    return <span className="val-proposed">{item.proposedValue}</span>;
   };
 
   return (
@@ -230,6 +255,12 @@ export function DominioStagingModal({ isOpen, onClose, onSuccess }: DominioStagi
               onClick={() => setSectorFilter('DP')}
             >
               DP
+            </button>
+            <button
+              className={`dominio-filter-btn ${sectorFilter === 'CADASTRO' ? 'active' : ''}`}
+              onClick={() => setSectorFilter('CADASTRO')}
+            >
+              Novas Empresas
             </button>
 
             <span className="dominio-filter-label" style={{ marginLeft: 16 }}><Clock size={14} /> Status:</span>
@@ -365,7 +396,7 @@ export function DominioStagingModal({ isOpen, onClose, onSuccess }: DominioStagi
                         <ArrowRight size={14} className="text-slate-500" />
                       </td>
                       <td>
-                        <span className="val-proposed">{item.proposedValue}</span>
+                        {renderProposedValue(item)}
                       </td>
                       <td style={{ textAlign: 'center' }}>
                         {item.status === 'PENDING' ? (
