@@ -671,10 +671,10 @@ async function syncDownloadedBackupToStaging(fileName: string): Promise<void> {
         {
           company: companies[0],
           sector: 'DP',
-          columnKey: 'dp_calculo_folha',
-          columnLabel: 'Cálculo de Folha',
-          currentValue: 'NÃO CALCULADO',
-          proposedValue: 'FOLHA CALCULADA',
+          columnKey: 'dp_data_calc_folha',
+          columnLabel: 'Data Calc Folha',
+          currentValue: 'Pendente',
+          proposedValue: '05/11/2026',
           referencePeriod: '10/2026'
         },
         {
@@ -682,26 +682,17 @@ async function syncDownloadedBackupToStaging(fileName: string): Promise<void> {
           sector: 'FISCAL',
           columnKey: 'das',
           columnLabel: 'DAS / Apuração',
-          currentValue: 'EM ABERTO',
-          proposedValue: 'CONCLUÍDO',
+          currentValue: 'Em Aberto',
+          proposedValue: 'Concluído',
           referencePeriod: '10/2026'
         },
         {
           company: companies[2] || companies[0],
           sector: 'CONTABIL',
-          columnKey: 'fechamento_doc',
-          columnLabel: 'Fechamento Documentos',
-          currentValue: 'PENDENTE',
-          proposedValue: '10/2026',
-          referencePeriod: '2026'
-        },
-        {
-          company: companies[2] || companies[0],
-          sector: 'CONTABIL',
-          columnKey: 'cobranca_doc',
-          columnLabel: 'Cobrança Documentos',
-          currentValue: null,
-          proposedValue: '05/11/2026',
+          columnKey: 'cont_mes_10',
+          columnLabel: 'Outubro (Documentos / Balancete)',
+          currentValue: 'Pendente',
+          proposedValue: 'OK - FINALIZADO',
           referencePeriod: '2026'
         },
         {
@@ -724,11 +715,12 @@ async function syncDownloadedBackupToStaging(fileName: string): Promise<void> {
 
       for (const p of proposals) {
         const id = crypto.randomUUID();
+        const compCode = p.company.code ? String(p.company.code) : null;
         await conn.query(
           `INSERT INTO dominiostagingchange 
            (id, companyId, companyCode, companyName, sector, referencePeriod, columnKey, columnLabel, currentValue, proposedValue, status, sourceFile, createdAt, updatedAt)
            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'PENDING', ?, NOW(3), NOW(3))`,
-          [id, p.company.id || null, p.company.code || '1', p.company.name, p.sector, p.referencePeriod, p.columnKey, p.columnLabel, p.currentValue, p.proposedValue, fileName]
+          [id, p.company.id || null, compCode, p.company.name, p.sector, p.referencePeriod, p.columnKey, p.columnLabel, p.currentValue, p.proposedValue, fileName]
         );
       }
 

@@ -12,9 +12,11 @@ import {
   Layers,
   Database,
   Building2,
-  Trash2
+  Trash2,
+  AlertTriangle
 } from 'lucide-react';
 import { API } from '../api';
+import { formatCompanyCode } from '../utils/codeSort';
 import './DominioStagingModal.css';
 
 interface StagingItem {
@@ -388,6 +390,9 @@ export function DominioStagingModal({ isOpen, onClose, onSuccess }: DominioStagi
               <tbody>
                 {items.map(item => {
                   const isSelected = selectedIds.has(item.id);
+                  const isUnregistered = !item.companyId || item.currentValue === 'NÃO CADASTRADA' || item.sector === 'CADASTRO';
+                  const displayCode = item.companyCode ? (formatCompanyCode(item.companyCode) || item.companyCode) : '—';
+
                   return (
                     <tr key={item.id} className={isSelected ? 'selected-row' : ''}>
                       {statusFilter === 'PENDING' && (
@@ -401,8 +406,16 @@ export function DominioStagingModal({ isOpen, onClose, onSuccess }: DominioStagi
                       )}
                       <td>
                         <div className="dominio-company-cell">
-                          <span className="dominio-company-code">#{item.companyCode || '-'}</span>
-                          <span className="dominio-company-name">{item.companyName}</span>
+                          <span className="dominio-company-code">#{displayCode}</span>
+                          <div className="dominio-company-info-col">
+                            <span className="dominio-company-name">{item.companyName}</span>
+                            {isUnregistered && (
+                              <div className="dominio-alert-unregistered">
+                                <AlertTriangle size={13} className="text-amber-400" />
+                                <span>Empresa não cadastrada no Fechamento Pro — Deseja criar?</span>
+                              </div>
+                            )}
+                          </div>
                         </div>
                       </td>
                       <td>
@@ -414,12 +427,27 @@ export function DominioStagingModal({ isOpen, onClose, onSuccess }: DominioStagi
                         <span className="period-tag">{item.referencePeriod}</span>
                       </td>
                       <td>
-                        <span className="column-label-tag">{item.columnLabel}</span>
+                        <div className="dominio-column-info">
+                          <span className="column-label-tag">{item.columnLabel}</span>
+                          <div className="dominio-target-detail">
+                            {item.sector === 'CADASTRO' ? (
+                              <span className="target-badge-cadastro">➕ Novo Cadastro de Empresa</span>
+                            ) : (
+                              <span className="target-badge-sector">
+                                Alterará coluna no <strong>{item.sector}</strong>
+                              </span>
+                            )}
+                          </div>
+                        </div>
                       </td>
                       <td>
-                        <span className="val-current">
-                          {item.currentValue ? item.currentValue : <em style={{ opacity: 0.5 }}>Vazio / Não preenchido</em>}
-                        </span>
+                        {isUnregistered ? (
+                          <span className="val-not-registered">⚠️ Não cadastrada</span>
+                        ) : item.currentValue ? (
+                          <span className="val-current">{item.currentValue}</span>
+                        ) : (
+                          <span className="val-empty">Vazio / Não preenchido</span>
+                        )}
                       </td>
                       <td style={{ textAlign: 'center', width: 30 }}>
                         <ArrowRight size={14} className="text-slate-500" />
