@@ -581,8 +581,8 @@ async function syncDownloadedBackupToStaging(fileName: string): Promise<void> {
 
     const conn = await pool.getConnection();
 
-    // Busca empresas reais ativas
-    const companies = await conn.query('SELECT id, code, name FROM company WHERE active = 1 ORDER BY code ASC LIMIT 10');
+    // Busca empresas reais ativas (onde exitDate é null)
+    const companies = await conn.query('SELECT id, code, name FROM company WHERE exitDate IS NULL ORDER BY code ASC LIMIT 10');
 
     if (companies && companies.length > 0) {
       console.log(`\n====================================================`);
