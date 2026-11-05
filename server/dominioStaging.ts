@@ -217,7 +217,18 @@ export function registerDominioStaging(app: any, prisma: any) {
             if (typeof currentCols !== 'object') currentCols = {};
 
             // Atualiza a coluna proposta
-            currentCols[item.columnKey] = item.proposedValue;
+            if (item.sector === 'FISCAL') {
+              const todayBr = new Date().toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' });
+              const dateFound = item.proposedValue.match(/\d{2}\/\d{2}\/\d{4}/)?.[0] || todayBr;
+              currentCols[item.columnKey] = {
+                status: 'CONCLUIDO',
+                completionDate: dateFound,
+                label: dateFound,
+                updatedAt: new Date().toISOString()
+              };
+            } else {
+              currentCols[item.columnKey] = item.proposedValue;
+            }
 
             if (existingClosing) {
               await prisma.closing.update({

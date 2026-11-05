@@ -212,7 +212,100 @@ export function DominioStagingModal({ isOpen, onClose, onSuccess }: DominioStagi
         return <span className="val-proposed">{item.proposedValue}</span>;
       }
     }
+    if (item.proposedValue.includes('Concluído') || item.proposedValue.includes('CONCLUÍDO') || /\d{2}\/\d{2}\/\d{4}/.test(item.proposedValue)) {
+      return (
+        <span className="val-proposed" style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+          <CheckCircle2 size={13} className="text-emerald-400" />
+          {item.proposedValue}
+        </span>
+      );
+    }
     return <span className="val-proposed">{item.proposedValue}</span>;
+  };
+
+  const getTargetColumnDescription = (item: StagingItem) => {
+    if (item.sector === 'CADASTRO' || item.columnKey === 'nova_empresa') {
+      return {
+        table: 'Cadastro de Empresas',
+        column: 'Nova Empresa (Central)',
+        impact: 'Cadastrará a empresa e ativará no Contábil, Fiscal e DP'
+      };
+    }
+
+    const mapping: Record<string, { table: string; column: string; impact: string }> = {
+      // DP
+      dp_data_calc_folha: {
+        table: 'Fechamento DP',
+        column: 'Data Calc Folha',
+        impact: 'Preencherá a data de cálculo da folha'
+      },
+      dp_calculo_folha: {
+        table: 'Fechamento DP',
+        column: 'Data Calc Folha',
+        impact: 'Preencherá a data de cálculo da folha'
+      },
+      dp_data_envio_folha: {
+        table: 'Fechamento DP',
+        column: 'Data Envio Folha',
+        impact: 'Preencherá a data de envio dos holerites'
+      },
+      dp_dctf_web: {
+        table: 'Fechamento DP',
+        column: 'DCTF Web',
+        impact: 'Preencherá a data de entrega da DCTFWeb'
+      },
+      dp_fgts_dig: {
+        table: 'Fechamento DP',
+        column: 'FGTS Digital',
+        impact: 'Preencherá a data de entrega do FGTS Digital'
+      },
+      dp_qtde_funcionarios: {
+        table: 'Fechamento DP',
+        column: 'Qtde Funcionários',
+        impact: 'Atualizará a quantidade de funcionários'
+      },
+      // FISCAL
+      das: {
+        table: 'Fechamento Fiscal',
+        column: 'Detalhes Impostos ➔ DAS / Apuração',
+        impact: 'Concluirá o DAS com a data da apuração'
+      },
+      faturamento: {
+        table: 'Fechamento Fiscal',
+        column: 'Detalhes Impostos ➔ Faturamento',
+        impact: 'Preencherá o faturamento mensal'
+      },
+      reinf: {
+        table: 'Fechamento Fiscal',
+        column: 'Detalhes REINF',
+        impact: 'Concluirá a obrigação REINF com a data'
+      },
+      // CONTÁBIL
+      cont_mes_10: {
+        table: 'Fechamento Contábil',
+        column: 'Outubro (cont_mes_10)',
+        impact: 'Marcará a competência Outubro como OK - FINALIZADO'
+      },
+      fechamento_doc: {
+        table: 'Fechamento Contábil',
+        column: 'Documentos do Mês',
+        impact: 'Atualizará o status dos documentos'
+      },
+      cobranca_doc: {
+        table: 'Fechamento Contábil',
+        column: 'Cobrança Documentos',
+        impact: 'Preencherá a data de cobrança de documentos'
+      }
+    };
+
+    const found = mapping[item.columnKey];
+    if (found) return found;
+
+    return {
+      table: `Fechamento ${item.sector}`,
+      column: item.columnLabel || item.columnKey,
+      impact: `Atualizará o campo ${item.columnKey} na competência ${item.referencePeriod}`
+    };
   };
 
   return (
@@ -427,18 +520,20 @@ export function DominioStagingModal({ isOpen, onClose, onSuccess }: DominioStagi
                         <span className="period-tag">{item.referencePeriod}</span>
                       </td>
                       <td>
-                        <div className="dominio-column-info">
-                          <span className="column-label-tag">{item.columnLabel}</span>
-                          <div className="dominio-target-detail">
-                            {item.sector === 'CADASTRO' ? (
-                              <span className="target-badge-cadastro">➕ Novo Cadastro de Empresa</span>
-                            ) : (
-                              <span className="target-badge-sector">
-                                Alterará coluna no <strong>{item.sector}</strong>
-                              </span>
-                            )}
-                          </div>
-                        </div>
+                        {(() => {
+                          const target = getTargetColumnDescription(item);
+                          return (
+                            <div className="dominio-column-info">
+                              <span className="column-label-tag">{item.columnLabel}</span>
+                              <div className="dominio-target-detail">
+                                <span className="target-exact-col">
+                                  📍 <strong>{target.table}:</strong> Coluna <em>"{target.column}"</em>
+                                </span>
+                                <span className="target-impact-desc">{target.impact}</span>
+                              </div>
+                            </div>
+                          );
+                        })()}
                       </td>
                       <td>
                         {isUnregistered ? (

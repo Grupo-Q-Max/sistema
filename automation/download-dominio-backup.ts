@@ -683,7 +683,7 @@ async function syncDownloadedBackupToStaging(fileName: string): Promise<void> {
           columnKey: 'das',
           columnLabel: 'DAS / Apuração',
           currentValue: 'Em Aberto',
-          proposedValue: 'Concluído',
+          proposedValue: '05/11/2026 (Concluído)',
           referencePeriod: '10/2026'
         },
         {
@@ -692,7 +692,7 @@ async function syncDownloadedBackupToStaging(fileName: string): Promise<void> {
           columnKey: 'cont_mes_10',
           columnLabel: 'Outubro (Documentos / Balancete)',
           currentValue: 'Pendente',
-          proposedValue: 'OK - FINALIZADO',
+          proposedValue: 'OK - FINALIZADO (05/11/2026)',
           referencePeriod: '2026'
         },
         {
