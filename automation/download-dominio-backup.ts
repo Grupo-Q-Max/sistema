@@ -326,34 +326,64 @@ async function handleLoginFlow(page: Page): Promise<void> {
     if (isEmailCodeChallenge) {
       console.log('📬 Detectada tela de código por e-mail da Thomson Reuters (mfa-email-challenge)!');
 
-      // Localiza o campo editável onde se digita o código (ignora o email desabilitado no topo)
-      const codeInput = page.locator('input:not([disabled]):not([readonly])')
-        .or(page.locator('input[name*="code" i], input[id*="code" i], input[type="text"]:not([disabled])'))
-        .last();
-
       let extractedCode: string | null = null;
       for (let attempt = 1; attempt <= 10; attempt++) {
         console.log(`⏳ Buscando código na caixa compartilhada do Outlook Web (tentativa ${attempt}/10)...`);
         extractedCode = await getOutlookVerificationCode(page.context());
         if (extractedCode) break;
-        await page.waitForTimeout(4000);
+        await page.waitForTimeout(3000);
       }
 
-      if (extractedCode && await codeInput.isVisible({ timeout: 2000 }).catch(() => false)) {
+      await page.bringToFront().catch(() => {});
+      await page.waitForTimeout(500);
+
+      if (extractedCode) {
         console.log(`🎯 Inserindo código de verificação recebido: ${extractedCode}...`);
-        await codeInput.fill(extractedCode);
+
+        // 1. Preenche diretamente no DOM via JavaScript (compatível com qualquer framework/Angular)
+        await page.evaluate((code) => {
+          const inputs = Array.from(document.querySelectorAll('input')).filter(i => {
+            const isHidden = i.type === 'hidden';
+            const isReadonly = i.readOnly;
+            const isDisabled = i.disabled;
+            return !isHidden && !isReadonly && !isDisabled;
+          });
+          const target = inputs[inputs.length - 1];
+          if (target) {
+            target.focus();
+            target.value = code;
+            target.dispatchEvent(new Event('input', { bubbles: true }));
+            target.dispatchEvent(new Event('change', { bubbles: true }));
+          }
+        }, extractedCode).catch(() => {});
+
+        // 2. Preenche via Playwright no último input editável da tela
+        const editInputs = page.locator('input:not([disabled]):not([readonly]):not([type="hidden"])');
+        const count = await editInputs.count().catch(() => 0);
+        const inputToFill = count > 0 ? editInputs.nth(count - 1) : page.locator('input[type="text"]').last();
+
+        if (await inputToFill.isVisible({ timeout: 2000 }).catch(() => false)) {
+          await inputToFill.click({ force: true }).catch(() => {});
+          await inputToFill.fill(extractedCode).catch(() => {});
+        }
+
         await page.waitForTimeout(800);
 
+        // 3. Clica no botão Continuar
         const contBtn = page.getByRole('button', { name: /continuar|avançar|entrar/i })
           .or(page.locator('button:has-text("Continuar"), input[value*="Continuar"]'))
           .first();
 
-        if (await contBtn.isVisible({ timeout: 2000 })) {
+        if (await contBtn.isVisible({ timeout: 2000 }).catch(() => false)) {
           console.log('👆 Clicando em Continuar...');
-          await contBtn.click({ force: true });
-          await page.waitForTimeout(4000);
-          continue;
+          await contBtn.click({ force: true }).catch(() => {});
         }
+
+        // Pressiona Enter por garantia
+        await page.keyboard.press('Enter').catch(() => {});
+
+        await page.waitForTimeout(4000);
+        continue;
       } else {
         console.log('ℹ️ Código ainda não obtido. Se você já tem o e-mail aberto no Outlook, pode digitar na tela.');
       }
