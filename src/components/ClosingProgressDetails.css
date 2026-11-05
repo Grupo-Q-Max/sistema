@@ -5,6 +5,185 @@
 .closing-progress-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;padding-top:18px;margin-top:18px;border-top:1px solid #e2e8f0}.closing-progress-card{border:1px solid #e2e8f0;border-radius:9px;background:#f8fafc;color:#475569;padding:13px;text-align:left;cursor:pointer;font:inherit}.closing-progress-card:hover,.closing-progress-card.selected{border-color:#a78bfa;background:#f5f3ff}.closing-progress-card>div:first-child{display:flex;justify-content:space-between;gap:12px;font-size:.82rem;margin-bottom:12px}.closing-progress-card p{text-align:right;color:#64748b;margin:8px 0 0;font-size:.75rem}.closing-progress-card small{display:block;margin-top:7px;color:#64748b;font-size:.67rem}.closing-progress-bar.low span{background:#e11d48}.closing-progress-bar.medium span{background:#f59e0b}.closing-progress-bar.good span{background:#10b981}
 .closing-progress-expanded{margin-top:20px;border-top:1px solid #e2e8f0;padding-top:18px}.closing-progress-expanded h4{display:flex;gap:8px;align-items:center;margin:0 0 14px;color:#4338ca}.closing-progress-search{display:flex;gap:10px;align-items:center;margin-bottom:14px}.closing-progress-search input,.closing-progress-search select{padding:10px;border:1px solid #cbd5e1;border-radius:8px;background:#fff;color:#334155;font:inherit;font-size:.8rem}.closing-progress-search input{flex:1;min-width:0}.closing-progress-records{max-height:380px;overflow:auto;border:1px solid #e2e8f0;border-radius:8px}.closing-progress-records table{width:100%;border-collapse:collapse;font-size:.8rem}.closing-progress-records th{padding:12px;text-align:left;background:#f1f5f9;position:sticky;top:0;z-index:1}.closing-progress-records td{padding:12px;border-top:1px solid #e2e8f0;vertical-align:top;white-space:normal;overflow-wrap:anywhere}.closing-progress-records td:nth-child(2){min-width:220px}.closing-progress-records small{display:block;margin-top:5px;color:#64748b}.closing-progress-status{display:inline-block;padding:5px 8px;border-radius:6px;background:#fef3c7;color:#92400e;font-size:.72rem}.closing-progress-status.done{background:#dcfce7;color:#166534}.closing-progress-status.excluded{background:#e2e8f0;color:#475569}.closing-progress-empty{padding:18px;text-align:center;color:#64748b;font-size:.8rem}
 .closing-stat-card.progress-clickable{cursor:pointer}.closing-stat-card.progress-clickable:focus-visible{outline:3px solid #818cf8;outline-offset:3px}.closing-stat-card.progress-clickable:hover{border-color:#818cf8}
+
+/* Mini pills nos cards superiores */
+.closing-progress-card-breakdown {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 8px;
+  padding-top: 6px;
+  border-top: 1px dashed rgba(255, 255, 255, 0.1);
+}
+
+.mini-breakdown-pill {
+  font-size: 0.68rem;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-weight: 500;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  background: rgba(255, 255, 255, 0.05);
+  color: #94a3b8;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.mini-breakdown-pill strong {
+  color: #fff;
+}
+
+.mini-breakdown-pill.doc-rede {
+  color: #c4b5fd;
+  background: rgba(168, 85, 247, 0.15);
+  border-color: rgba(168, 85, 247, 0.3);
+}
+.mini-breakdown-pill.doc-rede strong { color: #e9d5ff; }
+
+.mini-breakdown-pill.no-movement {
+  color: #93c5fd;
+  background: rgba(59, 130, 246, 0.15);
+  border-color: rgba(59, 130, 246, 0.3);
+}
+.mini-breakdown-pill.no-movement strong { color: #bfdbfe; }
+
+.mini-breakdown-pill.collection {
+  color: #fde047;
+  background: rgba(234, 179, 8, 0.15);
+  border-color: rgba(234, 179, 8, 0.3);
+}
+.mini-breakdown-pill.collection strong { color: #fef08a; }
+
+.mini-breakdown-pill.pending {
+  color: #fca5a5;
+  background: rgba(239, 68, 68, 0.15);
+  border-color: rgba(239, 68, 68, 0.3);
+}
+.mini-breakdown-pill.pending strong { color: #fecaca; }
+
+/* Barra de chips dentro do painel expandido */
+.closing-progress-breakdown-chips {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 14px;
+  padding: 10px 14px;
+  background: rgba(15, 23, 42, 0.6);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 10px;
+}
+
+.progress-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border-radius: 7px;
+  font-size: 0.76rem;
+  cursor: pointer;
+  border: 1px solid transparent;
+  background: rgba(30, 41, 59, 0.8);
+  color: #94a3b8;
+  transition: all 0.2s;
+  user-select: none;
+}
+
+.progress-chip:hover {
+  transform: translateY(-1px);
+  filter: brightness(1.15);
+}
+
+.progress-chip .chip-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.progress-chip .chip-label {
+  font-weight: 600;
+  letter-spacing: 0.2px;
+}
+
+.progress-chip strong {
+  font-weight: 700;
+  margin-left: 2px;
+  color: #fff;
+}
+
+.progress-chip .chip-pct {
+  font-size: 0.7rem;
+  opacity: 0.85;
+  margin-left: 2px;
+  padding: 1px 4px;
+  border-radius: 4px;
+  background: rgba(0, 0, 0, 0.3);
+}
+
+.progress-chip.all {
+  color: #e2e8f0;
+  border-color: rgba(255, 255, 255, 0.15);
+}
+.progress-chip.all.active, .progress-chip.all:hover {
+  background: rgba(255, 255, 255, 0.15);
+  border-color: rgba(255, 255, 255, 0.4);
+}
+
+.progress-chip.done {
+  color: #4ade80;
+  border-color: rgba(74, 222, 128, 0.3);
+  background: rgba(34, 197, 94, 0.1);
+}
+.progress-chip.done .chip-dot { background: #4ade80; }
+.progress-chip.done.active, .progress-chip.done:hover {
+  background: rgba(34, 197, 94, 0.25);
+  border-color: rgba(74, 222, 128, 0.65);
+}
+
+.progress-chip.doc-rede {
+  color: #c4b5fd;
+  border-color: rgba(196, 181, 253, 0.3);
+  background: rgba(168, 85, 247, 0.1);
+}
+.progress-chip.doc-rede .chip-dot { background: #c4b5fd; }
+.progress-chip.doc-rede.active, .progress-chip.doc-rede:hover {
+  background: rgba(168, 85, 247, 0.25);
+  border-color: rgba(196, 181, 253, 0.65);
+}
+
+.progress-chip.no-movement {
+  color: #93c5fd;
+  border-color: rgba(147, 197, 253, 0.3);
+  background: rgba(59, 130, 246, 0.1);
+}
+.progress-chip.no-movement .chip-dot { background: #93c5fd; }
+.progress-chip.no-movement.active, .progress-chip.no-movement:hover {
+  background: rgba(59, 130, 246, 0.25);
+  border-color: rgba(147, 197, 253, 0.65);
+}
+
+.progress-chip.collection {
+  color: #fde047;
+  border-color: rgba(250, 204, 21, 0.3);
+  background: rgba(234, 179, 8, 0.1);
+}
+.progress-chip.collection .chip-dot { background: #fde047; }
+.progress-chip.collection.active, .progress-chip.collection:hover {
+  background: rgba(234, 179, 8, 0.25);
+  border-color: rgba(250, 204, 21, 0.65);
+}
+
+.progress-chip.pending {
+  color: #fca5a5;
+  border-color: rgba(248, 113, 113, 0.3);
+  background: rgba(239, 68, 68, 0.1);
+}
+.progress-chip.pending .chip-dot { background: #fca5a5; }
+.progress-chip.pending.active, .progress-chip.pending:hover {
+  background: rgba(239, 68, 68, 0.25);
+  border-color: rgba(248, 113, 113, 0.65);
+}
 .accounting-months-button{min-width:150px;display:flex;flex-direction:column;gap:6px;padding:10px 12px;border:1px solid #a78bfa;border-radius:8px;background:#ede9fe;color:#6d28d9;cursor:pointer;font:inherit;font-size:.78rem;text-align:left}.accounting-months-button small{font-size:.68rem;color:#64748b}.accounting-months-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}.accounting-months-card{padding:14px;border:1px solid #e2e8f0;border-radius:10px;background:#f8fafc;color:#334155}.accounting-months-card h4{margin:0 0 12px;display:flex;gap:6px;align-items:center;color:#4338ca}.accounting-months-card small{display:block;margin-top:8px;color:#64748b;font-size:.7rem}.accounting-months-card .payroll-input-cell select{background:#fff!important;color:#334155!important;border-color:#cbd5e1!important;width:100%}
 @media(max-width:800px){.accounting-months-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.closing-progress-heading{flex-wrap:wrap}.closing-progress-meter{width:100%}.closing-progress-search{flex-wrap:wrap}}@media(max-width:500px){.accounting-months-grid{grid-template-columns:1fr}.closing-progress-grid{grid-template-columns:1fr}.closing-progress-search input{flex-basis:100%}}
 .accounting-months-card.done{border-top:3px solid #10b981;background:#f0fdf4}.accounting-months-card.pending{border-top:3px solid #a78bfa}.accounting-months-card.excluded{background:#f1f5f9;border-top:3px solid #94a3b8}

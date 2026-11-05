@@ -14,7 +14,7 @@ import {useCompetenceCalendar} from './useCompetenceCalendar';
 import {TableSkeleton,ButtonSpinner} from './LoadingSkeleton';
 import {ACCOUNTING_API_VERSION,accountingYear,accountingMonth,NOT_CLIENT} from '../config/accountingColumns';
 import {resolveColumnKey} from '../config/payrollColumns';
-import {visibilitySummary} from '../config/columnVisibility';
+import {visibilitySummary, MONTH_NAMES} from '../config/columnVisibility';
 import {exportToCsv} from '../utils/exportCsv';
 import {compareCodes,formatCompanyCode} from '../utils/codeSort';
 import {canUserEditCompany,canUserViewCompany,isUserResponsibleForCompany,companyBelongsToSector} from '../config/companyPermissions';
@@ -42,6 +42,7 @@ export function AccountingClosings({currentView,onNavigate,currentUser,onLogout}
   const [loading,setLoading]=useState(true);const [error,setError]=useState('');const [pending,setPending]=useState(0);
   const [search,setSearch]=useState('');const [situation,setSituation]=useState('ALL');const [statusFilter,setStatusFilter]=useState<'ALL'|'COMPLETED'|'IN_PROGRESS'|'PENDING'>('ALL');const [responsibleFilter,setResponsibleFilter]=useState('ALL');const [regime,setRegime]=useState('ALL');const [groupFilter,setGroupFilter]=useState('ALL');const [certFilter,setCertFilter]=useState('ALL');
   const [monthStatusFilter,setMonthStatusFilter]=useState<'ALL'|'DONE'|'DOC_REDE'|'SEM_MOVIMENTO'|'COBRANCA'|'PENDING'>('ALL');
+  const [breakdownMonth,setBreakdownMonth]=useState<number|'ALL'>('ALL');
   const [columnFilters,setColumnFilters]=useState<Record<string,string>>({});
   const [openHeaderFilter,setOpenHeaderFilter]=useState<string|null>(null);
   const [sort,setSort]=useState<{key:'code'|'name'|'groupName';asc:boolean}>({key:'code',asc:true});
@@ -143,6 +144,72 @@ export function AccountingClosings({currentView,onNavigate,currentUser,onLogout}
     return { totalEligible, done, noMovement, docRede, collection, pending };
   }, [scopedRows, columns, year, latestPeriod]);
 
+  const monthlyBreakdowns = useMemo(() => {
+    return Array.from({ length: 12 }, (_, m) => {
+      const monthNumber = m + 1;
+      const monthName = MONTH_NAMES[m];
+      const isBlocked = Date.UTC(year, m, 1) > latestPeriod.getTime();
+      const col = columns.find(item => accountingMonth(item) === monthNumber);
+      const key = col ? (resolveColumnKey(col) || col.id) : `cont_mes_${String(monthNumber).padStart(2, '0')}`;
+
+      let totalEligible = 0;
+      let done = 0;
+      let noMovement = 0;
+      let docRede = 0;
+      let collection = 0;
+      let pending = 0;
+
+      if (!isBlocked) {
+        for (const row of scopedRows) {
+          const val = row.columnsData?.[key];
+          if (val === NOT_CLIENT) continue;
+
+          const valStr = typeof val === 'object' && val !== null ? (val.status || val.value || '') : String(val || '');
+          totalEligible++;
+          if (valStr.startsWith('OK - FINALIZADO')) {
+            done++;
+          } else if (valStr.startsWith('SEM MOVIMENTO')) {
+            noMovement++;
+          } else if (valStr.startsWith('DOC. REDE')) {
+            docRede++;
+          } else if (valStr.startsWith('COBRANÇA DOC.')) {
+            collection++;
+          } else {
+            pending++;
+          }
+        }
+      }
+
+      return {
+        monthNumber,
+        monthName,
+        isBlocked,
+        totalEligible,
+        done,
+        noMovement,
+        docRede,
+        collection,
+        pending
+      };
+    });
+  }, [scopedRows, columns, year, latestPeriod]);
+
+  const activeBreakdown = useMemo(() => {
+    if (breakdownMonth === 'ALL') {
+      return {
+        title: `Detalhamento dos Meses · ${year}`,
+        subtitle: `${monthsBreakdown.totalEligible} meses liberados nas empresas ativas (clique para filtrar)`,
+        ...monthsBreakdown
+      };
+    }
+    const current = monthlyBreakdowns[breakdownMonth - 1];
+    return {
+      title: `Detalhamento de ${current.monthName} · ${year}`,
+      subtitle: `${current.totalEligible} empresas ativas com ${current.monthName} aplicável`,
+      ...current
+    };
+  }, [breakdownMonth, monthsBreakdown, monthlyBreakdowns, year]);
+
   const filtered=useMemo(()=>scopedRows.filter(row=>{
     const company=row.company;const term=deferredSearch.trim().toLocaleLowerCase('pt-BR');const text=[company.code,formatCompanyCode(company.code),company.name,company.tradeName,company.cnpj,company.groupName,company.city].filter(Boolean).join(' ').toLocaleLowerCase('pt-BR');
     const digits=term.replace(/\D/g,'');const match=text.includes(term)||(digits.length>0&&(company.cnpj||'').replace(/\D/g,'').includes(digits));
@@ -160,11 +227,15 @@ export function AccountingClosings({currentView,onNavigate,currentUser,onLogout}
     let matchMonthStatus = true;
     if (monthStatusFilter !== 'ALL') {
       let hasMatch = false;
-      for (let m = 0; m < 12; m++) {
-        const isBlocked = Date.UTC(year, m, 1) > latestPeriod.getTime();
+      const monthsToCheck = breakdownMonth === 'ALL'
+        ? Array.from({ length: 12 }, (_, i) => i + 1)
+        : [breakdownMonth];
+
+      for (const mNum of monthsToCheck) {
+        const isBlocked = Date.UTC(year, mNum - 1, 1) > latestPeriod.getTime();
         if (isBlocked) continue;
-        const col = columns.find(item => accountingMonth(item) === m + 1);
-        const k = col ? (resolveColumnKey(col) || col.id) : `cont_mes_${String(m + 1).padStart(2, '0')}`;
+        const col = columns.find(item => accountingMonth(item) === mNum);
+        const k = col ? (resolveColumnKey(col) || col.id) : `cont_mes_${String(mNum).padStart(2, '0')}`;
         const val = row.columnsData?.[k];
         if (val === NOT_CLIENT) continue;
 
@@ -195,7 +266,7 @@ export function AccountingClosings({currentView,onNavigate,currentUser,onLogout}
     if (sort.key === 'code') return compareCodes(a.company.code, b.company.code, sort.asc);
     if (sort.key === 'groupName') return String(a.company.groupName||'').localeCompare(String(b.company.groupName||''),'pt-BR',{numeric:true})*(sort.asc?1:-1);
     return String(a.company[sort.key]||'').localeCompare(String(b.company[sort.key]||''),'pt-BR',{numeric:true})*(sort.asc?1:-1);
-  }),[scopedRows,deferredSearch,situation,statusFilter,responsibleFilter,regime,groupFilter,certFilter,monthStatusFilter,columnFilters,sort,year,columns,latestPeriod]);
+  }),[scopedRows,deferredSearch,situation,statusFilter,responsibleFilter,regime,groupFilter,certFilter,monthStatusFilter,breakdownMonth,columnFilters,sort,year,columns,latestPeriod]);
   const allFilteredSelected = filtered.length > 0 && filtered.every(r => selectedCompanyIds.includes(r.company.id));
   const handleToggleSelectAll = () => {
     if (allFilteredSelected) {
@@ -358,23 +429,52 @@ export function AccountingClosings({currentView,onNavigate,currentUser,onLogout}
         <div className="breakdown-header">
           <div className="breakdown-title">
             <Calendar size={18} />
-            <span>Detalhamento dos Meses · {year}</span>
+            <span>{activeBreakdown.title}</span>
           </div>
           <span className="breakdown-subtitle">
-            {monthsBreakdown.totalEligible} meses liberados nas empresas ativas (clique para filtrar)
+            {activeBreakdown.subtitle}
           </span>
         </div>
+
+        {/* ABAS SELETORAS DE MESES */}
+        <div className="breakdown-month-tabs">
+          <button
+            type="button"
+            className={`breakdown-month-tab ${breakdownMonth === 'ALL' ? 'active' : ''}`}
+            onClick={() => setBreakdownMonth('ALL')}
+          >
+            Ano Todo
+          </button>
+          {monthlyBreakdowns.map(mb => (
+            <button
+              key={mb.monthNumber}
+              type="button"
+              className={`breakdown-month-tab ${breakdownMonth === mb.monthNumber ? 'active' : ''} ${mb.isBlocked ? 'disabled' : ''}`}
+              onClick={() => !mb.isBlocked && setBreakdownMonth(mb.monthNumber)}
+              disabled={mb.isBlocked}
+              title={mb.isBlocked ? 'Competência futura' : `${mb.monthName}: ${mb.done}/${mb.totalEligible} concluídos`}
+            >
+              <span>{mb.monthName.slice(0, 3)}</span>
+              {!mb.isBlocked && (
+                <span className="tab-badge">
+                  {mb.docRede > 0 ? `Doc: ${mb.docRede}` : `${mb.totalEligible ? Math.round(mb.done / mb.totalEligible * 100) : 0}%`}
+                </span>
+              )}
+            </button>
+          ))}
+        </div>
+
         <div className="breakdown-chips">
           <button
             type="button"
             className={`breakdown-chip done ${monthStatusFilter === 'DONE' ? 'active' : ''}`}
             onClick={() => setMonthStatusFilter(prev => prev === 'DONE' ? 'ALL' : 'DONE')}
-            title="Filtrar empresas com meses Concluídos"
+            title="Filtrar empresas Concluídas"
           >
             <span className="chip-dot" />
             <span className="chip-label">CONCLUÍDO</span>
-            <strong>{monthsBreakdown.done} / {monthsBreakdown.totalEligible}</strong>
-            <span className="chip-pct">{monthsBreakdown.totalEligible ? Math.round(monthsBreakdown.done / monthsBreakdown.totalEligible * 100) : 0}%</span>
+            <strong>{activeBreakdown.done} / {activeBreakdown.totalEligible}</strong>
+            <span className="chip-pct">{activeBreakdown.totalEligible ? Math.round(activeBreakdown.done / activeBreakdown.totalEligible * 100) : 0}%</span>
           </button>
           <button
             type="button"
@@ -384,8 +484,8 @@ export function AccountingClosings({currentView,onNavigate,currentUser,onLogout}
           >
             <span className="chip-dot" />
             <span className="chip-label">DOC. REDE</span>
-            <strong>{monthsBreakdown.docRede} / {monthsBreakdown.totalEligible}</strong>
-            <span className="chip-pct">{monthsBreakdown.totalEligible ? Math.round(monthsBreakdown.docRede / monthsBreakdown.totalEligible * 100) : 0}%</span>
+            <strong>{activeBreakdown.docRede} / {activeBreakdown.totalEligible}</strong>
+            <span className="chip-pct">{activeBreakdown.totalEligible ? Math.round(activeBreakdown.docRede / activeBreakdown.totalEligible * 100) : 0}%</span>
           </button>
           <button
             type="button"
@@ -395,8 +495,8 @@ export function AccountingClosings({currentView,onNavigate,currentUser,onLogout}
           >
             <span className="chip-dot" />
             <span className="chip-label">SEM MOVIMENTO</span>
-            <strong>{monthsBreakdown.noMovement} / {monthsBreakdown.totalEligible}</strong>
-            <span className="chip-pct">{monthsBreakdown.totalEligible ? Math.round(monthsBreakdown.noMovement / monthsBreakdown.totalEligible * 100) : 0}%</span>
+            <strong>{activeBreakdown.noMovement} / {activeBreakdown.totalEligible}</strong>
+            <span className="chip-pct">{activeBreakdown.totalEligible ? Math.round(activeBreakdown.noMovement / activeBreakdown.totalEligible * 100) : 0}%</span>
           </button>
           <button
             type="button"
@@ -406,19 +506,19 @@ export function AccountingClosings({currentView,onNavigate,currentUser,onLogout}
           >
             <span className="chip-dot" />
             <span className="chip-label">COBRANÇA DOC.</span>
-            <strong>{monthsBreakdown.collection} / {monthsBreakdown.totalEligible}</strong>
-            <span className="chip-pct">{monthsBreakdown.totalEligible ? Math.round(monthsBreakdown.collection / monthsBreakdown.totalEligible * 100) : 0}%</span>
+            <strong>{activeBreakdown.collection} / {activeBreakdown.totalEligible}</strong>
+            <span className="chip-pct">{activeBreakdown.totalEligible ? Math.round(activeBreakdown.collection / activeBreakdown.totalEligible * 100) : 0}%</span>
           </button>
           <button
             type="button"
             className={`breakdown-chip pending ${monthStatusFilter === 'PENDING' ? 'active' : ''}`}
             onClick={() => setMonthStatusFilter(prev => prev === 'PENDING' ? 'ALL' : 'PENDING')}
-            title="Filtrar empresas com meses Pendentes"
+            title="Filtrar empresas com Pendente"
           >
             <span className="chip-dot" />
             <span className="chip-label">PENDENTE</span>
-            <strong>{monthsBreakdown.pending} / {monthsBreakdown.totalEligible}</strong>
-            <span className="chip-pct">{monthsBreakdown.totalEligible ? Math.round(monthsBreakdown.pending / monthsBreakdown.totalEligible * 100) : 0}%</span>
+            <strong>{activeBreakdown.pending} / {activeBreakdown.totalEligible}</strong>
+            <span className="chip-pct">{activeBreakdown.totalEligible ? Math.round(activeBreakdown.pending / activeBreakdown.totalEligible * 100) : 0}%</span>
           </button>
           {monthStatusFilter !== 'ALL' && (
             <button

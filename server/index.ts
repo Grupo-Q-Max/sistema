@@ -667,7 +667,20 @@ app.get('/api/accounting-closings', async (req,res)=>{
     const year=req.query.year===undefined?accountingYear():Number(req.query.year);
     if(!Number.isInteger(year)||year<1900||year>accountingYear())return res.status(400).json({error:'Ano contábil inválido ou ainda não liberado.'});
     const result=await accountingEngine.sync(year);
-    const columns=result.columns.filter((column:any)=>annualColumnActive(column,year));
+    const MONTH_NAMES_PT = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
+    const columns=result.columns.filter((column:any)=>annualColumnActive(column,year)).map((col:any)=>{
+      const match=String(col.columnKey||'').match(/^cont_mes_(\d{2})$/);
+      if(match){
+        const idx=Number(match[1])-1;
+        if(idx>=0&&idx<12)return {...col,name:MONTH_NAMES_PT[idx]};
+      }
+      return col;
+    });
+    // Garante que o banco também fique com o nome correto para Janeiro
+    prisma.departmentColumn.updateMany({
+      where: { department: 'CONTABIL', columnKey: 'cont_mes_01', NOT: { name: 'Janeiro' } },
+      data: { name: 'Janeiro' }
+    }).catch(()=>{});
     const contabilCompanies = (result.companies || []).filter((c: any) => companyBelongsToSector(c, 'CONTABIL'));
     const map=new Map<string,any>(result.closings.map((closing:any)=>[closing.companyId,closing]));
     const rows=contabilCompanies.map((company:any)=>{
