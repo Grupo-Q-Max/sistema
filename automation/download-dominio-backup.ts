@@ -285,10 +285,10 @@ async function handleLoginFlow(page: Page): Promise<void> {
       }
     }
 
-    // 6.1. Tela "Selecione um método para verificar sua identidade" (conforme imagem do Onvio)
+    // 6.1. Tela "Selecione um método para verificar sua identidade" (somente quando estiver na lista de opções)
     const isMethodSelection = await page.evaluate(() => {
       const text = document.body.innerText || '';
-      return /selecione um método|verificar sua identidade|choose a verification method/i.test(text);
+      return /selecione um método|choose a (verification )?method/i.test(text);
     }).catch(() => false);
 
     if (isMethodSelection) {
@@ -317,20 +317,64 @@ async function handleLoginFlow(page: Page): Promise<void> {
       }
     }
 
-    // 7. Tela de código de verificação (MFA por E-mail ou Código de Recuperação)
+    // 7. Tela de código por E-mail da Thomson Reuters (mfa-email-challenge ou "Enviamos um e-mail com o código")
+    const isEmailCodeChallenge = url.includes('mfa-email-challenge') || await page.evaluate(() => {
+      const text = document.body.innerText || '';
+      return text.includes('Enviamos um e-mail com o código') || text.includes('Inserir o código');
+    }).catch(() => false);
+
+    if (isEmailCodeChallenge) {
+      console.log('📬 Detectada tela de código por e-mail da Thomson Reuters (mfa-email-challenge)!');
+
+      // Localiza o campo editável onde se digita o código (ignora o email desabilitado no topo)
+      const codeInput = page.locator('input:not([disabled]):not([readonly])')
+        .or(page.locator('input[name*="code" i], input[id*="code" i], input[type="text"]:not([disabled])'))
+        .last();
+
+      let extractedCode: string | null = null;
+      for (let attempt = 1; attempt <= 10; attempt++) {
+        console.log(`⏳ Buscando código na caixa compartilhada do Outlook Web (tentativa ${attempt}/10)...`);
+        extractedCode = await getOutlookVerificationCode(page.context());
+        if (extractedCode) break;
+        await page.waitForTimeout(4000);
+      }
+
+      if (extractedCode && await codeInput.isVisible({ timeout: 2000 }).catch(() => false)) {
+        console.log(`🎯 Inserindo código de verificação recebido: ${extractedCode}...`);
+        await codeInput.fill(extractedCode);
+        await page.waitForTimeout(800);
+
+        const contBtn = page.getByRole('button', { name: /continuar|avançar|entrar/i })
+          .or(page.locator('button:has-text("Continuar"), input[value*="Continuar"]'))
+          .first();
+
+        if (await contBtn.isVisible({ timeout: 2000 })) {
+          console.log('👆 Clicando em Continuar...');
+          await contBtn.click({ force: true });
+          await page.waitForTimeout(4000);
+          continue;
+        }
+      } else {
+        console.log('ℹ️ Código ainda não obtido. Se você já tem o e-mail aberto no Outlook, pode digitar na tela.');
+      }
+
+      await page.waitForTimeout(3000);
+      continue;
+    }
+
+    // 7.1. Tela genérica de código de verificação (fallback)
     const isMfaUrl = url.includes('mfa') || url.includes('challenge') || url.includes('code') || url.includes('verification') || url.includes('recover');
     let codeInput = page.locator('input[name*="code" i], input[name*="challenge" i], input[name*="otp" i], input[id*="code" i], input[id*="otp" i], input[autocomplete="one-time-code"], input[placeholder*="código" i]').first();
 
     const isCodeVisible = await codeInput.isVisible({ timeout: 1500 }).catch(() => false);
     if (isMfaUrl || isCodeVisible) {
-      console.log('📬 Detectada tela de código de verificação.');
+      console.log('📬 Detectada tela genérica de código de verificação.');
 
       let codeToFill = '';
       if (DOMINIO_RECOVERY_CODE) {
         console.log('🔑 Preenchendo com código de recuperação do .env...');
         codeToFill = DOMINIO_RECOVERY_CODE;
       } else {
-        // Tenta obter o código automaticamente do Outlook (Web, Desktop ou IMAP)
         for (let attempt = 1; attempt <= 8; attempt++) {
           console.log(`⏳ Aguardando e buscando código no Outlook (tentativa ${attempt}/8)...`);
           const extracted = await getOutlookVerificationCode(page.context());
@@ -347,14 +391,12 @@ async function handleLoginFlow(page: Page): Promise<void> {
         await codeInput.fill(codeToFill);
         await page.waitForTimeout(1000);
 
-        // Marca a opção de lembrar este dispositivo para não pedir de novo
         const rememberBox = page.locator('input[type="checkbox"]').first();
         if (await rememberBox.isVisible({ timeout: 1000 }).catch(() => false)) {
           console.log('☑️ Marcando "Lembrar deste computador / Manter conectado"...');
           await rememberBox.check({ force: true }).catch(() => {});
         }
 
-        // Clica em confirmar / verificar / continuar
         const confirmBtn = page.getByRole('button', { name: /confirmar|verificar|continuar|avançar|entrar|submit/i })
           .or(page.locator('button[type="submit"], input[type="submit"]'))
           .first();
