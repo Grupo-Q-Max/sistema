@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 import { API } from '../api';
 import type { CurrentUser } from '../types/auth';
+import { formatFlexibleDateBr } from '../config/dateUtils';
 import './Company360Modal.css';
 
 export interface Company360ModalProps {
@@ -137,7 +138,7 @@ export function Company360Modal({
                   <ShieldCheck size={18} className={company?.hasClientCertificate ? 'text-emerald' : 'text-slate'} />
                 </div>
                 <span className="c360-kpi-sub">
-                  {company?.certificateExpiration ? `Validade: ${company.certificateExpiration}` : 'Sem data de validade'}
+                  {company?.certificateExpiration ? `Validade: ${formatFlexibleDateBr(company.certificateExpiration)}` : 'Sem data de validade'}
                 </span>
               </div>
 

@@ -1,12 +1,9 @@
+import { parseFlexibleDate } from './dateUtils';
+
 export type QualityIssue={key:string;label:string;severity:'ERROR'|'WARNING'};
 const empty=(value:any)=>value===null||value===undefined||String(value).trim()==='';
 export function certificateDate(value:any):Date|null {
- if(empty(value))return null;const text=String(value).trim();let date:Date;
- const month=text.match(/^(\d{2})\/(\d{4})$/),br=text.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
- if(month){if(+month[1]<1||+month[1]>12)return null;date=new Date(Date.UTC(+month[2],+month[1],0,23,59,59));}
- else if(br){date=new Date(Date.UTC(+br[3],+br[2]-1,+br[1],23,59,59));if(date.getUTCMonth()!==+br[2]-1||date.getUTCDate()!==+br[1])return null;}
- else {date=new Date(text);if(/^\d{4}-\d{2}-\d{2}$/.test(text))date.setUTCHours(23,59,59,999);}
- return Number.isFinite(date.getTime())?date:null;
+ return parseFlexibleDate(value);
 }
 export function companyQuality(company:any,now=new Date()):QualityIssue[]{
  const issues:QualityIssue[]=[];const add=(key:string,label:string,severity:QualityIssue['severity']='ERROR')=>issues.push({key,label,severity});

@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import { canUserViewCompany } from '../config/companyPermissions';
 import { CompanyDetailsModal, formatCnpj } from './CompanyDetailsModal';
+import { getCertificateExpirationStatus, formatFlexibleDateBr } from '../config/dateUtils';
 import { exportToCsv } from '../utils/exportCsv';
 import { formatCompanyCode } from '../utils/codeSort';
 import './Certificates.css';
@@ -78,29 +79,11 @@ export function Certificates({ currentUser }: CertificatesProps) {
   };
 
   const getExpirationStatus = (dateStr?: string | null) => {
-    if (!dateStr) return { status: 'NONE', label: 'Não possui', color: '#64748b', days: null };
-
-    const expDate = new Date(dateStr);
-    const tzOffset = expDate.getTimezoneOffset() * 60000;
-    const localExpDate = new Date(expDate.getTime() + tzOffset);
-
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-
-    const diffTime = localExpDate.getTime() - today.getTime();
-    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-
-    if (diffDays < 0) return { status: 'EXPIRED', label: 'Vencido', color: '#ef4444', days: diffDays };
-    if (diffDays <= 30) return { status: 'WARNING', label: `Vence em ${diffDays}d`, color: '#f59e0b', days: diffDays };
-    if (diffDays <= 60) return { status: 'EXPIRING_60', label: `Vence em ${diffDays}d`, color: '#fb923c', days: diffDays };
-    return { status: 'OK', label: `Válido (${diffDays}d)`, color: '#10b981', days: diffDays };
+    return getCertificateExpirationStatus(dateStr);
   };
 
   const formatDate = (dateStr?: string | null) => {
-    if (!dateStr) return '';
-    const d = new Date(dateStr);
-    const tzOffset = d.getTimezoneOffset() * 60000;
-    return new Date(d.getTime() + tzOffset).toLocaleDateString('pt-BR');
+    return formatFlexibleDateBr(dateStr);
   };
 
   // Filtragem dos dados

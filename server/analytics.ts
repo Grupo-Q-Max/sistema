@@ -3,6 +3,7 @@ import {companyExitAllowsPeriod} from '../src/config/companyExit';
 import {latestOpenPeriod} from '../src/config/competenceCalendar';
 import {computeInstallmentsProgress} from '../src/config/installments';
 import {buildUserCompanyPrismaFilter} from '../src/config/companyPermissions';
+import {parseFlexibleDate} from '../src/config/dateUtils';
 
 // Painel analítico: séries mensais e distribuições calculadas a partir do cadastro e dos fechamentos.
 const SECTORS = ['FISCAL', 'DP', 'CONTABIL', 'CUSHMAN'];
@@ -13,14 +14,9 @@ const label = (d: Date) => `${String(d.getUTCMonth() + 1).padStart(2, '0')}/${d.
 
 function parseMonthYear(value: string | null | undefined): Date | null {
   if (!value) return null;
-  const match = String(value).trim().match(/^(\d{1,2})\s*[/-]\s*(\d{4})$/);
-  if (!match) {
-    const parsed = new Date(String(value));
-    return Number.isNaN(parsed.getTime()) ? null : monthStartUTC(parsed.getUTCFullYear(), parsed.getUTCMonth());
-  }
-  const month = Number(match[1]) - 1;
-  if (month < 0 || month > 11) return null;
-  return monthStartUTC(Number(match[2]), month);
+  const parsed = parseFlexibleDate(value);
+  if (!parsed) return null;
+  return monthStartUTC(parsed.getFullYear(), parsed.getMonth());
 }
 
 function companySectors(company: any): string[] {

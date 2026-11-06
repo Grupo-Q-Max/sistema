@@ -2,6 +2,7 @@ import { externalCompaniesExcluded } from '../src/config/installmentCompanies';
 import { companyExitWhere } from '../src/config/companyExit';
 import { latestOpenPeriod } from '../src/config/competenceCalendar';
 import { buildUserCompanyPrismaFilter } from '../src/config/companyPermissions';
+import { parseFlexibleDate } from '../src/config/dateUtils';
 
 export interface RiskTrigger {
   type: 'CERTIFICATE' | 'PROXY' | 'DOCUMENTATION' | 'DEADLINE' | 'WORKLOAD';
@@ -44,20 +45,9 @@ function parseCertExpiration(exp: string | null | undefined): { date: Date | nul
   const s = String(exp).trim();
   if (!s) return { date: null, raw: null };
 
-  const match = s.match(/^(\d{1,2})\/(\d{2,4})$/);
-  if (match) {
-    const month = parseInt(match[1], 10) - 1;
-    let year = parseInt(match[2], 10);
-    if (year < 100) year += 2000;
-    return {
-      date: new Date(Date.UTC(year, month + 1, 0, 23, 59, 59)),
-      raw: s
-    };
-  }
-
-  const d = new Date(s);
+  const parsed = parseFlexibleDate(s);
   return {
-    date: isNaN(d.getTime()) ? null : d,
+    date: parsed,
     raw: s
   };
 }

@@ -38,6 +38,7 @@ import './Companies.css';
 import { compareCodes, formatCompanyCode } from '../utils/codeSort';
 import { canUserEditCompany, canUserViewCompany, isUserResponsibleForCompany } from '../config/companyPermissions';
 import { installmentHeaders } from '../config/installments';
+import { formatFlexibleDateBr } from '../config/dateUtils';
 import { DEFAULT_COMPANY_CATALOG, normalizeCompanyCatalog, mergeOptionsWithCurrent, type CompanyCatalogConfig } from '../config/systemCatalogs';
 
 interface Company {
@@ -148,16 +149,7 @@ function formatCnpjMask(value: string): string {
 
 function formatDateToBr(isoDate: string | null | undefined): string {
   if (!isoDate) return '';
-  const clean = String(isoDate).trim();
-  if (/^\d{2}\/\d{2}\/\d{4}$/.test(clean)) return clean;
-  const ymd = clean.match(/^(\d{4})-(\d{2})-(\d{2})/);
-  if (ymd) return `${ymd[3]}/${ymd[2]}/${ymd[1]}`;
-  const d = new Date(clean);
-  if (isNaN(d.getTime())) return clean;
-  const day = String(d.getUTCDate()).padStart(2, '0');
-  const month = String(d.getUTCMonth() + 1).padStart(2, '0');
-  const year = d.getUTCFullYear();
-  return `${day}/${month}/${year}`;
+  return formatFlexibleDateBr(isoDate);
 }
 
 function formatBrDateMask(value: string): string {

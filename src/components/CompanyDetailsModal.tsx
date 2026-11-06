@@ -1,83 +1,34 @@
 import { useEffect, useState } from 'react';
 import { Building2, AlertTriangle, Copy, Eye, EyeOff, ExternalLink, CheckCircle2 } from 'lucide-react';
 import { formatCompanyCode } from '../utils/codeSort';
+import { formatFlexibleDateBr, getCertificateExpirationStatus } from '../config/dateUtils';
 import './Closings.css';
 
 export function formatDateBr(dateVal?: string | Date | null): string {
   if (!dateVal) return '-';
-  const str = String(dateVal).trim();
-  if (!str) return '-';
-  if (/^\d{2}\/\d{2}\/\d{4}$/.test(str)) return str;
-  const ymd = str.match(/^(\d{4})-(\d{2})-(\d{2})/);
-  if (ymd) {
-    return `${ymd[3]}/${ymd[2]}/${ymd[1]}`;
-  }
-  const d = new Date(str);
-  if (isNaN(d.getTime())) return str;
-  const day = String(d.getUTCDate()).padStart(2, '0');
-  const month = String(d.getUTCMonth() + 1).padStart(2, '0');
-  const year = d.getUTCFullYear();
-  return `${day}/${month}/${year}`;
+  const formatted = formatFlexibleDateBr(dateVal, '-');
+  return formatted || '-';
 }
 
 export function getCertificateStatus(expirationStr?: string | null) {
   if (!expirationStr) return null;
-  
-  let expDate: Date | null = null;
-  const clean = expirationStr.trim();
-  const parts = clean.split('/');
-
-  if (parts.length === 2) {
-    // MM/AAAA
-    const m = parseInt(parts[0], 10) - 1;
-    const y = parseInt(parts[1], 10);
-    if (!isNaN(m) && !isNaN(y)) {
-      expDate = new Date(y, m + 1, 0, 23, 59, 59);
-    }
-  } else if (parts.length === 3) {
-    // DD/MM/AAAA
-    const d = parseInt(parts[0], 10);
-    const m = parseInt(parts[1], 10) - 1;
-    const y = parseInt(parts[2], 10);
-    if (!isNaN(d) && !isNaN(m) && !isNaN(y)) {
-      expDate = new Date(y, m, d, 23, 59, 59);
-    }
-  } else {
-    const parsed = new Date(clean);
-    if (!isNaN(parsed.getTime())) expDate = parsed;
-  }
-
-  if (!expDate) return null;
-
-  const now = new Date();
-  const diffMs = expDate.getTime() - now.getTime();
-  const diffDays = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
-
-  if (diffDays < 0) {
-    return {
-      status: 'EXPIRED',
-      days: Math.abs(diffDays),
-      label: `Vencido há ${Math.abs(diffDays)} dias`,
-      isUrgent: true,
-      color: '#ef4444',
-    };
-  } else if (diffDays <= 30) {
-    return {
-      status: 'WARNING',
-      days: diffDays,
-      label: diffDays === 0 ? 'Vence hoje!' : `Vence em ${diffDays} dias`,
-      isUrgent: true,
-      color: '#f59e0b',
-    };
-  } else {
-    return {
-      status: 'OK',
-      days: diffDays,
-      label: `${diffDays} dias restantes`,
-      isUrgent: false,
-      color: '#10b981',
-    };
-  }
+  const result = getCertificateExpirationStatus(expirationStr);
+  if (result.status === 'NONE') return null;
+  return {
+    status: result.status === 'INVALID' ? 'EXPIRED' : result.status,
+    days: Math.abs(result.days || 0),
+    label: result.status === 'EXPIRED'
+      ? `Vencido há ${Math.abs(result.days || 0)} dias`
+      : result.status === 'INVALID'
+      ? 'Vencimento inválido'
+      : result.days === 0
+      ? 'Vence hoje!'
+      : (result.days || 0) <= 30
+      ? `Vence em ${result.days} dias`
+      : `${result.days} dias restantes`,
+    isUrgent: result.status === 'EXPIRED' || result.status === 'WARNING' || result.status === 'INVALID',
+    color: result.color
+  };
 }
 
 export function formatCnpj(cnpj: string) {
