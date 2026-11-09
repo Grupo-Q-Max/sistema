@@ -686,6 +686,9 @@ app.get('/api/accounting-closings', async (req,res)=>{
     const rows=contabilCompanies.map((company:any)=>{
       const closing=map.get(company.id);const data=sanitizeColumnsData(annualValues(company,year,result.columns,closing?.columnsData||{}));
       for(const column of result.columns)if(column.inputType==='PASSWORD'){const key=resolveColumnKey(column)||column.id;if(data[key])data[key]=decryptPassword(data[key]);}
+      if ((!data.cont_observacao || data.cont_observacao === '') && (company.notesScope === 'CONTABIL' || company.notesScope === 'GERAL' || !company.notesScope)) {
+        data.cont_observacao = company.notes || '';
+      }
       return {company:{...company,code:formatCompanyCode(company.code)||null,certificatePasswordDecrypted:decryptPassword(company.certificatePassword),ginfessPasswordDecrypted:decryptPassword(company.ginfessPassword),gissOnlinePasswordDecrypted:decryptPassword(company.gissOnlinePassword),sdPasswordDecrypted:decryptPassword(company.sdPassword),nfPasswordDecrypted:decryptPassword(company.nfPassword)},closingId:closing?.id,columnsData:data,...accountingProgress(company,year,result.columns,data)};
     });
     const users=await getSectorResponsibleUsers('CONTABIL',contabilCompanies);
@@ -938,7 +941,7 @@ app.get('/api/closings', async (req, res) => {
           if (column.inputType === 'PASSWORD' && columnsData[key]) columnsData[key] = decryptPassword(columnsData[key]);
         }
         if (columnsData.dp_qtde_funcionarios === undefined && closing?.dashboardMetrics?.employees !== undefined) columnsData.dp_qtde_funcionarios = Number(closing.dashboardMetrics.employees);
-        if (columnsData.dp_observacao === undefined && c.notesScope === 'DP') columnsData.dp_observacao = c.notes || '';
+        if ((!columnsData.dp_observacao || columnsData.dp_observacao === '') && (c.notesScope === 'DP' || c.notesScope === 'GERAL' || !c.notesScope)) columnsData.dp_observacao = c.notes || '';
       }
 
       const progress = calculateColumnProgress(progressColumns, columnsData, col => resolveColumnKey(col) || col.columnKey || col.id);

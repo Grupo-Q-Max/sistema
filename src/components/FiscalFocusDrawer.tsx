@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { API } from '../api';
 import {
   X,
   Zap,
@@ -190,7 +191,7 @@ export function FiscalFocusDrawer({
     if (!editable) return;
     setSavingNotes(true);
     try {
-      const res = await fetch(`/api/companies/${company.id}/notes`, {
+      const res = await fetch(`${API}/api/companies/${company.id}/notes`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',

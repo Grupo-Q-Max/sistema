@@ -1188,14 +1188,36 @@ export function PayrollClosings({ currentView, onNavigate, currentUser, onLogout
             </>
           )}
     {copyMessage && <div className="payroll-copy-toast" role="status"><CheckCircle2 size={16} />{copyMessage}</div>}
-    {companyDetails && (
-      <CompanyDetailsModal
-        company={companyDetails}
-        currentUser={currentUser}
-        notesLabel="Observações do cadastro"
-        onClose={() => setCompanyDetails(null)}
-      />
-    )}
+    {companyDetails && (() => {
+      const activeCompanyRow = rows.find(r => r.company.id === companyDetails.id);
+      const notesCol = columns.find(c => (resolveColumnKey(c) || c.id) === 'dp_observacao');
+      const noteKey = notesCol ? (resolveColumnKey(notesCol) || notesCol.id) : 'dp_observacao';
+      const initialNotesValue = activeCompanyRow?.columnsData?.[noteKey] ?? companyDetails.notes ?? '';
+      return (
+        <CompanyDetailsModal
+          company={companyDetails}
+          currentUser={currentUser}
+          notesLabel="Observações do DP"
+          initialNotes={initialNotesValue}
+          canEditNotes={activeCompanyRow ? isRowEditable(activeCompanyRow) : false}
+          onSaveNotes={activeCompanyRow && notesCol ? async (newNotes: string) => {
+            await enqueueSave(activeCompanyRow, notesCol, newNotes);
+            try {
+              await fetch(`${API}/api/companies/${companyDetails.id}/notes`, {
+                method: 'PUT',
+                headers: {
+                  'Content-Type': 'application/json',
+                  'x-user-id': currentUser?.id || '',
+                },
+                body: JSON.stringify({ notes: newNotes, notesScope: 'DP' }),
+              });
+            } catch {}
+            setCompanyDetails((prev: any) => prev ? { ...prev, notes: newNotes } : prev);
+          } : undefined}
+          onClose={() => setCompanyDetails(null)}
+        />
+      );
+    })()}
     <ResponsibleWorkloadModal
       isOpen={workloadOpen}
       onClose={() => setWorkloadOpen(false)}

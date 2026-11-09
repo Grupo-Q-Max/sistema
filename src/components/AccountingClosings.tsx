@@ -288,7 +288,7 @@ export function AccountingClosings({currentView,onNavigate,currentUser,onLogout}
     if(!isRowEditable(row))return;
     const capturedYear=year;setPending(total=>total+1);
     try{
-      const response=await fetch(`${API}/companies/${row.company.id}/responsible`,{
+      const response=await fetch(`${API}/api/companies/${row.company.id}/responsible`,{
         method:'PUT',
         headers:installmentHeaders(currentUser),
         body:JSON.stringify({
@@ -869,7 +869,7 @@ export function AccountingClosings({currentView,onNavigate,currentUser,onLogout}
         onSaveNotes={activeCompanyRow && notesCol ? async (newNotes: string) => {
           await save(activeCompanyRow, notesCol, newNotes);
           try {
-            await fetch(`${API}/companies/${companyDetails.id}/notes`, {
+            await fetch(`${API}/api/companies/${companyDetails.id}/notes`, {
               method: 'PUT',
               headers: installmentHeaders(currentUser),
               body: JSON.stringify({ notes: newNotes, notesScope: 'CONTABIL' })
