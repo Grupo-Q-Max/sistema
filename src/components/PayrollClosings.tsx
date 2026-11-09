@@ -1,7 +1,7 @@
 import { latestOpenPeriod } from '../config/competenceCalendar';
 import { useCompetenceCalendar } from './useCompetenceCalendar';
 import { memo, useEffect, useMemo, useRef, useState, useDeferredValue } from 'react';
-import { Building2, CheckCircle2, ChevronLeft, ChevronRight, Eye, EyeOff, RefreshCw, Users, X, ExternalLink, AlertTriangle, Copy, Search, AlertCircle, Filter, Check, Calendar, FileText, Clock, Sparkles, History, BarChart3, Zap } from 'lucide-react';
+import { Building2, CheckCircle2, ChevronLeft, ChevronRight, Eye, EyeOff, RefreshCw, Users, X, ExternalLink, AlertTriangle, Copy, Search, AlertCircle, Check, Calendar, FileText, Clock, Sparkles, History, BarChart3, Zap } from 'lucide-react';
 import { CompanyDetailsModal, getCertificateStatus, formatCnpj, formatRegimeLabel } from './CompanyDetailsModal';
 import { Sidebar } from './Sidebar';
 import { ClosingSectorTabs, hasSectorAccess } from './ClosingSectorTabs';
@@ -19,6 +19,7 @@ import { exportToCsv } from '../utils/exportCsv';
 import { compareCodes, formatCompanyCode } from '../utils/codeSort';
 import { canUserEditCompany, canUserViewCompany, isUserResponsibleForCompany, companyBelongsToSector } from '../config/companyPermissions';
 import { installmentHeaders } from '../config/installments';
+import { ColumnHeaderFilter, computeColumnFilterOptions, matchColumnFilterValue } from './ColumnHeaderFilter';
 import './Closings.css';
 import './PayrollClosings.css';
 
@@ -169,6 +170,7 @@ export function PayrollClosings({ currentView, onNavigate, currentUser, onLogout
   const [regimeFilter, setRegimeFilter] = useState('ALL');
   const [certFilter, setCertFilter] = useState('ALL');
   const [groupFilter, setGroupFilter] = useState('ALL');
+  const [columnFilters, setColumnFilters] = useState<Record<string, string>>({});
   const [workloadOpen, setWorkloadOpen] = useState(false);
   const [sort, setSort] = useState<{ key: 'code' | 'name' | 'group' | 'regime' | 'status' | 'responsible'; asc: boolean }>({ key: 'code', asc: true });
   const [selectedCompanyIds, setSelectedCompanyIds] = useState<string[]>([]);
@@ -234,7 +236,7 @@ export function PayrollClosings({ currentView, onNavigate, currentUser, onLogout
     else setLoading(false);
     return () => { fetchSequence.current++; };
   }, [periodKey, canView]);
-  useEffect(() => { setReinfRow(null); setCompanyDetails(null); setNotesDialog(null); setOpenHeaderFilter(null); setActionModal(null); }, [periodKey]);
+  useEffect(() => { setReinfRow(null); setCompanyDetails(null); setNotesDialog(null); setOpenHeaderFilter(null); setActionModal(null); setColumnFilters({}); }, [periodKey]);
   useEffect(() => {
     const close = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
@@ -340,11 +342,21 @@ export function PayrollClosings({ currentView, onNavigate, currentUser, onLogout
         ? !c.groupName?.trim()
         : c.groupName?.trim() === groupFilter;
 
-    return matchSearch && matchCert && matchGroup && (statusFilter === 'ALL' || row.calculatedStatus === statusFilter) && (responsibleFilter === 'ALL' || getResponsible(c)?.userId === responsibleFilter) && (regimeFilter === 'ALL' || c.taxRegime === regimeFilter);
+    let matchColFilters = true;
+    for (const [colKey, filterVal] of Object.entries(columnFilters)) {
+      if (!filterVal || filterVal === 'ALL') continue;
+      const val = row.columnsData?.[colKey];
+      if (!matchColumnFilterValue(val, filterVal)) {
+        matchColFilters = false;
+        break;
+      }
+    }
+
+    return matchSearch && matchCert && matchGroup && matchColFilters && (statusFilter === 'ALL' || row.calculatedStatus === statusFilter) && (responsibleFilter === 'ALL' || getResponsible(c)?.userId === responsibleFilter) && (regimeFilter === 'ALL' || c.taxRegime === regimeFilter);
   }).sort((a, b) => {
     if (sort.key === 'code') return compareCodes(a.company.code, b.company.code, sort.asc);
     return sortValue(a).localeCompare(sortValue(b), 'pt-BR', { numeric: true }) * (sort.asc ? 1 : -1);
-  }), [scopedRows, deferredSearch, statusFilter, responsibleFilter, regimeFilter, certFilter, groupFilter, sort, users]);
+  }), [scopedRows, deferredSearch, statusFilter, responsibleFilter, regimeFilter, certFilter, groupFilter, columnFilters, sort, users]);
 
   const totalEmployees = scopedRows.reduce((total, row) => total + (Number(row.columnsData?.dp_qtde_funcionarios) || 0), 0);
 
@@ -502,32 +514,146 @@ export function PayrollClosings({ currentView, onNavigate, currentUser, onLogout
         </th>
       );
     }
-    const key = (["code", "name", "group", "regime", "status", "responsible"] as const)[index];
-    const filter = index === 2 ? {
-      value: groupFilter,
-      set: setGroupFilter,
-      options: [
-        { value: 'ALL', label: 'Todos os grupos' },
-        { value: 'NONE', label: 'Sem grupo' },
-        ...distinctGroups.map(value => ({ value, label: value }))
-      ]
-    } : index === 3 ? {
-      value: regimeFilter,
-      set: setRegimeFilter,
-      options: [{ value: 'ALL', label: 'Todas as tributações' }, ...regimes.map(value => ({ value, label: formatRegimeLabel(value) }))]
-    } : index === 4 ? {
-      value: statusFilter,
-      set: setStatusFilter,
-      options: [{ value: 'ALL', label: 'Todos os status' }, ...Object.entries(STATUS_LABELS).map(([value, label]) => ({ value, label }))]
-    } : index === 5 ? {
-      value: responsibleFilter,
-      set: setResponsibleFilter,
-      options: [{ value: 'ALL', label: 'Todos os responsáveis' }, ...users.map(user => ({ value: user.id, label: user.name || user.email }))]
-    } : null;
-    return <th key={label} className={index === 1 ? 'sticky-col-company' : ''} aria-sort={key && sort.key === key ? (sort.asc ? 'ascending' : 'descending') : undefined}><div className="th-header-cell">
-      {key ? <button type="button" className="payroll-sort-btn" title={`Ordenar por ${label}`} onClick={() => setSort({ key, asc: sort.key === key ? !sort.asc : true })}>{label}<span>{sort.key === key ? (sort.asc ? ' ▲' : ' ▼') : ' ↕'}</span></button> : label}
-      {filter && <div className="th-filter-wrapper"><button type="button" className={`th-filter-icon-btn ${filter.value !== 'ALL' ? 'has-filter' : ''}`} aria-label={`Filtrar ${label}`} aria-expanded={openHeaderFilter === key} onClick={() => setOpenHeaderFilter(openHeaderFilter === key ? null : key)}><Filter size={12} /></button>{openHeaderFilter === key && <div className="th-filter-popover"><div className="payroll-filter-heading">Filtrar {label}</div>{filter.options.map(option => <button type="button" key={option.value} className={`th-filter-popover-item ${filter.value === option.value ? 'active' : ''}`} onClick={() => { filter.set(option.value); setOpenHeaderFilter(null); }}><span>{option.label}</span>{filter.value === option.value && <Check size={12} />}</button>)}</div>}</div>}
-    </div></th>;
+    if (index === 1) {
+      return (
+        <th key={label} className="sticky-col-company" aria-sort={sort.key === 'name' ? (sort.asc ? 'ascending' : 'descending') : undefined}>
+          <div className="th-header-cell">
+            <button type="button" className="payroll-sort-btn" title="Ordenar por Empresa" onClick={() => setSort({ key: 'name', asc: sort.key === 'name' ? !sort.asc : true })}>
+              {label}<span>{sort.key === 'name' ? (sort.asc ? ' ▲' : ' ▼') : ' ↕'}</span>
+            </button>
+            <ColumnHeaderFilter
+              columnKey="dp-cert"
+              label="Certificado"
+              activeFilter={certFilter}
+              onFilterChange={setCertFilter}
+              openHeaderFilter={openHeaderFilter}
+              setOpenHeaderFilter={setOpenHeaderFilter}
+              options={[
+                { value: 'ALL', label: 'Certificados: Todos', count: scopedRows.length },
+                { value: 'HAS_CERT', label: 'Com certificado', count: scopedRows.filter(r => r.company.hasClientCertificate).length },
+                { value: 'NO_CERT', label: 'Sem certificado', count: scopedRows.filter(r => !r.company.hasClientCertificate).length },
+                { value: 'EXPIRING', label: 'Vencendo ou Vencidos', count: scopedRows.filter(r => { const c = r.company.hasClientCertificate ? getCertificateStatus(r.company.certificateExpiration) : null; return c?.status === 'EXPIRED' || c?.status === 'WARNING'; }).length },
+                { value: 'EXPIRED', label: 'Apenas Vencidos', count: scopedRows.filter(r => { const c = r.company.hasClientCertificate ? getCertificateStatus(r.company.certificateExpiration) : null; return c?.status === 'EXPIRED'; }).length },
+                { value: 'OK', label: 'Válidos (> 30 dias)', count: scopedRows.filter(r => { const c = r.company.hasClientCertificate ? getCertificateStatus(r.company.certificateExpiration) : null; return c?.status === 'OK'; }).length },
+              ]}
+            />
+          </div>
+        </th>
+      );
+    }
+    if (index === 2) {
+      return (
+        <th key={label} aria-sort={sort.key === 'group' ? (sort.asc ? 'ascending' : 'descending') : undefined}>
+          <div className="th-header-cell">
+            <button type="button" className="payroll-sort-btn" title="Ordenar por Grupo" onClick={() => setSort({ key: 'group', asc: sort.key === 'group' ? !sort.asc : true })}>
+              {label}<span>{sort.key === 'group' ? (sort.asc ? ' ▲' : ' ▼') : ' ↕'}</span>
+            </button>
+            <ColumnHeaderFilter
+              columnKey="dp-group"
+              label="Grupo"
+              activeFilter={groupFilter === 'NONE' ? '__NONE__' : groupFilter}
+              onFilterChange={val => setGroupFilter(val === '__NONE__' ? 'NONE' : val)}
+              openHeaderFilter={openHeaderFilter}
+              setOpenHeaderFilter={setOpenHeaderFilter}
+              options={computeColumnFilterOptions(scopedRows, r => r.company.groupName, { allLabel: 'Todos os grupos', noneLabel: 'Sem grupo' })}
+            />
+          </div>
+        </th>
+      );
+    }
+    if (index === 3) {
+      return (
+        <th key={label} aria-sort={sort.key === 'regime' ? (sort.asc ? 'ascending' : 'descending') : undefined}>
+          <div className="th-header-cell">
+            <button type="button" className="payroll-sort-btn" title="Ordenar por Tributação" onClick={() => setSort({ key: 'regime', asc: sort.key === 'regime' ? !sort.asc : true })}>
+              {label}<span>{sort.key === 'regime' ? (sort.asc ? ' ▲' : ' ▼') : ' ↕'}</span>
+            </button>
+            <ColumnHeaderFilter
+              columnKey="dp-regime"
+              label="Tributação"
+              activeFilter={regimeFilter}
+              onFilterChange={setRegimeFilter}
+              openHeaderFilter={openHeaderFilter}
+              setOpenHeaderFilter={setOpenHeaderFilter}
+              options={computeColumnFilterOptions(scopedRows, r => r.company.taxRegime, {
+                allLabel: 'Todas as tributações',
+                noneLabel: 'Sem tributação',
+                valueLabels: {
+                  SIMPLES_NACIONAL: 'Simples Nacional',
+                  LUCRO_PRESUMIDO: 'Lucro Presumido',
+                  LUCRO_REAL_TRIMESTRAL: 'Lucro Real Trim.',
+                  LUCRO_REAL_ESTIMATIVA: 'Lucro Real Est.',
+                  LUCRO_REAL_ANUAL: 'Lucro Real Anual',
+                  MEI: 'MEI',
+                  IMUNE_IRPJ: 'Imune IRPJ',
+                  CONDOMINIOS: 'Condomínios',
+                  DOMESTICA: 'Doméstica',
+                  ASSOCIACOES: 'Associações',
+                  PESSOA_FISICA: 'Pessoa Física',
+                }
+              })}
+            />
+          </div>
+        </th>
+      );
+    }
+    if (index === 4) {
+      return (
+        <th key={label} aria-sort={sort.key === 'status' ? (sort.asc ? 'ascending' : 'descending') : undefined}>
+          <div className="th-header-cell">
+            <button type="button" className="payroll-sort-btn" title="Ordenar por Status" onClick={() => setSort({ key: 'status', asc: sort.key === 'status' ? !sort.asc : true })}>
+              {label}<span>{sort.key === 'status' ? (sort.asc ? ' ▲' : ' ▼') : ' ↕'}</span>
+            </button>
+            <ColumnHeaderFilter
+              columnKey="dp-status"
+              label="Status"
+              activeFilter={statusFilter}
+              onFilterChange={setStatusFilter}
+              openHeaderFilter={openHeaderFilter}
+              setOpenHeaderFilter={setOpenHeaderFilter}
+              options={computeColumnFilterOptions(scopedRows, r => r.calculatedStatus, {
+                allLabel: 'Todos os status',
+                valueLabels: STATUS_LABELS
+              })}
+            />
+          </div>
+        </th>
+      );
+    }
+    if (index === 5) {
+      return (
+        <th key={label} aria-sort={sort.key === 'responsible' ? (sort.asc ? 'ascending' : 'descending') : undefined}>
+          <div className="th-header-cell">
+            <button type="button" className="payroll-sort-btn" title="Ordenar por Responsável" onClick={() => setSort({ key: 'responsible', asc: sort.key === 'responsible' ? !sort.asc : true })}>
+              {label}<span>{sort.key === 'responsible' ? (sort.asc ? ' ▲' : ' ▼') : ' ↕'}</span>
+            </button>
+            <ColumnHeaderFilter
+              columnKey="dp-resp"
+              label="Responsável"
+              activeFilter={responsibleFilter}
+              onFilterChange={setResponsibleFilter}
+              openHeaderFilter={openHeaderFilter}
+              setOpenHeaderFilter={setOpenHeaderFilter}
+              options={computeColumnFilterOptions(scopedRows, r => {
+                const resp = getResponsible(r.company);
+                return resp?.userId || null;
+              }, {
+                allLabel: 'Todos os responsáveis',
+                noneLabel: 'Não atribuído',
+                valueLabels: Object.fromEntries(users.map(u => [u.id, u.name || u.email]))
+              })}
+            />
+          </div>
+        </th>
+      );
+    }
+    return (
+      <th key={label}>
+        <div className="th-header-cell">
+          <span>{label}</span>
+        </div>
+      </th>
+    );
   }
 
   const monthLabel = `${String(period.getUTCMonth() + 1).padStart(2, '0')}/${period.getUTCFullYear()}`;
@@ -918,7 +1044,27 @@ export function PayrollClosings({ currentView, onNavigate, currentUser, onLogout
                         <thead>
                           <tr>
                             {(isPrivileged ? PAYROLL_BASE_HEADERS : PAYROLL_BASE_HEADERS.filter(h => h !== 'Responsável')).map(renderHeader)}
-                            {columns.map(column => <th key={column.id} title={visibilitySummary(column)}>{column.name}</th>)}
+                            {columns.map(column => {
+                              const colKey = resolveColumnKey(column) || column.id;
+                              const activeColFilter = columnFilters[colKey] || 'ALL';
+                              const options = computeColumnFilterOptions(scopedRows, r => r.columnsData?.[colKey]);
+                              return (
+                                <th key={column.id} title={visibilitySummary(column)}>
+                                  <div className="th-header-cell">
+                                    <span>{column.name}</span>
+                                    <ColumnHeaderFilter
+                                      columnKey={`col-${colKey}`}
+                                      label={column.name}
+                                      activeFilter={activeColFilter}
+                                      onFilterChange={val => setColumnFilters(prev => ({ ...prev, [colKey]: val }))}
+                                      openHeaderFilter={openHeaderFilter}
+                                      setOpenHeaderFilter={setOpenHeaderFilter}
+                                      options={options}
+                                    />
+                                  </div>
+                                </th>
+                              );
+                            })}
                           </tr>
                         </thead>
                         <tbody>

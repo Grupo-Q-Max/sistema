@@ -13,6 +13,7 @@ import { exportToCsv } from '../utils/exportCsv';
 import { compareCodes, formatCompanyCode } from '../utils/codeSort';
 import { installmentHeaders } from '../config/installments';
 import { latestOpenPeriod } from '../config/competenceCalendar';
+import { ColumnHeaderFilter, computeColumnFilterOptions, matchColumnFilterValue } from './ColumnHeaderFilter';
 import type { CurrentUser } from '../types/auth';
 import { API_URL as API } from '../api';
 import './Closings.css';
@@ -100,6 +101,8 @@ export function CushmanClosings({ currentView, onNavigate, currentUser, onLogout
   const [city, setCity] = useState('ALL');
   const [cert, setCert] = useState('ALL');
   const [sort, setSort] = useState<{ key: 'code' | 'name'; asc: boolean }>({ key: 'code', asc: true });
+  const [columnFilters, setColumnFilters] = useState<Record<string, string>>({});
+  const [openHeaderFilter, setOpenHeaderFilter] = useState<string | null>(null);
   const [progressOpen, setProgressOpen] = useState(false);
   const [companyId, setCompanyId] = useState('');
   const [scrollWidth, setScrollWidth] = useState(0);
@@ -166,6 +169,8 @@ export function CushmanClosings({ currentView, onNavigate, currentUser, onLogout
     setActionModal(null);
     setNotesModal(null);
     setProgressOpen(false);
+    setColumnFilters({});
+    setOpenHeaderFilter(null);
   }, [periodKey, mode]);
 
   useEffect(() => {
@@ -188,11 +193,20 @@ export function CushmanClosings({ currentView, onNavigate, currentUser, onLogout
     const digits = term.replace(/\D/g, '');
     const matches = [company.code, formatCompanyCode(company.code), company.name, company.tradeName, company.cnpj, company.city].join(' ').toLocaleLowerCase('pt-BR').includes(term) || (digits.length >= 3 && (company.cnpj || '').replace(/\D/g, '').includes(digits));
     const certificate = company.hasClientCertificate ? getCertificateStatus(company.certificateExpiration) : null;
-    return matches && (status === 'ALL' || row.calculatedStatus === status) && (city === 'ALL' || company.city === city) && (cert === 'ALL' || (cert === 'NONE' && !company.hasClientCertificate) || certificate?.status === cert);
+    let matchColFilters = true;
+    for (const [colKey, filterVal] of Object.entries(columnFilters)) {
+      if (!filterVal || filterVal === 'ALL') continue;
+      const cellVal = row.columnsData?.[colKey];
+      if (!matchColumnFilterValue(cellVal, filterVal)) {
+        matchColFilters = false;
+        break;
+      }
+    }
+    return matches && matchColFilters && (status === 'ALL' || row.calculatedStatus === status) && (city === 'ALL' || company.city === city) && (cert === 'ALL' || (cert === 'NONE' && !company.hasClientCertificate) || certificate?.status === cert);
   }).sort((a, b) => {
     if (sort.key === 'code') return compareCodes(a.company.code, b.company.code, sort.asc);
     return String(a.company[sort.key] || '').localeCompare(String(b.company[sort.key] || ''), 'pt-BR', { numeric: true }) * (sort.asc ? 1 : -1);
-  }), [rows, deferredSearch, status, city, cert, sort]);
+  }), [rows, deferredSearch, status, city, cert, columnFilters, sort]);
 
   const cities = Array.from(new Set(rows.map(row => row.company.city).filter(Boolean))).sort();
   const companyRow = rows.find(row => row.company.id === companyId);
@@ -503,17 +517,74 @@ export function CushmanClosings({ currentView, onNavigate, currentUser, onLogout
                         <thead>
                           <tr>
                             <th className="cushman-sticky-action">Dados</th>
-                            {(['code', 'name'] as const).map(key => (
-                              <th key={key} className={key === 'code' ? 'cushman-sticky-code' : 'cushman-sticky-company'}>
-                                <button type="button" className="payroll-sort-btn" onClick={() => setSort({ key, asc: sort.key === key ? !sort.asc : true })}>
-                                  {key === 'code' ? 'Código' : 'Empresa / Certificado'}
-                                  <span>{sort.key === key ? (sort.asc ? '▲' : '▼') : '⇅'}</span>
+                            <th className="cushman-sticky-code">
+                              <button type="button" className="payroll-sort-btn" onClick={() => setSort({ key: 'code', asc: sort.key === 'code' ? !sort.asc : true })}>
+                                Código
+                                <span>{sort.key === 'code' ? (sort.asc ? '▲' : '▼') : '⇅'}</span>
+                              </button>
+                            </th>
+                            <th className="cushman-sticky-company">
+                              <div className="th-header-cell">
+                                <button type="button" className="payroll-sort-btn" onClick={() => setSort({ key: 'name', asc: sort.key === 'name' ? !sort.asc : true })}>
+                                  Empresa / Certificado
+                                  <span>{sort.key === 'name' ? (sort.asc ? '▲' : '▼') : '⇅'}</span>
                                 </button>
-                              </th>
-                            ))}
+                                <ColumnHeaderFilter
+                                  columnKey="cush-cert"
+                                  label="Certificado"
+                                  activeFilter={cert}
+                                  onFilterChange={setCert}
+                                  openHeaderFilter={openHeaderFilter}
+                                  setOpenHeaderFilter={setOpenHeaderFilter}
+                                  options={[
+                                    { value: 'ALL', label: 'Certificados: Todos', count: rows.length },
+                                    { value: 'OK', label: 'Válidos (> 30 dias)', count: rows.filter(r => { const c = r.company.hasClientCertificate ? getCertificateStatus(r.company.certificateExpiration) : null; return c?.status === 'OK'; }).length },
+                                    { value: 'WARNING', label: 'Vencendo em 30d', count: rows.filter(r => { const c = r.company.hasClientCertificate ? getCertificateStatus(r.company.certificateExpiration) : null; return c?.status === 'WARNING'; }).length },
+                                    { value: 'EXPIRED', label: 'Vencidos', count: rows.filter(r => { const c = r.company.hasClientCertificate ? getCertificateStatus(r.company.certificateExpiration) : null; return c?.status === 'EXPIRED'; }).length },
+                                    { value: 'NONE', label: 'Sem certificado', count: rows.filter(r => !r.company.hasClientCertificate).length },
+                                  ]}
+                                />
+                              </div>
+                            </th>
                             <th>CNPJ</th>
-                            <th>Status</th>
-                            {columns.map(column => <th key={column.id}>{column.name}</th>)}
+                            <th>
+                              <div className="th-header-cell">
+                                <span>Status</span>
+                                <ColumnHeaderFilter
+                                  columnKey="cush-status"
+                                  label="Status"
+                                  activeFilter={status}
+                                  onFilterChange={setStatus}
+                                  openHeaderFilter={openHeaderFilter}
+                                  setOpenHeaderFilter={setOpenHeaderFilter}
+                                  options={computeColumnFilterOptions(rows, r => r.calculatedStatus, {
+                                    allLabel: 'Todos os status',
+                                    valueLabels: STATUS
+                                  })}
+                                />
+                              </div>
+                            </th>
+                            {columns.map(column => {
+                              const colKey = resolveCushmanKey(column) || column.id;
+                              const activeColFilter = columnFilters[colKey] || 'ALL';
+                              const options = computeColumnFilterOptions(rows, r => r.columnsData?.[colKey]);
+                              return (
+                                <th key={column.id}>
+                                  <div className="th-header-cell">
+                                    <span>{column.name}</span>
+                                    <ColumnHeaderFilter
+                                      columnKey={`cush-col-${colKey}`}
+                                      label={column.name}
+                                      activeFilter={activeColFilter}
+                                      onFilterChange={val => setColumnFilters(prev => ({ ...prev, [colKey]: val }))}
+                                      openHeaderFilter={openHeaderFilter}
+                                      setOpenHeaderFilter={setOpenHeaderFilter}
+                                      options={options}
+                                    />
+                                  </div>
+                                </th>
+                              );
+                            })}
                           </tr>
                         </thead>
                         <tbody>

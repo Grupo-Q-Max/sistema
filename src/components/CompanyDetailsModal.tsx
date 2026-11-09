@@ -153,10 +153,10 @@ export function CompanyDetailsModal({
                         <strong>Certificado Digital: </strong>
                         <span>
                           {certInfo.status === 'EXPIRED'
-                            ? `Certificado VENCIDO há ${certInfo.days} dias (${c.certificateExpiration})! Regularização urgente necessária.`
+                            ? `Certificado VENCIDO há ${certInfo.days} dias (${formatFlexibleDateBr(c.certificateExpiration)})! Regularização urgente necessária.`
                             : certInfo.status === 'WARNING'
-                            ? `Atenção: Vence em ${certInfo.days} dias (${c.certificateExpiration})! Menos de 30 dias para expirar.`
-                            : `Certificado válido (${certInfo.days} dias restantes até ${c.certificateExpiration}).`}
+                            ? `Atenção: Vence em ${certInfo.days} dias (${formatFlexibleDateBr(c.certificateExpiration)})! Menos de 30 dias para expirar.`
+                            : `Certificado válido (${certInfo.days} dias restantes até ${formatFlexibleDateBr(c.certificateExpiration)}).`}
                         </span>
                       </div>
                     </div>

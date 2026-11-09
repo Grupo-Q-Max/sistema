@@ -2,7 +2,7 @@ import {AccountingMonthsModal} from './AccountingMonthsModal';
 import {ClosingProgressDetails} from './ClosingProgressDetails';
 import {groupAccountingColumns,buildClosingProgress,summarizeClosingProgress} from '../config/closingProgress';
 import {useEffect,useMemo,useRef,useState,useDeferredValue} from 'react';
-import {Building2,FileCheck,CheckCircle2,Clock,AlertCircle,Sparkles,Search,ChevronLeft,ChevronRight,ExternalLink,AlertTriangle,Copy,RefreshCw,LockKeyhole,X,Users,BarChart3,Filter,Check,Calendar} from 'lucide-react';
+import {Building2,FileCheck,CheckCircle2,Clock,AlertCircle,Sparkles,Search,ChevronLeft,ChevronRight,ExternalLink,AlertTriangle,Copy,RefreshCw,LockKeyhole,X,Users,BarChart3,Calendar} from 'lucide-react';
 import {Sidebar} from './Sidebar';
 import {CompanyDetailsModal,getCertificateStatus,formatCnpj,formatRegimeLabel} from './CompanyDetailsModal';
 import {BulkAssignResponsibleModal} from './BulkAssignResponsibleModal';
@@ -19,6 +19,7 @@ import {exportToCsv} from '../utils/exportCsv';
 import {compareCodes,formatCompanyCode} from '../utils/codeSort';
 import {canUserEditCompany,canUserViewCompany,isUserResponsibleForCompany,companyBelongsToSector} from '../config/companyPermissions';
 import {installmentHeaders} from '../config/installments';
+import {ColumnHeaderFilter, computeColumnFilterOptions, matchColumnFilterValue} from './ColumnHeaderFilter';
 import type {CurrentUser} from '../types/auth';
 import {API_URL as API} from '../api';
 import './AccountingClosings.css';
@@ -254,8 +255,7 @@ export function AccountingClosings({currentView,onNavigate,currentUser,onLogout}
     for (const [colKey, filterVal] of Object.entries(columnFilters)) {
       if (!filterVal || filterVal === 'ALL') continue;
       const cellVal = row.columnsData?.[colKey];
-      const normalizedCell = typeof cellVal === 'object' && cellVal !== null ? (cellVal.status || cellVal.value || '') : String(cellVal || '');
-      if (normalizedCell !== filterVal) {
+      if (!matchColumnFilterValue(cellVal, filterVal)) {
         matchColumnFilters = false;
         break;
       }
@@ -662,255 +662,103 @@ export function AccountingClosings({currentView,onNavigate,currentUser,onLogout}
                     <button className="payroll-sort-btn" onClick={() => setSort({ key: 'name', asc: sort.key === 'name' ? !sort.asc : true })}>
                       {label}<span>{sort.key === 'name' ? (sort.asc ? '▲' : '▼') : '⇅'}</span>
                     </button>
-                    <div className="th-filter-wrapper">
-                      <button
-                        type="button"
-                        className={`th-filter-icon-btn ${certFilter !== 'ALL' ? 'has-filter' : ''}`}
-                        title="Filtrar por certificado digital"
-                        aria-label="Filtrar por certificado digital"
-                        onClick={e => {
-                          e.stopPropagation();
-                          setOpenHeaderFilter(openHeaderFilter === 'header-cert' ? null : 'header-cert');
-                        }}
-                      >
-                        <Filter size={11} />
-                      </button>
-                      {openHeaderFilter === 'header-cert' && (
-                        <div className="th-filter-popover" onClick={e => e.stopPropagation()}>
-                          <div className="payroll-filter-heading" style={{ padding: '4px 8px', fontSize: '11px', fontWeight: 600, color: '#94a3b8', borderBottom: '1px solid #334155', marginBottom: '4px' }}>
-                            Filtrar Certificados
-                          </div>
-                          {[
-                            { value: 'ALL', label: 'Certificados: Todos' },
-                            { value: 'EXPIRING', label: 'Vencendo ou Vencidos' },
-                            { value: 'EXPIRED', label: 'Apenas Vencidos' },
-                            { value: 'WARNING', label: 'Vencendo em até 30 dias' },
-                            { value: 'OK', label: 'Válidos (> 30 dias)' },
-                            { value: 'HAS_CERT', label: 'Com certificado' },
-                            { value: 'NO_CERT', label: 'Sem certificado' },
-                          ].map(item => (
-                            <button
-                              key={item.value}
-                              type="button"
-                              className={`th-filter-popover-item ${certFilter === item.value ? 'active' : ''}`}
-                              onClick={() => {
-                                setCertFilter(item.value);
-                                setOpenHeaderFilter(null);
-                              }}
-                            >
-                              <span>{item.label}</span>
-                              {certFilter === item.value && <Check size={12} />}
-                            </button>
-                          ))}
-                        </div>
-                      )}
-                    </div>
+                    <ColumnHeaderFilter
+                      columnKey="header-cert"
+                      label="Certificado"
+                      activeFilter={certFilter}
+                      onFilterChange={setCertFilter}
+                      openHeaderFilter={openHeaderFilter}
+                      setOpenHeaderFilter={setOpenHeaderFilter}
+                      options={[
+                        { value: 'ALL', label: 'Certificados: Todos', count: scopedRows.length },
+                        { value: 'HAS_CERT', label: 'Com certificado', count: scopedRows.filter(r => r.company.hasClientCertificate).length },
+                        { value: 'NO_CERT', label: 'Sem certificado', count: scopedRows.filter(r => !r.company.hasClientCertificate).length },
+                        { value: 'EXPIRING', label: 'Vencendo ou Vencidos', count: scopedRows.filter(r => { const c = r.company.hasClientCertificate ? getCertificateStatus(r.company.certificateExpiration) : null; return c?.status === 'EXPIRED' || c?.status === 'WARNING'; }).length },
+                        { value: 'EXPIRED', label: 'Apenas Vencidos', count: scopedRows.filter(r => { const c = r.company.hasClientCertificate ? getCertificateStatus(r.company.certificateExpiration) : null; return c?.status === 'EXPIRED'; }).length },
+                        { value: 'OK', label: 'Válidos (> 30 dias)', count: scopedRows.filter(r => { const c = r.company.hasClientCertificate ? getCertificateStatus(r.company.certificateExpiration) : null; return c?.status === 'OK'; }).length },
+                      ]}
+                    />
                   </>
                 ) : isGroup ? (
                   <>
                     <button className="payroll-sort-btn" onClick={() => setSort({ key: 'groupName', asc: sort.key === 'groupName' ? !sort.asc : true })}>
                       {label}<span>{sort.key === 'groupName' ? (sort.asc ? '▲' : '▼') : '⇅'}</span>
                     </button>
-                    <div className="th-filter-wrapper">
-                      <button
-                        type="button"
-                        className={`th-filter-icon-btn ${groupFilter !== 'ALL' ? 'has-filter' : ''}`}
-                        title="Filtrar por grupo"
-                        aria-label="Filtrar por grupo"
-                        onClick={e => {
-                          e.stopPropagation();
-                          setOpenHeaderFilter(openHeaderFilter === 'header-group' ? null : 'header-group');
-                        }}
-                      >
-                        <Filter size={11} />
-                      </button>
-                      {openHeaderFilter === 'header-group' && (
-                        <div className="th-filter-popover" onClick={e => e.stopPropagation()} style={{ maxHeight: '250px', overflowY: 'auto' }}>
-                          <div className="payroll-filter-heading" style={{ padding: '4px 8px', fontSize: '11px', fontWeight: 600, color: '#94a3b8', borderBottom: '1px solid #334155', marginBottom: '4px' }}>
-                            Filtrar Grupo
-                          </div>
-                          <button
-                            type="button"
-                            className={`th-filter-popover-item ${groupFilter === 'ALL' ? 'active' : ''}`}
-                            onClick={() => {
-                              setGroupFilter('ALL');
-                              setOpenHeaderFilter(null);
-                            }}
-                          >
-                            <span>Grupo: Todos</span>
-                            {groupFilter === 'ALL' && <Check size={12} />}
-                          </button>
-                          {groups.map(grp => (
-                            <button
-                              key={grp}
-                              type="button"
-                              className={`th-filter-popover-item ${groupFilter === grp ? 'active' : ''}`}
-                              onClick={() => {
-                                setGroupFilter(grp);
-                                setOpenHeaderFilter(null);
-                              }}
-                            >
-                              <span>{grp}</span>
-                              {groupFilter === grp && <Check size={12} />}
-                            </button>
-                          ))}
-                        </div>
-                      )}
-                    </div>
+                    <ColumnHeaderFilter
+                      columnKey="header-group"
+                      label="Grupo"
+                      activeFilter={groupFilter === 'NONE' ? '__NONE__' : groupFilter}
+                      onFilterChange={val => setGroupFilter(val === '__NONE__' ? 'NONE' : val)}
+                      openHeaderFilter={openHeaderFilter}
+                      setOpenHeaderFilter={setOpenHeaderFilter}
+                      options={computeColumnFilterOptions(scopedRows, r => r.company.groupName, { allLabel: 'Grupo: Todos', noneLabel: 'Sem grupo' })}
+                    />
                   </>
                 ) : isResponsible ? (
                   <>
                     <span>{label}</span>
-                    <div className="th-filter-wrapper">
-                      <button
-                        type="button"
-                        className={`th-filter-icon-btn ${responsibleFilter !== 'ALL' ? 'has-filter' : ''}`}
-                        title="Filtrar por responsável"
-                        aria-label="Filtrar por responsável"
-                        onClick={e => {
-                          e.stopPropagation();
-                          setOpenHeaderFilter(openHeaderFilter === 'header-resp' ? null : 'header-resp');
-                        }}
-                      >
-                        <Filter size={11} />
-                      </button>
-                      {openHeaderFilter === 'header-resp' && (
-                        <div className="th-filter-popover" onClick={e => e.stopPropagation()} style={{ maxHeight: '250px', overflowY: 'auto' }}>
-                          <div className="payroll-filter-heading" style={{ padding: '4px 8px', fontSize: '11px', fontWeight: 600, color: '#94a3b8', borderBottom: '1px solid #334155', marginBottom: '4px' }}>
-                            Filtrar Responsável
-                          </div>
-                          <button
-                            type="button"
-                            className={`th-filter-popover-item ${responsibleFilter === 'ALL' ? 'active' : ''}`}
-                            onClick={() => {
-                              setResponsibleFilter('ALL');
-                              setOpenHeaderFilter(null);
-                            }}
-                          >
-                            <span>Responsável: Todos</span>
-                            {responsibleFilter === 'ALL' && <Check size={12} />}
-                          </button>
-                          <button
-                            type="button"
-                            className={`th-filter-popover-item ${responsibleFilter === 'UNASSIGNED' ? 'active' : ''}`}
-                            onClick={() => {
-                              setResponsibleFilter('UNASSIGNED');
-                              setOpenHeaderFilter(null);
-                            }}
-                          >
-                            <span>Não atribuído</span>
-                            {responsibleFilter === 'UNASSIGNED' && <Check size={12} />}
-                          </button>
-                          {contabilUsers.map(u => (
-                            <button
-                              key={u.id}
-                              type="button"
-                              className={`th-filter-popover-item ${responsibleFilter === u.id ? 'active' : ''}`}
-                              onClick={() => {
-                                setResponsibleFilter(u.id);
-                                setOpenHeaderFilter(null);
-                              }}
-                            >
-                              <span>{u.name || u.email}</span>
-                              {responsibleFilter === u.id && <Check size={12} />}
-                            </button>
-                          ))}
-                        </div>
-                      )}
-                    </div>
+                    <ColumnHeaderFilter
+                      columnKey="header-resp"
+                      label="Responsável"
+                      activeFilter={responsibleFilter === 'UNASSIGNED' ? '__NONE__' : responsibleFilter}
+                      onFilterChange={val => setResponsibleFilter(val === '__NONE__' ? 'UNASSIGNED' : val)}
+                      openHeaderFilter={openHeaderFilter}
+                      setOpenHeaderFilter={setOpenHeaderFilter}
+                      options={computeColumnFilterOptions(scopedRows, r => {
+                        const resp = responsible(r.company);
+                        return resp?.userId || null;
+                      }, {
+                        allLabel: 'Responsável: Todos',
+                        noneLabel: 'Não atribuído',
+                        valueLabels: Object.fromEntries(contabilUsers.map(u => [u.id, u.name || u.email]))
+                      })}
+                    />
                   </>
                 ) : isSituation ? (
                   <>
                     <span>{label}</span>
-                    <div className="th-filter-wrapper">
-                      <button
-                        type="button"
-                        className={`th-filter-icon-btn ${situation !== 'ALL' ? 'has-filter' : ''}`}
-                        title="Filtrar por situação"
-                        aria-label="Filtrar por situação"
-                        onClick={e => {
-                          e.stopPropagation();
-                          setOpenHeaderFilter(openHeaderFilter === 'header-situation' ? null : 'header-situation');
-                        }}
-                      >
-                        <Filter size={11} />
-                      </button>
-                      {openHeaderFilter === 'header-situation' && (
-                        <div className="th-filter-popover" onClick={e => e.stopPropagation()}>
-                          <div className="payroll-filter-heading" style={{ padding: '4px 8px', fontSize: '11px', fontWeight: 600, color: '#94a3b8', borderBottom: '1px solid #334155', marginBottom: '4px' }}>
-                            Filtrar Situação
-                          </div>
-                          {[
-                            { value: 'ALL', label: 'Situação: Todas' },
-                            { value: 'ACTIVE', label: 'Ativas' },
-                            { value: 'LEFT', label: 'Saíram no ano' },
-                          ].map(item => (
-                            <button
-                              key={item.value}
-                              type="button"
-                              className={`th-filter-popover-item ${situation === item.value ? 'active' : ''}`}
-                              onClick={() => {
-                                setSituation(item.value);
-                                setOpenHeaderFilter(null);
-                              }}
-                            >
-                              <span>{item.label}</span>
-                              {situation === item.value && <Check size={12} />}
-                            </button>
-                          ))}
-                        </div>
-                      )}
-                    </div>
+                    <ColumnHeaderFilter
+                      columnKey="header-situation"
+                      label="Situação"
+                      activeFilter={situation}
+                      onFilterChange={setSituation}
+                      openHeaderFilter={openHeaderFilter}
+                      setOpenHeaderFilter={setOpenHeaderFilter}
+                      options={[
+                        { value: 'ALL', label: 'Situação: Todas', count: scopedRows.length },
+                        { value: 'ACTIVE', label: 'Ativas', count: scopedRows.filter(r => !left(r.company)).length },
+                        { value: 'LEFT', label: 'Saíram no ano', count: scopedRows.filter(r => left(r.company)).length },
+                      ]}
+                    />
                   </>
                 ) : isRegime ? (
                   <>
                     <span>{label}</span>
-                    <div className="th-filter-wrapper">
-                      <button
-                        type="button"
-                        className={`th-filter-icon-btn ${regime !== 'ALL' ? 'has-filter' : ''}`}
-                        title="Filtrar por tributação"
-                        aria-label="Filtrar por tributação"
-                        onClick={e => {
-                          e.stopPropagation();
-                          setOpenHeaderFilter(openHeaderFilter === 'header-regime' ? null : 'header-regime');
-                        }}
-                      >
-                        <Filter size={11} />
-                      </button>
-                      {openHeaderFilter === 'header-regime' && (
-                        <div className="th-filter-popover" onClick={e => e.stopPropagation()} style={{ maxHeight: '250px', overflowY: 'auto' }}>
-                          <div className="payroll-filter-heading" style={{ padding: '4px 8px', fontSize: '11px', fontWeight: 600, color: '#94a3b8', borderBottom: '1px solid #334155', marginBottom: '4px' }}>
-                            Filtrar Tributação
-                          </div>
-                          <button
-                            type="button"
-                            className={`th-filter-popover-item ${regime === 'ALL' ? 'active' : ''}`}
-                            onClick={() => {
-                              setRegime('ALL');
-                              setOpenHeaderFilter(null);
-                            }}
-                          >
-                            <span>Tributação: Todas</span>
-                            {regime === 'ALL' && <Check size={12} />}
-                          </button>
-                          {regimes.map(r => (
-                            <button
-                              key={r}
-                              type="button"
-                              className={`th-filter-popover-item ${regime === r ? 'active' : ''}`}
-                              onClick={() => {
-                                setRegime(r);
-                                setOpenHeaderFilter(null);
-                              }}
-                            >
-                              <span>{formatRegimeLabel(r)}</span>
-                              {regime === r && <Check size={12} />}
-                            </button>
-                          ))}
-                        </div>
-                      )}
-                    </div>
+                    <ColumnHeaderFilter
+                      columnKey="header-regime"
+                      label="Tributação"
+                      activeFilter={regime}
+                      onFilterChange={setRegime}
+                      openHeaderFilter={openHeaderFilter}
+                      setOpenHeaderFilter={setOpenHeaderFilter}
+                      options={computeColumnFilterOptions(scopedRows, r => r.company.taxRegime, {
+                        allLabel: 'Tributação: Todas',
+                        noneLabel: 'Sem tributação',
+                        valueLabels: {
+                          SIMPLES_NACIONAL: 'Simples Nacional',
+                          LUCRO_PRESUMIDO: 'Lucro Presumido',
+                          LUCRO_REAL_TRIMESTRAL: 'Lucro Real Trim.',
+                          LUCRO_REAL_ESTIMATIVA: 'Lucro Real Est.',
+                          LUCRO_REAL_ANUAL: 'Lucro Real Anual',
+                          MEI: 'MEI',
+                          IMUNE_IRPJ: 'Imune IRPJ',
+                          CONDOMINIOS: 'Condomínios',
+                          DOMESTICA: 'Doméstica',
+                          ASSOCIACOES: 'Associações',
+                          PESSOA_FISICA: 'Pessoa Física',
+                        }
+                      })}
+                    />
                   </>
                 ) : (
                   label
@@ -925,48 +773,22 @@ export function AccountingClosings({currentView,onNavigate,currentUser,onLogout}
               <th key={column.id} style={{ minWidth: '180px' }}>
                 <div className="th-header-cell">
                   <span>Meses</span>
-                  <div className="th-filter-wrapper">
-                    <button
-                      type="button"
-                      className={`th-filter-icon-btn ${monthStatusFilter !== 'ALL' ? 'has-filter' : ''}`}
-                      title="Filtrar por status dos meses"
-                      aria-label="Filtrar por status dos meses"
-                      onClick={e => {
-                        e.stopPropagation();
-                        setOpenHeaderFilter(openHeaderFilter === 'col-months' ? null : 'col-months');
-                      }}
-                    >
-                      <Filter size={11} />
-                    </button>
-                    {openHeaderFilter === 'col-months' && (
-                      <div className="th-filter-popover" onClick={e => e.stopPropagation()}>
-                        <div className="payroll-filter-heading" style={{ padding: '4px 8px', fontSize: '11px', fontWeight: 600, color: '#94a3b8', borderBottom: '1px solid #334155', marginBottom: '4px' }}>
-                          Filtrar Meses
-                        </div>
-                        {[
-                          { value: 'ALL', label: 'Todos os status' },
-                          ...(monthsBreakdown.done > 0 ? [{ value: 'DONE', label: `CONCLUÍDO (${monthsBreakdown.done})` }] : []),
-                          ...(monthsBreakdown.docRede > 0 ? [{ value: 'DOC_REDE', label: `DOC. REDE (${monthsBreakdown.docRede})` }] : []),
-                          ...(monthsBreakdown.noMovement > 0 ? [{ value: 'SEM_MOVIMENTO', label: `SEM MOVIMENTO (${monthsBreakdown.noMovement})` }] : []),
-                          ...(monthsBreakdown.collection > 0 ? [{ value: 'COBRANCA', label: `COBRANÇA DOC. (${monthsBreakdown.collection})` }] : []),
-                          ...(monthsBreakdown.pending > 0 ? [{ value: 'PENDING', label: `PENDENTE (${monthsBreakdown.pending})` }] : []),
-                        ].map(item => (
-                          <button
-                            key={item.value}
-                            type="button"
-                            className={`th-filter-popover-item ${monthStatusFilter === item.value ? 'active' : ''}`}
-                            onClick={() => {
-                              setMonthStatusFilter(item.value as any);
-                              setOpenHeaderFilter(null);
-                            }}
-                          >
-                            <span>{item.label}</span>
-                            {monthStatusFilter === item.value && <Check size={12} />}
-                          </button>
-                        ))}
-                      </div>
-                    )}
-                  </div>
+                  <ColumnHeaderFilter
+                    columnKey="col-months"
+                    label="Meses"
+                    activeFilter={monthStatusFilter}
+                    onFilterChange={val => setMonthStatusFilter(val as any)}
+                    openHeaderFilter={openHeaderFilter}
+                    setOpenHeaderFilter={setOpenHeaderFilter}
+                    options={[
+                      { value: 'ALL', label: 'Todos os status', count: scopedRows.length },
+                      ...(monthsBreakdown.done > 0 ? [{ value: 'DONE', label: 'CONCLUÍDO', count: monthsBreakdown.done }] : []),
+                      ...(monthsBreakdown.docRede > 0 ? [{ value: 'DOC_REDE', label: 'DOC. REDE', count: monthsBreakdown.docRede }] : []),
+                      ...(monthsBreakdown.noMovement > 0 ? [{ value: 'SEM_MOVIMENTO', label: 'SEM MOVIMENTO', count: monthsBreakdown.noMovement }] : []),
+                      ...(monthsBreakdown.collection > 0 ? [{ value: 'COBRANCA', label: 'COBRANÇA DOC.', count: monthsBreakdown.collection }] : []),
+                      ...(monthsBreakdown.pending > 0 ? [{ value: 'PENDING', label: 'PENDENTE', count: monthsBreakdown.pending }] : []),
+                    ]}
+                  />
                 </div>
               </th>
             );
@@ -976,12 +798,7 @@ export function AccountingClosings({currentView,onNavigate,currentUser,onLogout}
           const locked = !!month && Date.UTC(year, month - 1, 1) > latestPeriod.getTime();
           const colKey = resolveColumnKey(column) || column.id;
           const activeColFilter = columnFilters[colKey] || 'ALL';
-
-          const uniqueColValues = Array.from(new Set(scopedRows.map(r => {
-            const v = r.columnsData?.[colKey];
-            if (v === null || v === undefined || v === '') return '';
-            return typeof v === 'object' ? (v.status || v.value || '') : String(v);
-          }).filter(Boolean))).slice(0, 15);
+          const colOptions = computeColumnFilterOptions(scopedRows, r => r.columnsData?.[colKey]);
 
           return (
             <th key={column.id} title={locked ? 'Libera na virada do mês seguinte' : visibilitySummary(column)}>
@@ -990,54 +807,15 @@ export function AccountingClosings({currentView,onNavigate,currentUser,onLogout}
                   {column.name}
                   {locked && <LockKeyhole size={12} />}
                 </span>
-                {uniqueColValues.length > 0 && (
-                  <div className="th-filter-wrapper">
-                    <button
-                      type="button"
-                      className={`th-filter-icon-btn ${activeColFilter !== 'ALL' ? 'has-filter' : ''}`}
-                      title={`Filtrar ${column.name}`}
-                      aria-label={`Filtrar ${column.name}`}
-                      onClick={e => {
-                        e.stopPropagation();
-                        setOpenHeaderFilter(openHeaderFilter === `col-${colKey}` ? null : `col-${colKey}`);
-                      }}
-                    >
-                      <Filter size={11} />
-                    </button>
-                    {openHeaderFilter === `col-${colKey}` && (
-                      <div className="th-filter-popover" onClick={e => e.stopPropagation()}>
-                        <div className="payroll-filter-heading" style={{ padding: '4px 8px', fontSize: '11px', fontWeight: 600, color: '#94a3b8', borderBottom: '1px solid #334155', marginBottom: '4px' }}>
-                          Filtrar {column.name}
-                        </div>
-                        <button
-                          type="button"
-                          className={`th-filter-popover-item ${activeColFilter === 'ALL' ? 'active' : ''}`}
-                          onClick={() => {
-                            setColumnFilters(prev => ({ ...prev, [colKey]: 'ALL' }));
-                            setOpenHeaderFilter(null);
-                          }}
-                        >
-                          <span>Todos</span>
-                          {activeColFilter === 'ALL' && <Check size={12} />}
-                        </button>
-                        {uniqueColValues.map(val => (
-                          <button
-                            key={val}
-                            type="button"
-                            className={`th-filter-popover-item ${activeColFilter === val ? 'active' : ''}`}
-                            onClick={() => {
-                              setColumnFilters(prev => ({ ...prev, [colKey]: val }));
-                              setOpenHeaderFilter(null);
-                            }}
-                          >
-                            <span>{val}</span>
-                            {activeColFilter === val && <Check size={12} />}
-                          </button>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                )}
+                <ColumnHeaderFilter
+                  columnKey={`col-${colKey}`}
+                  label={column.name}
+                  activeFilter={activeColFilter}
+                  onFilterChange={val => setColumnFilters(prev => ({ ...prev, [colKey]: val }))}
+                  openHeaderFilter={openHeaderFilter}
+                  setOpenHeaderFilter={setOpenHeaderFilter}
+                  options={colOptions}
+                />
               </div>
             </th>
           );

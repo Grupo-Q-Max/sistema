@@ -11,7 +11,6 @@ import {
   FileCheck,
   Plus,
   Search,
-  Filter,
   ChevronLeft,
   ChevronRight,
   CheckCircle2,
@@ -24,7 +23,6 @@ import {
   FileSpreadsheet,
   Calendar,
   CalendarPlus,
-  Check,
   CheckSquare,
   Sparkles,
   Info,
@@ -56,6 +54,7 @@ import { exportToCsv } from '../utils/exportCsv';
 import { compareCodes, formatCompanyCode } from '../utils/codeSort';
 import { applyFiscalRegimeRules, isFiscalObligationNA, setActiveFiscalRegimeRules } from '../config/fiscalRegimeRules';
 import { canUserEditCompany, canUserViewCompany, isUserResponsibleForCompany, companyBelongsToSector } from '../config/companyPermissions';
+import { ColumnHeaderFilter, computeColumnFilterOptions, matchColumnFilterValue } from './ColumnHeaderFilter';
 
 function brDateToIso(val: string): string {
   const m = String(val || '').trim().match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
@@ -727,17 +726,21 @@ export function Closings({ currentView, onNavigate, currentUser, onLogout }: Clo
 
       // Filtros individuais por obrigação do cabeçalho
       for (const [obCol, obStatus] of Object.entries(obligationFilters)) {
-        if (obStatus && obStatus !== 'ALL') {
-          const definition = popupColumns.find(col => col.columnKey === obCol);
-          if (!definition) continue;
-          const value = r.columnsData?.[obCol];
-          const itemStatus = ['TEXT', 'CHECKBOX', 'NUMBER', 'TEXTAREA', 'PASSWORD', 'SELECT', 'MULTISELECT'].includes(definition.inputType) ? (isColumnComplete(definition, value) ? 'CONCLUIDO' : 'PENDENTE') : value?.status;
-          if (obStatus === 'PENDENTE') {
-            if (itemStatus && itemStatus !== 'PENDENTE') return false;
-          } else if (itemStatus !== obStatus) {
-            return false;
-          }
+        if (!obStatus || obStatus === 'ALL') continue;
+        const definition = popupColumns.find(col => col.columnKey === obCol);
+        if (!definition) continue;
+        const value = r.columnsData?.[obCol];
+        let valStr = '';
+        if (!value) {
+          valStr = isFiscalObligationNA(r.company?.taxRegime, obCol) ? 'N/A' : '';
+        } else if (['TEXT', 'CHECKBOX', 'NUMBER', 'TEXTAREA', 'PASSWORD', 'SELECT', 'MULTISELECT'].includes(definition.inputType)) {
+          valStr = isColumnComplete(definition, value) ? 'Concluído' : 'Pendente';
+        } else if (typeof value === 'object') {
+          valStr = value.label || value.status || '';
+        } else {
+          valStr = String(value);
         }
+        if (!matchColumnFilterValue(valStr, obStatus)) return false;
       }
 
       const situation = installmentSummaries[c.id];
@@ -1414,12 +1417,30 @@ export function Closings({ currentView, onNavigate, currentUser, onLogout }: Clo
                         </div>
                       </th>
 
-                      {/* 2. Empresa com Ordenação */}
+                      {/* 2. Empresa com Ordenação e Filtro de Certificado */}
                       <th className="sticky-col-company">
-                        <button type="button" className="payroll-sort-btn" onClick={() => handleSort('name')} title="Clique para ordenar por nome">
-                          Empresa / Certificado
-                          <span>{sortConfig.key === 'name' ? (sortConfig.direction === 'asc' ? '▲' : '▼') : '⇅'}</span>
-                        </button>
+                        <div className="th-header-cell">
+                          <button type="button" className="payroll-sort-btn" onClick={() => handleSort('name')} title="Clique para ordenar por nome">
+                            Empresa / Certificado
+                            <span>{sortConfig.key === 'name' ? (sortConfig.direction === 'asc' ? '▲' : '▼') : '⇅'}</span>
+                          </button>
+                          <ColumnHeaderFilter
+                            columnKey="fiscal-cert"
+                            label="Certificado"
+                            activeFilter={certFilter}
+                            onFilterChange={setCertFilter}
+                            openHeaderFilter={openHeaderFilter}
+                            setOpenHeaderFilter={setOpenHeaderFilter}
+                            options={[
+                              { value: 'ALL', label: 'Certificados: Todos', count: scopedRows.length },
+                              { value: 'HAS_CERT', label: 'Com certificado', count: scopedRows.filter(r => r.company.hasClientCertificate).length },
+                              { value: 'NO_CERT', label: 'Sem certificado', count: scopedRows.filter(r => !r.company.hasClientCertificate).length },
+                              { value: 'EXPIRING', label: 'Vencendo ou Vencidos', count: scopedRows.filter(r => { const c = r.company.hasClientCertificate ? getCertificateStatus(r.company.certificateExpiration) : null; return c?.status === 'EXPIRED' || c?.status === 'WARNING'; }).length },
+                              { value: 'EXPIRED', label: 'Apenas Vencidos', count: scopedRows.filter(r => { const c = r.company.hasClientCertificate ? getCertificateStatus(r.company.certificateExpiration) : null; return c?.status === 'EXPIRED'; }).length },
+                              { value: 'OK', label: 'Válidos (> 30 dias)', count: scopedRows.filter(r => { const c = r.company.hasClientCertificate ? getCertificateStatus(r.company.certificateExpiration) : null; return c?.status === 'OK'; }).length },
+                            ]}
+                          />
+                        </div>
                       </th>
 
                       {/* 3. Tributação com Ícone de Filtro */}
@@ -1433,45 +1454,30 @@ export function Closings({ currentView, onNavigate, currentUser, onLogout }: Clo
                               </span>
                             )}
                           </span>
-                          <div className="th-filter-wrapper">
-                            <button
-                              className={`th-filter-icon-btn ${regimeFilter !== 'ALL' ? 'has-filter' : ''}`}
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setOpenHeaderFilter(openHeaderFilter === 'regime' ? null : 'regime');
-                              }}
-                              title="Filtrar por tributação"
-                            >
-                              <Filter size={12} />
-                            </button>
-                            {openHeaderFilter === 'regime' && (
-                              <div className="th-filter-popover" onClick={(e) => e.stopPropagation()}>
-                                <div style={{ fontSize: '0.72rem', color: '#94a3b8', padding: '4px 8px', fontWeight: 700, borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
-                                  Filtrar Tributação:
-                                </div>
-                                {[
-                                  { value: 'ALL', label: 'Todas as Tributações' },
-                                  { value: 'SIMPLES_NACIONAL', label: 'Simples Nacional' },
-                                  { value: 'LUCRO_PRESUMIDO', label: 'Lucro Presumido' },
-                                  { value: 'LUCRO_REAL_TRIMESTRAL', label: 'Lucro Real Trimestral' },
-                                  { value: 'LUCRO_REAL_ESTIMATIVA', label: 'Lucro Real Estimativa' },
-                                  { value: 'MEI', label: 'MEI' },
-                                ].map((item) => (
-                                  <button
-                                    key={item.value}
-                                    className={`th-filter-popover-item ${regimeFilter === item.value ? 'active' : ''}`}
-                                    onClick={() => {
-                                      setRegimeFilter(item.value);
-                                      setOpenHeaderFilter(null);
-                                    }}
-                                  >
-                                    <span>{item.label}</span>
-                                    {regimeFilter === item.value && <Check size={12} />}
-                                  </button>
-                                ))}
-                              </div>
-                            )}
-                          </div>
+                          <ColumnHeaderFilter
+                            columnKey="regime"
+                            label="Tributação"
+                            activeFilter={regimeFilter}
+                            onFilterChange={setRegimeFilter}
+                            openHeaderFilter={openHeaderFilter}
+                            setOpenHeaderFilter={setOpenHeaderFilter}
+                            options={computeColumnFilterOptions(scopedRows, r => r.company.taxRegime, {
+                              allLabel: 'Todas as Tributações',
+                              valueLabels: {
+                                SIMPLES_NACIONAL: 'Simples Nacional',
+                                LUCRO_PRESUMIDO: 'Lucro Presumido',
+                                LUCRO_REAL_TRIMESTRAL: 'Lucro Real Trim.',
+                                LUCRO_REAL_ESTIMATIVA: 'Lucro Real Est.',
+                                LUCRO_REAL_ANUAL: 'Lucro Real Anual',
+                                MEI: 'MEI',
+                                IMUNE_IRPJ: 'Imune IRPJ',
+                                CONDOMINIOS: 'Condomínios',
+                                DOMESTICA: 'Doméstica',
+                                ASSOCIACOES: 'Associações',
+                                PESSOA_FISICA: 'Pessoa Física',
+                              }
+                            })}
+                          />
                         </div>
                       </th>
 
@@ -1486,43 +1492,18 @@ export function Closings({ currentView, onNavigate, currentUser, onLogout }: Clo
                               </span>
                             )}
                           </span>
-                          <div className="th-filter-wrapper">
-                            <button
-                              className={`th-filter-icon-btn ${statusFilter !== 'ALL' ? 'has-filter' : ''}`}
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setOpenHeaderFilter(openHeaderFilter === 'status' ? null : 'status');
-                              }}
-                              title="Filtrar por status"
-                            >
-                              <Filter size={12} />
-                            </button>
-                            {openHeaderFilter === 'status' && (
-                              <div className="th-filter-popover" onClick={(e) => e.stopPropagation()}>
-                                <div style={{ fontSize: '0.72rem', color: '#94a3b8', padding: '4px 8px', fontWeight: 700, borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
-                                  Filtrar Status:
-                                </div>
-                                {[
-                                  { value: 'ALL', label: 'Todos os Status' },
-                                  { value: 'COMPLETED', label: 'Concluído' },
-                                  { value: 'IN_PROGRESS', label: 'Em Andamento' },
-                                  { value: 'PENDING', label: 'Pendente' },
-                                ].map((item) => (
-                                  <button
-                                    key={item.value}
-                                    className={`th-filter-popover-item ${statusFilter === item.value ? 'active' : ''}`}
-                                    onClick={() => {
-                                      setStatusFilter(item.value);
-                                      setOpenHeaderFilter(null);
-                                    }}
-                                  >
-                                    <span>{item.label}</span>
-                                    {statusFilter === item.value && <Check size={12} />}
-                                  </button>
-                                ))}
-                              </div>
-                            )}
-                          </div>
+                          <ColumnHeaderFilter
+                            columnKey="status"
+                            label="Status"
+                            activeFilter={statusFilter}
+                            onFilterChange={setStatusFilter}
+                            openHeaderFilter={openHeaderFilter}
+                            setOpenHeaderFilter={setOpenHeaderFilter}
+                            options={computeColumnFilterOptions(scopedRows, r => r.calculatedStatus, {
+                              allLabel: 'Todos os Status',
+                              valueLabels: { COMPLETED: 'Concluído', IN_PROGRESS: 'Em Andamento', PENDING: 'Pendente' }
+                            })}
+                          />
                         </div>
                       </th>
 
@@ -1531,60 +1512,71 @@ export function Closings({ currentView, onNavigate, currentUser, onLogout }: Clo
                         <th style={{ minWidth: '130px' }}>
                           <div className="th-header-cell">
                             <span>Responsável</span>
-                            <div className="th-filter-wrapper">
-                              <button
-                                className={`th-filter-icon-btn ${responsibleFilter !== 'ALL' ? 'has-filter' : ''}`}
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  setOpenHeaderFilter(openHeaderFilter === 'responsible' ? null : 'responsible');
-                                }}
-                                title="Filtrar por responsável"
-                              >
-                                <Filter size={12} />
-                              </button>
-                              {openHeaderFilter === 'responsible' && (
-                                <div className="th-filter-popover" onClick={(e) => e.stopPropagation()}>
-                                  <div style={{ fontSize: '0.72rem', color: '#94a3b8', padding: '4px 8px', fontWeight: 700, borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
-                                    Filtrar Responsável:
-                                  </div>
-                                  <button
-                                    className={`th-filter-popover-item ${responsibleFilter === 'ALL' ? 'active' : ''}`}
-                                    onClick={() => {
-                                      setResponsibleFilter('ALL');
-                                      setOpenHeaderFilter(null);
-                                    }}
-                                  >
-                                    <span>Todos</span>
-                                    {responsibleFilter === 'ALL' && <Check size={12} />}
-                                  </button>
-                                  {fiscalUsers.map((u) => (
-                                    <button
-                                      key={u.id}
-                                      className={`th-filter-popover-item ${responsibleFilter === u.id ? 'active' : ''}`}
-                                      onClick={() => {
-                                        setResponsibleFilter(u.id);
-                                        setOpenHeaderFilter(null);
-                                      }}
-                                    >
-                                      <span>{u.name || u.email}</span>
-                                      {responsibleFilter === u.id && <Check size={12} />}
-                                    </button>
-                                  ))}
-                                </div>
-                              )}
-                            </div>
+                            <ColumnHeaderFilter
+                              columnKey="responsible"
+                              label="Responsável"
+                              activeFilter={responsibleFilter}
+                              onFilterChange={setResponsibleFilter}
+                              openHeaderFilter={openHeaderFilter}
+                              setOpenHeaderFilter={setOpenHeaderFilter}
+                              options={computeColumnFilterOptions(scopedRows, r => {
+                                const resp = getFiscalResponsible(r.company);
+                                return resp?.userId || resp?.user?.id || null;
+                              }, {
+                                allLabel: 'Todos os Responsáveis',
+                                noneLabel: 'Não atribuído',
+                                valueLabels: Object.fromEntries(fiscalUsers.map(u => [u.id, u.name || u.email]))
+                              })}
+                            />
                           </div>
                         </th>
                       )}
 
                       <th>CNPJ</th>
                       <th>Observações</th>
-                      {viewInstallments && <th style={{ minWidth: '155px' }}><div className="th-header-cell"><span>Parcelamentos</span><div className="th-filter-wrapper"><button className={`th-filter-icon-btn ${installmentFilter !== 'ALL' ? 'has-filter' : ''}`} title="Filtrar parcelamentos" aria-label="Filtrar coluna Parcelamentos" onClick={event => { event.stopPropagation(); setOpenHeaderFilter(openHeaderFilter === 'installment-status' ? null : 'installment-status'); }}><Filter size={12} /></button>{openHeaderFilter === 'installment-status' && <div className="th-filter-popover" onClick={event => event.stopPropagation()}>{[{ value: 'ALL', label: 'Parcelamentos: Todos' }, { value: 'HAS_PLAN', label: 'Com parcelamento' }, { value: 'PENDING', label: 'Pendente' }, { value: 'OVERDUE', label: 'Atrasado / atrasos anteriores' }, { value: 'PAID', label: 'Pago no mês' }, { value: 'NO_INSTALLMENT', label: 'Sem parcela no mês' }, { value: 'NA', label: 'N/A — sem parcelamento' }].map(item => <button key={item.value} className={`th-filter-popover-item ${installmentFilter === item.value ? 'active' : ''}`} onClick={() => { setInstallmentFilter(item.value); setOpenHeaderFilter(null); }}><span>{item.label}</span>{installmentFilter === item.value && <Check size={12} />}</button>)}</div>}</div></div></th>}
+                      {viewInstallments && (
+                        <th style={{ minWidth: '155px' }}>
+                          <div className="th-header-cell">
+                            <span>Parcelamentos</span>
+                            <ColumnHeaderFilter
+                              columnKey="installment-status"
+                              label="Parcelamentos"
+                              activeFilter={installmentFilter}
+                              onFilterChange={setInstallmentFilter}
+                              openHeaderFilter={openHeaderFilter}
+                              setOpenHeaderFilter={setOpenHeaderFilter}
+                              options={[
+                                { value: 'ALL', label: 'Parcelamentos: Todos', count: scopedRows.length },
+                                { value: 'HAS_PLAN', label: 'Com parcelamento', count: scopedRows.filter(r => installmentSummaries[r.company.id] && installmentSummaries[r.company.id].status !== 'NA').length },
+                                { value: 'PENDING', label: 'Pendente', count: scopedRows.filter(r => installmentSummaries[r.company.id]?.status === 'PENDING').length },
+                                { value: 'OVERDUE', label: 'Atrasado / atrasos anteriores', count: scopedRows.filter(r => installmentSummaries[r.company.id]?.status === 'OVERDUE').length },
+                                { value: 'PAID', label: 'Pago no mês', count: scopedRows.filter(r => installmentSummaries[r.company.id]?.status === 'PAID').length },
+                                { value: 'NO_INSTALLMENT', label: 'Sem parcela no mês', count: scopedRows.filter(r => installmentSummaries[r.company.id]?.status === 'NO_INSTALLMENT').length },
+                                { value: 'NA', label: 'N/A — sem parcelamento', count: scopedRows.filter(r => !installmentSummaries[r.company.id] || installmentSummaries[r.company.id]?.status === 'NA').length },
+                              ]}
+                            />
+                          </div>
+                        </th>
+                      )}
 
                       {/* As 8 Obrigações Fiscais com Ícone de Filtro no Header */}
                       {popupColumns.map((column) => {
                         const ob = { key: column.columnKey, label: column.name, color: '#818cf8' };
                         const currentObFilter = obligationFilters[ob.key] || 'ALL';
+                        const obOptions = computeColumnFilterOptions(scopedRows, r => {
+                          const val = r.columnsData?.[column.columnKey];
+                          if (!val) {
+                            if (isFiscalObligationNA(r.company?.taxRegime, column.columnKey)) return 'N/A';
+                            return null;
+                          }
+                          if (['TEXT', 'CHECKBOX', 'NUMBER', 'TEXTAREA', 'PASSWORD', 'SELECT', 'MULTISELECT'].includes(column.inputType)) {
+                            return isColumnComplete(column, val) ? 'Concluído' : 'Pendente';
+                          }
+                          if (typeof val === 'object') {
+                            return val.label || val.status || null;
+                          }
+                          return String(val);
+                        }, { allLabel: 'Todos os Status', noneLabel: 'Nenhum' });
 
                         return (
                           <th key={ob.key} style={{ color: ob.color, borderBottomColor: ob.color, minWidth: '120px' }}>
@@ -1609,45 +1601,15 @@ export function Closings({ currentView, onNavigate, currentUser, onLogout }: Clo
                                   );
                                 })()}
                               </div>
-                              <div className="th-filter-wrapper">
-                                <button
-                                  className={`th-filter-icon-btn ${currentObFilter !== 'ALL' ? 'has-filter' : ''}`}
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    setOpenHeaderFilter(openHeaderFilter === ob.key ? null : ob.key);
-                                  }}
-                                  title={`Filtrar ${ob.label}`}
-                                >
-                                  <Filter size={11} />
-                                </button>
-                                {openHeaderFilter === ob.key && (
-                                  <div className="th-filter-popover" onClick={(e) => e.stopPropagation()}>
-                                    <div style={{ fontSize: '0.72rem', color: '#94a3b8', padding: '4px 8px', fontWeight: 700, borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
-                                      Filtrar {ob.label}:
-                                    </div>
-                                    {[
-                                      { value: 'ALL', label: 'Todos os Status' },
-                                      { value: 'CONCLUIDO', label: 'Concluído (OK)' },
-                                      { value: 'OK - SEM MOVIMENTO', label: 'OK - Sem Movimento' },
-                                      { value: 'PENDENCIA', label: 'Pendência' },
-                                      { value: 'N/A', label: 'N/A' },
-                                      { value: 'PENDENTE', label: 'Pendente' },
-                                    ].filter(item => !['TEXT', 'CHECKBOX', 'NUMBER', 'TEXTAREA', 'PASSWORD', 'SELECT', 'MULTISELECT'].includes(column.inputType) || ['ALL', 'CONCLUIDO', 'PENDENTE'].includes(item.value)).map((item) => (
-                                      <button
-                                        key={item.value}
-                                        className={`th-filter-popover-item ${currentObFilter === item.value ? 'active' : ''}`}
-                                        onClick={() => {
-                                          handleObligationFilterChange(ob.key, item.value);
-                                          setOpenHeaderFilter(null);
-                                        }}
-                                      >
-                                        <span>{item.label}</span>
-                                        {currentObFilter === item.value && <Check size={12} />}
-                                      </button>
-                                    ))}
-                                  </div>
-                                )}
-                              </div>
+                              <ColumnHeaderFilter
+                                columnKey={`ob-${ob.key}`}
+                                label={ob.label}
+                                activeFilter={currentObFilter}
+                                onFilterChange={val => handleObligationFilterChange(ob.key, val)}
+                                openHeaderFilter={openHeaderFilter}
+                                setOpenHeaderFilter={setOpenHeaderFilter}
+                                options={obOptions}
+                              />
                             </div>
                           </th>
                         );

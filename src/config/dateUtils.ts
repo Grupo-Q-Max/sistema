@@ -8,6 +8,18 @@ export function parseFlexibleDate(val: any): Date | null {
   if (val instanceof Date) {
     return isNaN(val.getTime()) ? null : val;
   }
+  if (typeof val === 'number') {
+    if (isNaN(val)) return null;
+    if (val > 1000000000000) {
+      const d = new Date(val);
+      return isNaN(d.getTime()) ? null : d;
+    }
+    // Serial do Excel
+    if (val > 20000 && val < 90000) {
+      const d = new Date(Math.round((val - 25569) * 86400 * 1000));
+      return isNaN(d.getTime()) ? null : d;
+    }
+  }
   const str = String(val).trim();
   if (!str || str === '-' || str.toLowerCase() === 'n/a' || str.toLowerCase() === 'null') {
     return null;
@@ -28,6 +40,19 @@ export function parseFlexibleDate(val: any): Date | null {
     }
   }
 
+  // 1b. DD/MM/YY (ano de 2 dígitos)
+  const dmy2 = str.match(/^(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](\d{2})$/);
+  if (dmy2) {
+    const day = parseInt(dmy2[1], 10);
+    const month = parseInt(dmy2[2], 10) - 1;
+    let year = parseInt(dmy2[3], 10);
+    year += year < 70 ? 2000 : 1900;
+    if (month >= 0 && month <= 11 && day >= 1 && day <= 31) {
+      const d = new Date(year, month, day, 23, 59, 59);
+      if (!isNaN(d.getTime())) return d;
+    }
+  }
+
   // 2. MM/AAAA ou MM-AAAA (muito comum em vencimento de certificado)
   const my = str.match(/^(\d{1,2})[\/\-\.](\d{4})$/);
   if (my) {
@@ -35,6 +60,18 @@ export function parseFlexibleDate(val: any): Date | null {
     const year = parseInt(my[2], 10);
     if (month >= 0 && month <= 11) {
       // Considera até o último dia do mês às 23:59:59
+      const d = new Date(year, month + 1, 0, 23, 59, 59);
+      if (!isNaN(d.getTime())) return d;
+    }
+  }
+
+  // 2b. MM/YY (mês/ano com 2 dígitos)
+  const my2 = str.match(/^(\d{1,2})[\/\-\.](\d{2})$/);
+  if (my2) {
+    const month = parseInt(my2[1], 10) - 1;
+    let year = parseInt(my2[2], 10);
+    year += year < 70 ? 2000 : 1900;
+    if (month >= 0 && month <= 11) {
       const d = new Date(year, month + 1, 0, 23, 59, 59);
       if (!isNaN(d.getTime())) return d;
     }
@@ -117,6 +154,10 @@ export function getCertificateExpirationStatus(dateStr?: string | Date | null): 
   const diffTime = expDay.getTime() - today.getTime();
   const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
 
+  if (isNaN(diffDays)) {
+    return { status: 'INVALID', label: 'Data inválida', color: '#ef4444', days: null, formattedDate: String(dateStr) };
+  }
+
   if (diffDays < 0) {
     return { status: 'EXPIRED', label: 'Vencido', color: '#ef4444', days: diffDays, formattedDate };
   }
@@ -131,3 +172,4 @@ export function getCertificateExpirationStatus(dateStr?: string | Date | null): 
   }
   return { status: 'OK', label: `Válido (${diffDays}d)`, color: '#10b981', days: diffDays, formattedDate };
 }
+
