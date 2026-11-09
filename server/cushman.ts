@@ -91,7 +91,7 @@ export function registerCushman(app:any,prisma:any,options:{sync:(period:Date)=>
   const rows=companies.filter((company:any)=>{const cl=mapped.get(company.id);const hasLeg=Boolean(cl?.hasLegacy||cl?.columnsData?._legacy);const belongsToCushman=isCushmanCompany(company);if(!belongsToCushman)return false;return cushmanCompanyAllowed(user,company)&&companyExitAllowsPeriod(company,period)&&(mode==='ALL'||cushmanCompanyEligible(company,period)||hasLeg);}).map((company:any)=>{
    const closing=mapped.get(company.id);const hasLeg=Boolean(closing?.hasLegacy||closing?.columnsData?._legacy);const participates=cushmanCompanyEligible(company,period)||hasLeg;const data={...(closing?.columnsData||{})};delete data._legacy;
    for(const column of columns){const key=resolveCushmanKey(column)||column.id;if(column.inputType==='PASSWORD'&&data[key])data[key]=options.decrypt(data[key]);}
-   if(data.cush_observacao===undefined&&company.notesScope==='CUSHMAN')data.cush_observacao=company.notes||'';
+   if((!data.cush_observacao || data.cush_observacao === '') && (company.notesScope === 'CUSHMAN' || company.notesScope === 'GERAL' || !company.notesScope)){ data.cush_observacao = company.notes || ''; }
    const progress=calculateColumnProgress(participates?columns.filter((column:any)=>column.countsProgress):[],data,column=>resolveCushmanKey(column)||column.id);
    return {company:safeCompany(company),closingId:closing?.id||null,columnsData:data,participates,editable:cushmanCompanyEditable(user,company),...progress,calculatedStatus:participates?progress.calculatedStatus:'NOT_APPLICABLE',updatedAt:closing?.updatedAt||null};
   });
