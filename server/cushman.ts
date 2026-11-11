@@ -77,7 +77,7 @@ export function registerCushman(app:any,prisma:any,options:{sync:(period:Date)=>
   const period=reference(req.query);const mode=req.query.companies||'CUSHMAN';if(!['CUSHMAN','ALL'].includes(mode))fail(400,'Filtro de empresas inválido.');
   const nextPeriod=new Date(Date.UTC(period.getUTCFullYear(),period.getUTCMonth()+1,1));
   let [companies,closings,storedColumns]=await Promise.all([
-   prisma.company.findMany({omit:{legacyData:true},include:{responsibles:true},orderBy:[{code:'asc'},{name:'asc'}]}),
+   prisma.company.findMany({where:{deletedAt:null},omit:{legacyData:true},include:{responsibles:true},orderBy:[{code:'asc'},{name:'asc'}]}),
    queryClosingsBySectorAndRange(options.pool,prisma,'CUSHMAN',period,nextPeriod,{includeHasLegacy:true}),
    prisma.departmentColumn.findMany({where:{department:'CUSHMAN'},orderBy:{orderIndex:'asc'}}),
   ]);

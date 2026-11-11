@@ -155,6 +155,8 @@ const KNOWN_API_PREFIXES = [
   '/login',
   '/logout',
   '/dominio-staging',
+  '/events',
+  '/health',
 ];
 
 // Normaliza requisições vindas com prefixo legado /sistema ou sem /api ou com /api duplicado
@@ -177,15 +179,79 @@ app.use((req, res, next) => {
   next();
 });
 
-// Endpoint de saúde para checagem rápida no Azure
-app.get('/api/health', (_req, res) => {
-  res.json({
-    status: 'ok',
-    uptime: process.uptime(),
-    dbConnected: !!pool,
-    hasDatabaseUrl: !!process.env.DATABASE_URL,
-    timestamp: new Date().toISOString()
+// ========================
+// REAL-TIME COLLABORATION (SSE - Server-Sent Events)
+// ========================
+const sseClients = new Set<any>();
+
+export function broadcastRealtimeEvent(type: string, payload: any) {
+  if (sseClients.size === 0) return;
+  const data = `data: ${JSON.stringify({ type, payload, timestamp: Date.now() })}\n\n`;
+  for (const client of sseClients) {
+    try {
+      client.write(data);
+    } catch {
+      sseClients.delete(client);
+    }
+  }
+}
+
+app.get('/api/events', (_req, res) => {
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache, no-transform');
+  res.setHeader('Connection', 'keep-alive');
+  res.setHeader('X-Accel-Buffering', 'no');
+  res.flushHeaders?.();
+
+  res.write(`data: ${JSON.stringify({ type: 'CONNECTED', clientId: Date.now() })}\n\n`);
+  sseClients.add(res);
+
+  const keepAlive = setInterval(() => {
+    try {
+      res.write(': ping\n\n');
+    } catch {
+      clearInterval(keepAlive);
+      sseClients.delete(res);
+    }
+  }, 25000);
+
+  _req.on('close', () => {
+    clearInterval(keepAlive);
+    sseClients.delete(res);
   });
+});
+
+// Endpoint de saúde detalhado para monitoramento e auto-healing no Azure
+app.get('/api/health', async (_req, res) => {
+  const startTime = Date.now();
+  try {
+    await prisma.$queryRaw`SELECT 1`;
+    const latencyMs = Date.now() - startTime;
+    res.json({
+      status: 'healthy',
+      timestamp: new Date().toISOString(),
+      uptimeSeconds: Math.floor(process.uptime()),
+      database: {
+        status: 'connected',
+        latencyMs,
+      },
+      realtimeClients: sseClients.size,
+      memory: {
+        rssMb: Math.round(process.memoryUsage().rss / 1024 / 1024),
+        heapUsedMb: Math.round(process.memoryUsage().heapUsed / 1024 / 1024),
+      },
+      version: '1.0.0',
+    });
+  } catch (error: any) {
+    res.status(503).json({
+      status: 'unhealthy',
+      timestamp: new Date().toISOString(),
+      database: {
+        status: 'disconnected',
+        error: error.message || 'Falha de conexão com o banco',
+      },
+    });
+  }
 });
 
 registerInstallments(app, prisma, { onChanged: () => invalidateDashboardCache() });
@@ -564,8 +630,14 @@ registerCushman(app,prisma,{
   encrypt:encryptPassword,
   decrypt:decryptPassword,
   pool,
-  onCompanyUpdated: () => invalidateAllDataCaches(),
-  onClosingUpdated: () => invalidateDashboardCache(),
+  onCompanyUpdated: () => {
+    invalidateAllDataCaches();
+    broadcastRealtimeEvent('COMPANY_UPDATED', {});
+  },
+  onClosingUpdated: () => {
+    invalidateDashboardCache();
+    broadcastRealtimeEvent('CUSHMAN_CLOSING_UPDATED', {});
+  },
 });
 let lastCompetenceBgSync = 0;
 async function syncLatestCompetenceFromDb() {
@@ -752,6 +824,17 @@ async function saveAccountingColumn(existing:any,columnKey:string,columnValue:an
   const projected=sanitizeColumnsData(annualValues(company,year,columns,stored));const progress=accountingProgress(company,year,columns,projected);
   const updated=await prisma.closing.update({where:{id:existing.id},data:{columnsData:stored,status:progress.calculatedStatus}});
   for(const item of columns)if(item.inputType==='PASSWORD'){const key=resolveColumnKey(item)||item.id;if(projected[key])projected[key]=decryptPassword(projected[key]);}
+  broadcastRealtimeEvent('CLOSING_UPDATED', {
+    closingId: updated.id,
+    companyId: existing.companyId,
+    sector: 'CONTABIL',
+    columnKey,
+    columnValue,
+    columnsData: projected,
+    calculatedStatus: progress.calculatedStatus,
+    progress,
+    updatedAt: updated.updatedAt,
+  });
   return res.json({success:true,closing:{...updated,columnsData:projected},...progress});
 }
 
@@ -1149,6 +1232,17 @@ app.put('/api/closings/:id/column', async (req, res) => {
       }
     }
     invalidateDashboardCache();
+    broadcastRealtimeEvent('CLOSING_UPDATED', {
+      closingId: updated.id,
+      companyId: existing.companyId,
+      sector: existing.type,
+      columnKey,
+      columnValue,
+      columnsData: responseColumnsData,
+      calculatedStatus: nextStatus,
+      progress,
+      updatedAt: updated.updatedAt,
+    });
     res.json({
       success: true,
       closing: { ...updated, columnsData: responseColumnsData },
@@ -1323,6 +1417,11 @@ app.post('/api/closings/bulk-action', async (req, res) => {
 
     if (updatedResults.length > 0) {
       invalidateDashboardCache();
+      broadcastRealtimeEvent('CLOSINGS_BULK_UPDATED', {
+        items: updatedResults,
+        columnKey,
+        action,
+      });
     }
 
     res.json({
@@ -1413,6 +1512,11 @@ app.put('/api/companies/:id/notes', async (req, res) => {
     });
 
     invalidateCompaniesCache();
+    broadcastRealtimeEvent('COMPANY_NOTES_UPDATED', {
+      companyId: id,
+      notes,
+      notesScope: notesScope || 'FISCAL',
+    });
     res.json({ success: true, company: updated });
   } catch (error) {
     console.error('Erro ao salvar observações:', error);
@@ -1899,12 +2003,13 @@ app.get('/api/cnpj/:cnpj', async (req, res) => {
   }
 });
 
-async function fetchFormattedCompanies(): Promise<any[]> {
+async function fetchFormattedCompanies(includeDeleted = false): Promise<any[]> {
   const now = Date.now();
-  if (companiesCache && now - companiesCache.ts < 120_000) {
+  if (!includeDeleted && companiesCache && now - companiesCache.ts < 120_000) {
     return companiesCache.data;
   }
   const companies = await prisma.company.findMany({
+    where: includeDeleted ? {} : { deletedAt: null },
     omit: { legacyData: true },
     include: {
       responsibles: {
@@ -1928,14 +2033,17 @@ async function fetchFormattedCompanies(): Promise<any[]> {
     sdPasswordDecrypted: decryptPassword(c.sdPassword),
     nfPasswordDecrypted: decryptPassword(c.nfPassword),
   }));
-  companiesCache = { ts: Date.now(), data: formatted };
+  if (!includeDeleted) {
+    companiesCache = { ts: Date.now(), data: formatted };
+  }
   return formatted;
 }
 
 // Lista todas as empresas com dados completos e senhas descriptografadas para visualização segura
-app.get('/api/companies', async (_req, res) => {
+app.get('/api/companies', async (req, res) => {
   try {
-    const formatted = await fetchFormattedCompanies();
+    const includeDeleted = req.query.includeDeleted === 'true';
+    const formatted = await fetchFormattedCompanies(includeDeleted);
     res.json(formatted);
   } catch (error) {
     console.error('Erro ao buscar empresas:', error);
@@ -2069,6 +2177,7 @@ app.post('/api/companies', async (req, res) => {
     });
 
     invalidateAllDataCaches();
+    broadcastRealtimeEvent('COMPANY_CREATED', { companyId: newCompany.id });
     res.status(201).json({
       ...newCompany,
       certificatePasswordDecrypted: certificatePassword || null,
@@ -2276,6 +2385,7 @@ app.put('/api/companies/:id', async (req, res) => {
     }
 
     invalidateAllDataCaches();
+    broadcastRealtimeEvent('COMPANY_UPDATED', { companyId: updated.id });
     res.json({
       ...updated,
       certificatePasswordDecrypted: decryptPassword(updated.certificatePassword),
@@ -2290,7 +2400,7 @@ app.put('/api/companies/:id', async (req, res) => {
   }
 });
 
-// Excluir empresa (Restrito a Administradores e Sócios autenticados)
+// Excluir empresa (Soft Delete - preserva histórico contábil conforme Art. 173 CTN, restrito a ADMIN/SOCIO)
 app.delete('/api/companies/:id', async (req, res) => {
   try {
     const actor = await resolveAuthenticatedUser(prisma, req);
@@ -2304,7 +2414,10 @@ app.delete('/api/companies/:id', async (req, res) => {
       return res.status(404).json({ error: 'Empresa não encontrada.' });
     }
 
-    await prisma.company.delete({ where: { id } });
+    await prisma.company.update({
+      where: { id },
+      data: { deletedAt: new Date() },
+    });
     invalidateAllDataCaches();
 
     void logAction(
@@ -2314,14 +2427,56 @@ app.delete('/api/companies/:id', async (req, res) => {
       'EXCLUIU_EMPRESA',
       'EMPRESA',
       id,
+      { code: company.code, name: company.name, cnpj: company.cnpj, softDelete: true },
+      getClientIp(req)
+    );
+
+    broadcastRealtimeEvent('COMPANY_DELETED', { companyId: id });
+
+    res.json({ success: true, message: 'Empresa excluída com sucesso (histórico contábil preservado)' });
+  } catch (error) {
+    console.error('Erro ao excluir empresa:', error);
+    res.status(500).json({ error: 'Erro ao excluir empresa' });
+  }
+});
+
+// Restaurar empresa excluída (Soft Delete restore - restrito a ADMIN/SOCIO)
+app.post('/api/companies/:id/restore', async (req, res) => {
+  try {
+    const actor = await resolveAuthenticatedUser(prisma, req);
+    if (!actor || !isPrivilegedUser(actor)) {
+      return res.status(403).json({ error: 'Apenas Administradores e Sócios podem restaurar empresas.' });
+    }
+
+    const { id } = req.params;
+    const company = await prisma.company.findUnique({ where: { id } });
+    if (!company) {
+      return res.status(404).json({ error: 'Empresa não encontrada.' });
+    }
+
+    await prisma.company.update({
+      where: { id },
+      data: { deletedAt: null },
+    });
+    invalidateAllDataCaches();
+
+    void logAction(
+      actor.id,
+      actor.email,
+      actor.name || actor.email,
+      'RESTAUROU_EMPRESA',
+      'EMPRESA',
+      id,
       { code: company.code, name: company.name, cnpj: company.cnpj },
       getClientIp(req)
     );
 
-    res.json({ success: true, message: 'Empresa excluída com sucesso' });
+    broadcastRealtimeEvent('COMPANY_RESTORED', { companyId: id });
+
+    res.json({ success: true, message: 'Empresa restaurada com sucesso' });
   } catch (error) {
-    console.error('Erro ao excluir empresa:', error);
-    res.status(500).json({ error: 'Erro ao excluir empresa' });
+    console.error('Erro ao restaurar empresa:', error);
+    res.status(500).json({ error: 'Erro ao restaurar empresa' });
   }
 });
 
@@ -3471,6 +3626,7 @@ app.delete('/api/columns/:id', async (req, res) => {
     const { id } = req.params;
     await prisma.departmentColumn.delete({ where: { id } });
     invalidateDashboardCache();
+    broadcastRealtimeEvent('COLUMNS_CHANGED', { columnId: id });
     res.json({ success: true, message: 'Coluna excluída com sucesso' });
   } catch (error) {
     console.error('Erro ao excluir coluna:', error);
@@ -3498,6 +3654,7 @@ app.post('/api/columns/reorder', async (req, res) => {
     );
 
     invalidateDashboardCache();
+    broadcastRealtimeEvent('COLUMNS_CHANGED', {});
     res.json({ success: true });
   } catch (error) {
     console.error('Erro ao reordenar colunas:', error);

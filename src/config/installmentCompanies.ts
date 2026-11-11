@@ -1,6 +1,11 @@
 // Empresa externa: o cadastro não representa contrato contábil nem habilita obrigações.
 export const EXTERNAL_INSTALLMENT_SECTOR='PARCELAMENTO_EXTERNO';
-export const externalCompaniesExcluded={OR:[{activeSectors:null},{activeSectors:{not:EXTERNAL_INSTALLMENT_SECTOR}}]};
+export const externalCompaniesExcluded = {
+  AND: [
+    { OR: [{ activeSectors: null }, { activeSectors: { not: EXTERNAL_INSTALLMENT_SECTOR } }] },
+    { deletedAt: null }
+  ]
+};
 export function isExternalInstallmentCompany(company:any):boolean{return company?.activeSectors===EXTERNAL_INSTALLMENT_SECTOR;}
 export const INSTALLMENT_COMPANY_REGIMES=[
  {value:'MEI',label:'MEI'},{value:'SIMPLES_NACIONAL',label:'Simples Nacional'},{value:'LUCRO_PRESUMIDO',label:'Lucro Presumido'},

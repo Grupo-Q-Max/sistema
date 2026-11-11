@@ -309,6 +309,25 @@ export function Companies({ currentView, onNavigate, currentUser, onLogout }: Co
     fetchUsers();
   }, []);
 
+  // Sincronização em tempo real de empresas via SSE
+  useEffect(() => {
+    const handleRealtime = (e: any) => {
+      const detail = e.detail;
+      if (!detail) return;
+      if (
+        detail.type === 'COMPANY_CREATED' ||
+        detail.type === 'COMPANY_UPDATED' ||
+        detail.type === 'COMPANY_DELETED' ||
+        detail.type === 'COMPANY_RESTORED' ||
+        detail.type === 'COMPANY_NOTES_UPDATED'
+      ) {
+        fetchCompanies();
+      }
+    };
+    window.addEventListener('app-realtime-update', handleRealtime);
+    return () => window.removeEventListener('app-realtime-update', handleRealtime);
+  }, []);
+
   // Fecha modal ao pressionar ESC
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {

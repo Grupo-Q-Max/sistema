@@ -291,6 +291,51 @@ export function Closings({ currentView, onNavigate, currentUser, onLogout }: Clo
     return () => { fetchSequence.current++; };
   }, [selectedYear, selectedMonth]);
 
+  // Atualização em tempo real via SSE (Server-Sent Events)
+  useEffect(() => {
+    const handleRealtime = (e: any) => {
+      const detail = e.detail;
+      if (!detail) return;
+      if (detail.type === 'CLOSING_UPDATED' && detail.payload?.sector === 'FISCAL') {
+        const p = detail.payload;
+        setRows((prev) =>
+          prev.map((r) => {
+            if (r.closingId === p.closingId) {
+              return {
+                ...r,
+                columnsData: applyFiscalRegimeRules(r.company?.taxRegime, p.columnsData || {}),
+                calculatedStatus: p.calculatedStatus ?? r.calculatedStatus,
+                progressPercent: p.progress?.progressPercent ?? r.progressPercent,
+              };
+            }
+            return r;
+          })
+        );
+      } else if (detail.type === 'CLOSINGS_BULK_UPDATED') {
+        const items = detail.payload?.items || [];
+        const itemMap = new Map(items.map((it: any) => [it.id, it]));
+        setRows((prev) =>
+          prev.map((r) => {
+            const it = itemMap.get(r.closingId) as any;
+            if (it) {
+              return {
+                ...r,
+                columnsData: applyFiscalRegimeRules(r.company?.taxRegime, it.columnsData || {}),
+                calculatedStatus: it.calculatedStatus ?? r.calculatedStatus,
+                progressPercent: it.progressPercent ?? r.progressPercent,
+              };
+            }
+            return r;
+          })
+        );
+      } else if (detail.type === 'COMPANY_UPDATED' || detail.type === 'COMPANY_DELETED' || detail.type === 'COMPANY_RESTORED' || detail.type === 'COLUMNS_CHANGED') {
+        fetchClosings();
+      }
+    };
+    window.addEventListener('app-realtime-update', handleRealtime);
+    return () => window.removeEventListener('app-realtime-update', handleRealtime);
+  }, []);
+
   useEffect(() => {
     if (!viewInstallments || !rows.length || installmentCompany) return;
     const timer = window.setInterval(() => { void loadInstallmentSummaries(rows); }, 60_000);

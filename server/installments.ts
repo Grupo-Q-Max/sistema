@@ -88,7 +88,7 @@ export function registerInstallments(app:any,prisma:any,options?:{onChanged?:()=
     if(!Number.isInteger(offset)||offset<0||offset>1000000)failure(400,'Página inválida.');
     const scope=installmentCompanyScope(user);
     const digits=query.replace(/\D/g,'');const search=query?{OR:[...['name','tradeName','code','cnpj','groupName'].map(field=>({[field]:{contains:query}})),...(digits.length>=3?[{cnpj:{contains:digits}}]:[]),...(normalizeCompanyCnpj(query).length>=3?[{cnpj:{contains:normalizeCompanyCnpj(query)}}]:[])]}:{};
-    const companies=await prisma.company.findMany({where:{AND:[scope,search]},select:{id:true,code:true,name:true,tradeName:true,cnpj:true,exitDate:true,obligationStartDate:true,activeSectors:true},orderBy:[{name:'asc'},{id:'asc'}],skip:offset,take:51});
+    const companies=await prisma.company.findMany({where:{AND:[{deletedAt:null},scope,search]},select:{id:true,code:true,name:true,tradeName:true,cnpj:true,exitDate:true,obligationStartDate:true,activeSectors:true},orderBy:[{name:'asc'},{id:'asc'}],skip:offset,take:51});
     res.json({companies:companies.slice(0,50),hasMore:companies.length>50,nextOffset:offset+50});
   }));
   app.get('/api/installments/plans',endpoint(async(req:any,res:any,user:any)=>{
@@ -96,7 +96,7 @@ export function registerInstallments(app:any,prisma:any,options?:{onChanged?:()=
     if(!Number.isInteger(offset)||offset<0||offset>1000000)failure(400,'Página inválida.');
     const scope=installmentCompanyScope(user);const normalized=normalizeCompanyCnpj(query);
     const search=query?{OR:[{typeName:{contains:query}},...['name','tradeName','code','cnpj','groupName'].map(field=>({company:{is:{[field]:{contains:query}}}})),...(normalized.length>=3?[{company:{is:{cnpj:{contains:normalized}}}}]:[])]}:{};
-    const where={AND:[{company:{is:scope}},search]};
+    const where={AND:[{company:{is:{AND:[{deletedAt:null},scope]}}},search]};
     const [stored,total,configuration]=await Promise.all([
       prisma.installmentPlan.findMany({where,include:{payments:true,company:{select:{id:true,name:true,tradeName:true,code:true,cnpj:true,activeSectors:true,responsibles:{select:{userId:true,sector:true}}}}},orderBy:[{createdAt:'desc'},{id:'asc'}],skip:offset,take:takeLimit}),
       prisma.installmentPlan.count({where}),rules(),

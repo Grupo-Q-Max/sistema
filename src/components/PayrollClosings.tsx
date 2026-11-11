@@ -236,6 +236,42 @@ export function PayrollClosings({ currentView, onNavigate, currentUser, onLogout
     else setLoading(false);
     return () => { fetchSequence.current++; };
   }, [periodKey, canView]);
+
+  // Atualização em tempo real via SSE (Server-Sent Events)
+  useEffect(() => {
+    const handleRealtime = (e: any) => {
+      const detail = e.detail;
+      if (!detail) return;
+      if (detail.type === 'CLOSING_UPDATED' && detail.payload?.sector === 'DP') {
+        const p = detail.payload;
+        setRows(prev => prev.map(item => item.closingId === p.closingId ? {
+          ...item,
+          columnsData: { ...item.columnsData, [p.columnKey]: p.columnValue },
+          calculatedStatus: p.calculatedStatus || item.calculatedStatus,
+          progressPercent: p.progress?.progressPercent ?? item.progressPercent
+        } : item));
+      } else if (detail.type === 'CLOSINGS_BULK_UPDATED') {
+        const items = detail.payload?.items || [];
+        const itemMap = new Map(items.map((it: any) => [it.id, it]));
+        setRows(prev => prev.map(item => {
+          const it = itemMap.get(item.closingId) as any;
+          if (it) {
+            return {
+              ...item,
+              columnsData: it.columnsData || item.columnsData,
+              calculatedStatus: it.calculatedStatus || item.calculatedStatus,
+              progressPercent: it.progressPercent ?? item.progressPercent
+            };
+          }
+          return item;
+        }));
+      } else if (detail.type === 'COMPANY_UPDATED' || detail.type === 'COMPANY_DELETED' || detail.type === 'COMPANY_RESTORED' || detail.type === 'COLUMNS_CHANGED') {
+        void load();
+      }
+    };
+    window.addEventListener('app-realtime-update', handleRealtime);
+    return () => window.removeEventListener('app-realtime-update', handleRealtime);
+  }, []);
   useEffect(() => { setReinfRow(null); setCompanyDetails(null); setNotesDialog(null); setOpenHeaderFilter(null); setActionModal(null); setColumnFilters({}); }, [periodKey]);
   useEffect(() => {
     const close = (e: KeyboardEvent) => {

@@ -82,6 +82,36 @@ function App() {
     };
   }, []);
 
+  // Colaboração em tempo real (SSE - Server-Sent Events)
+  useEffect(() => {
+    if (!currentUser) return;
+    let eventSource: EventSource | null = null;
+    try {
+      eventSource = new EventSource(`${API}/api/events`);
+      eventSource.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data);
+          if (data && data.type && data.type !== 'CONNECTED') {
+            window.dispatchEvent(new CustomEvent('app-realtime-update', { detail: data }));
+          }
+        } catch {
+          // Keep-alive ping
+        }
+      };
+      eventSource.onerror = () => {
+        // EventSource nativo reconecta automaticamente com backoff do navegador
+      };
+    } catch (e) {
+      console.warn('Falha ao inicializar EventSource em tempo real:', e);
+    }
+
+    return () => {
+      if (eventSource) {
+        eventSource.close();
+      }
+    };
+  }, [currentUser]);
+
   const getDefaultView = (user: CurrentUser) => {
     if (user.role === 'ADMIN' || user.role === 'SOCIO') return 'dashboard';
     if (user.role === 'CADASTRO') return 'companies';
