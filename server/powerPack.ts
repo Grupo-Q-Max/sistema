@@ -1238,12 +1238,12 @@ export function registerPowerPack(app: any, prisma: any, pool?: any) {
           select: { id: true, name: true, email: true, role: true },
         }),
         prisma.companyResponsible.findMany({
-          where: { sector },
+          where: { sector: sector as any },
           include: { company: { select: { id: true, name: true, taxRegime: true } } },
         }),
         prisma.closing.findMany({
-          where: { type: sector, referencePeriod: openPeriod },
-          select: { companyId: true, calculatedStatus: true, progressPercent: true },
+          where: { type: sector as any, referencePeriod: openPeriod },
+          select: { companyId: true, status: true },
         }),
       ]);
 
@@ -1260,8 +1260,8 @@ export function registerPowerPack(app: any, prisma: any, pool?: any) {
           const cl = closingMap.get(r.companyId);
           userLoadMap[r.userId].push({
             ...r.company,
-            closingStatus: cl?.calculatedStatus || 'NOT_STARTED',
-            progress: cl?.progressPercent || 0,
+            closingStatus: cl?.status || 'NOT_STARTED',
+            progress: cl?.status === 'COMPLETED' ? 100 : cl?.status === 'IN_PROGRESS' ? 50 : 0,
           });
         }
       });

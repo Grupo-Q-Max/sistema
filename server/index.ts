@@ -151,8 +151,6 @@ const KNOWN_API_PREFIXES = [
   '/plans',
   '/company',
   '/competences',
-  '/dashboard',
-  '/analytics',
   '/users',
   '/logs',
   '/login',
