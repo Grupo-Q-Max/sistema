@@ -34,6 +34,7 @@ import {
   Target,
   Award,
   ShieldAlert,
+  DollarSign,
 } from 'lucide-react';
 import type { CurrentUser } from '../types/auth';
 import { API } from '../api';
@@ -220,6 +221,54 @@ export function Closings({ currentView, onNavigate, currentUser, onLogout }: Clo
       return next;
     });
   };
+
+  // Semáforo Financeiro de Honorários
+  const [financialStatusMap, setFinancialStatusMap] = useState<Record<string, { status: string; reason?: string; updatedAt?: string }>>({});
+  const [financialEditModal, setFinancialEditModal] = useState<{
+    companyId: string;
+    companyName: string;
+    currentStatus: string;
+    currentReason: string;
+  } | null>(null);
+  const [financialSubmitting, setFinancialSubmitting] = useState(false);
+
+  const fetchFinancialStatus = async () => {
+    try {
+      const res = await fetch(`${API}/api/companies/financial-status`);
+      if (res.ok) {
+        const data = await res.json();
+        if (data.statuses) {
+          setFinancialStatusMap(data.statuses);
+        }
+      }
+    } catch (err) {
+      console.error('Erro ao buscar status financeiro:', err);
+    }
+  };
+
+  const handleSaveFinancialStatus = async (status: string, reason: string) => {
+    if (!financialEditModal) return;
+    setFinancialSubmitting(true);
+    try {
+      const res = await fetch(`${API}/api/companies/${financialEditModal.companyId}/financial-status`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status, reason }),
+      });
+      if (res.ok) {
+        setFinancialStatusMap((prev) => ({
+          ...prev,
+          [financialEditModal.companyId]: { status, reason, updatedAt: new Date().toISOString() },
+        }));
+        setFinancialEditModal(null);
+      }
+    } catch (err) {
+      console.error('Erro ao atualizar status financeiro:', err);
+    } finally {
+      setFinancialSubmitting(false);
+    }
+  };
+
   const [multiSelectModal, setMultiSelectModal] = useState<{
     row: any;
     colKey: string;
@@ -296,6 +345,7 @@ export function Closings({ currentView, onNavigate, currentUser, onLogout }: Clo
     closeAllModals(); setProgressOpen(false);
     setInstallmentCompany(null); setInstallmentSummaries({}); setAllInstallmentsOpen(false); setInstallmentFocus(null);
     fetchClosings();
+    fetchFinancialStatus();
     return () => { fetchSequence.current++; };
   }, [selectedYear, selectedMonth]);
 
@@ -1880,6 +1930,83 @@ export function Closings({ currentView, onNavigate, currentUser, onLogout }: Clo
                                     <span>{certInfo.label}</span>
                                   </div>
                                 )}
+
+                                {/* Semáforo Financeiro de Honorários */}
+                                {(() => {
+                                  const fin = financialStatusMap[c.id];
+                                  if (!fin || fin.status === 'OK') {
+                                    return (
+                                      <button
+                                        type="button"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          setFinancialEditModal({
+                                            companyId: c.id,
+                                            companyName: c.name,
+                                            currentStatus: 'OK',
+                                            currentReason: fin?.reason || '',
+                                          });
+                                        }}
+                                        title="Status Financeiro: Em dia (clique para registrar pendência)"
+                                        style={{
+                                          background: 'rgba(16, 185, 129, 0.08)',
+                                          border: '1px solid rgba(16, 185, 129, 0.25)',
+                                          color: '#10b981',
+                                          cursor: 'pointer',
+                                          padding: '2px 5px',
+                                          borderRadius: '4px',
+                                          display: 'inline-flex',
+                                          alignItems: 'center',
+                                          gap: '3px',
+                                          fontSize: '10px',
+                                          marginTop: '3px',
+                                        }}
+                                      >
+                                        <DollarSign size={10} />
+                                        <span>Honorários OK</span>
+                                      </button>
+                                    );
+                                  }
+                                  const isBlocked = fin.status === 'BLOCKED_2M';
+                                  const color = isBlocked ? '#ef4444' : '#f59e0b';
+                                  const label = isBlocked ? 'Bloqueio Financeiro (+60d)' : 'Honorário Pendente (30d)';
+                                  const tooltip = isBlocked
+                                    ? `⚠️ CLIENTE BLOQUEADO (+60d em aberto): ${fin.reason || 'Consultar Diretoria antes de emitir certidões'}`
+                                    : `⚠️ Honorário em atraso (30d): ${fin.reason || 'Acompanhar quitação'}`;
+
+                                  return (
+                                    <button
+                                      type="button"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        setFinancialEditModal({
+                                          companyId: c.id,
+                                          companyName: c.name,
+                                          currentStatus: fin.status,
+                                          currentReason: fin.reason || '',
+                                        });
+                                      }}
+                                      style={{
+                                        display: 'inline-flex',
+                                        alignItems: 'center',
+                                        gap: '4px',
+                                        fontSize: '10px',
+                                        padding: '2px 6px',
+                                        borderRadius: '4px',
+                                        background: `${color}20`,
+                                        color,
+                                        border: `1px solid ${color}60`,
+                                        fontWeight: 700,
+                                        cursor: 'pointer',
+                                        marginTop: '3px',
+                                      }}
+                                      title={`${tooltip} (clique para editar)`}
+                                    >
+                                      <DollarSign size={11} />
+                                      <span>{label}</span>
+                                    </button>
+                                  );
+                                })()}
                               </div>
                             </td>
 
@@ -2512,6 +2639,124 @@ export function Closings({ currentView, onNavigate, currentUser, onLogout }: Clo
             companyId={deliveryReportCompanyId}
             period={`${selectedYear}-${String(selectedMonth).padStart(2, '0')}-01`}
           />
+        )}
+
+        {/* Modal de Gestão de Status Financeiro / Semáforo de Inadimplência */}
+        {financialEditModal && (
+          <div
+            className="audit-modal-backdrop"
+            style={{ zIndex: 11000 }}
+            onClick={() => !financialSubmitting && setFinancialEditModal(null)}
+          >
+            <div
+              className="audit-modal-card"
+              style={{ maxWidth: '440px', padding: '24px' }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <DollarSign size={20} color="#10b981" />
+                  <h3 style={{ margin: 0, fontSize: '16px', fontWeight: 700 }}>Semáforo Financeiro</h3>
+                </div>
+                <button
+                  type="button"
+                  style={{ background: 'transparent', border: 'none', cursor: 'pointer', fontSize: '18px', color: '#94a3b8' }}
+                  onClick={() => !financialSubmitting && setFinancialEditModal(null)}
+                >
+                  ✕
+                </button>
+              </div>
+
+              <p style={{ fontSize: '13px', color: '#64748b', marginBottom: '16px' }}>
+                Defina a situação financeira de <strong>{financialEditModal.companyName}</strong>. Bloqueios de +60d alertam toda a equipe antes de emitir certidões.
+              </p>
+
+              <form
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  const form = e.currentTarget;
+                  const status = (form.elements.namedItem('status') as HTMLSelectElement).value;
+                  const reason = (form.elements.namedItem('reason') as HTMLInputElement).value;
+                  void handleSaveFinancialStatus(status, reason);
+                }}
+              >
+                <div style={{ marginBottom: '14px' }}>
+                  <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, marginBottom: '6px', color: '#334155' }}>
+                    Situação dos Honorários
+                  </label>
+                  <select
+                    name="status"
+                    defaultValue={financialEditModal.currentStatus}
+                    style={{
+                      width: '100%',
+                      padding: '8px 12px',
+                      borderRadius: '8px',
+                      border: '1px solid #cbd5e1',
+                      fontSize: '13px',
+                      background: '#fff',
+                    }}
+                  >
+                    <option value="OK">🟢 Em dia (Honorários Regulares)</option>
+                    <option value="PENDING_1M">🟡 Pendente (1 mês em atraso / 30d)</option>
+                    <option value="BLOCKED_2M">🔴 Bloqueado (+60d atraso - Trava de CND/Serviços)</option>
+                  </select>
+                </div>
+
+                <div style={{ marginBottom: '20px' }}>
+                  <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, marginBottom: '6px', color: '#334155' }}>
+                    Observação / Motivo (opcional)
+                  </label>
+                  <input
+                    name="reason"
+                    type="text"
+                    defaultValue={financialEditModal.currentReason}
+                    placeholder="Ex: Aguardando quitação boleto 05/11"
+                    style={{
+                      width: '100%',
+                      padding: '8px 12px',
+                      borderRadius: '8px',
+                      border: '1px solid #cbd5e1',
+                      fontSize: '13px',
+                    }}
+                  />
+                </div>
+
+                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
+                  <button
+                    type="button"
+                    disabled={financialSubmitting}
+                    onClick={() => setFinancialEditModal(null)}
+                    style={{
+                      padding: '8px 14px',
+                      borderRadius: '6px',
+                      border: '1px solid #cbd5e1',
+                      background: '#fff',
+                      fontSize: '13px',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={financialSubmitting}
+                    style={{
+                      padding: '8px 16px',
+                      borderRadius: '6px',
+                      border: 'none',
+                      background: '#10b981',
+                      color: '#fff',
+                      fontWeight: 600,
+                      fontSize: '13px',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    {financialSubmitting ? 'Salvando...' : 'Salvar Situação'}
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
         )}
       </main>
     </div>

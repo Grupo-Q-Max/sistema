@@ -97,3 +97,4 @@ export function checkSimplesGuardian(
       : 'RBT12 dentro dos limites regulares do Simples Nacional.',
   };
 }
+

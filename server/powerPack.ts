@@ -428,4 +428,265 @@ export function registerPowerPack(app: any, prisma: any, pool?: any) {
       res.status(500).json({ error: error.message || 'Erro ao emitir extrato' });
     }
   });
+
+  // ==========================================
+  // 4. STATUS FINANCEIRO / INADIMPLÊNCIA DE HONORÁRIOS
+  // ==========================================
+  app.get('/api/companies/financial-status', async (_req: any, res: any) => {
+    try {
+      const companies = await prisma.company.findMany({
+        where: externalCompaniesExcluded,
+        select: { id: true, legacyData: true },
+      });
+      const statusMap: Record<string, { status: string; reason?: string; updatedAt?: string }> = {};
+      for (const c of companies) {
+        const leg = (c.legacyData as any) || {};
+        if (leg.financialStatus) {
+          statusMap[c.id] = leg.financialStatus;
+        }
+      }
+      res.json(statusMap);
+    } catch (error: any) {
+      console.error('Erro ao buscar status financeiro:', error);
+      res.status(500).json({ error: 'Erro ao carregar status financeiro' });
+    }
+  });
+
+  app.put('/api/companies/:id/financial-status', async (req: any, res: any) => {
+    try {
+      const { id } = req.params;
+      const { status, reason } = req.body; // 'REGULAR' | 'PENDING_1M' | 'BLOCKED_2M'
+      const company = await prisma.company.findUnique({ where: { id } });
+      if (!company) return res.status(404).json({ error: 'Empresa não encontrada' });
+
+      const currentLegacy = (company.legacyData as any) || {};
+      const updatedLegacy = {
+        ...currentLegacy,
+        financialStatus: {
+          status: status || 'REGULAR',
+          reason: reason || '',
+          updatedAt: new Date().toISOString(),
+        },
+      };
+
+      await prisma.company.update({
+        where: { id },
+        data: { legacyData: updatedLegacy },
+      });
+
+      res.json({ success: true, financialStatus: updatedLegacy.financialStatus });
+    } catch (error: any) {
+      console.error('Erro ao atualizar status financeiro:', error);
+      res.status(500).json({ error: 'Erro ao atualizar status financeiro' });
+    }
+  });
+
+  // ==========================================
+  // 5. GAMIFICAÇÃO & RANKING DA EQUIPE (LEADERBOARD)
+  // ==========================================
+  app.get('/api/gamification/leaderboard', async (_req: any, res: any) => {
+    try {
+      const users = await prisma.user.findMany({
+        where: { active: true },
+        select: { id: true, name: true, email: true, role: true },
+      });
+
+      const startOfMonth = new Date();
+      startOfMonth.setDate(1);
+      startOfMonth.setHours(0, 0, 0, 0);
+
+      const logs = await prisma.systemLog.findMany({
+        where: {
+          createdAt: { gte: startOfMonth },
+          action: { in: ['ATUALIZOU_OBRIGACAO', 'BULK_ACTION_OBRIGACAO'] },
+          userId: { not: null },
+        },
+        select: { userId: true, createdAt: true, action: true },
+      });
+
+      const userStatsMap = new Map<string, {
+        totalActions: number;
+        fastActions: number; // Ações realizadas antes das 18h ou dias úteis
+        activeDays: Set<string>;
+      }>();
+
+      for (const log of logs) {
+        if (!log.userId) continue;
+        const current = userStatsMap.get(log.userId) || { totalActions: 0, fastActions: 0, activeDays: new Set() };
+        current.totalActions++;
+        const d = new Date(log.createdAt);
+        current.activeDays.add(`${d.getDate()}-${d.getMonth()}`);
+        if (d.getDate() <= 20) current.fastActions++;
+        userStatsMap.set(log.userId, current);
+      }
+
+      const leaderboard = users.map((u: any) => {
+        const stats = userStatsMap.get(u.id) || { totalActions: 0, fastActions: 0, activeDays: new Set() };
+        // Sistema de Pontuação: 10 pts por baixa + 5 pts bônus por entrega rápida até o dia 20 + 20 pts por dia ativo
+        const points = (stats.totalActions * 10) + (stats.fastActions * 5) + (stats.activeDays.size * 20);
+
+        const badges: Array<{ label: string; icon: string; color: string }> = [];
+        if (stats.totalActions >= 50) badges.push({ label: 'Top Produtor', icon: '⚡', color: '#f59e0b' });
+        if (stats.fastActions >= 30) badges.push({ label: 'Guardião do Prazo', icon: '🎯', color: '#10b981' });
+        if (stats.activeDays.size >= 10) badges.push({ label: 'Consistência', icon: '🔥', color: '#ef4444' });
+
+        return {
+          userId: u.id,
+          name: u.name || u.email.split('@')[0],
+          email: u.email,
+          role: u.role,
+          totalActions: stats.totalActions,
+          fastActions: stats.fastActions,
+          activeDaysCount: stats.activeDays.size,
+          points,
+          badges,
+        };
+      });
+
+      leaderboard.sort((a, b) => b.points - a.points);
+
+      res.json({
+        period: startOfMonth.toISOString().slice(0, 7),
+        leaderboard,
+        totalTeamPoints: leaderboard.reduce((sum, u) => sum + u.points, 0),
+      });
+    } catch (error: any) {
+      console.error('Erro ao gerar ranking da equipe:', error);
+      res.status(500).json({ error: 'Erro ao gerar ranking' });
+    }
+  });
+
+  // ==========================================
+  // 6. MONITOR UNIFICADO DE CNDs
+  // ==========================================
+  app.get('/api/cnd/status', async (_req: any, res: any) => {
+    try {
+      const companies = await prisma.company.findMany({
+        where: externalCompaniesExcluded,
+        select: {
+          id: true,
+          code: true,
+          name: true,
+          cnpj: true,
+          city: true,
+          legacyData: true,
+        },
+        orderBy: [{ code: 'asc' }, { name: 'asc' }],
+      });
+
+      const list = companies.map((c: any) => {
+        const leg = (c.legacyData as any) || {};
+        const cnd = leg.cndStatus || {
+          federal: { status: 'REGULAR', validUntil: null },
+          fgts: { status: 'REGULAR', validUntil: null },
+          trabalhista: { status: 'REGULAR', validUntil: null },
+          municipal: { status: 'REGULAR', validUntil: null },
+        };
+        return {
+          id: c.id,
+          code: c.code,
+          name: c.name,
+          cnpj: c.cnpj,
+          city: c.city,
+          cnd,
+        };
+      });
+
+      res.json(list);
+    } catch (error: any) {
+      console.error('Erro ao consultar monitor de CNDs:', error);
+      res.status(500).json({ error: 'Erro ao carregar CNDs' });
+    }
+  });
+
+  app.put('/api/companies/:id/cnd-status', async (req: any, res: any) => {
+    try {
+      const { id } = req.params;
+      const { cnd } = req.body;
+      const company = await prisma.company.findUnique({ where: { id } });
+      if (!company) return res.status(404).json({ error: 'Empresa não encontrada' });
+
+      const currentLegacy = (company.legacyData as any) || {};
+      const updatedLegacy = {
+        ...currentLegacy,
+        cndStatus: cnd,
+      };
+
+      await prisma.company.update({
+        where: { id },
+        data: { legacyData: updatedLegacy },
+      });
+
+      res.json({ success: true, cnd: updatedLegacy.cndStatus });
+    } catch (error: any) {
+      console.error('Erro ao salvar CND:', error);
+      res.status(500).json({ error: 'Erro ao salvar CND' });
+    }
+  });
+
+  // ==========================================
+  // 7. CALENDÁRIO DE OBRIGAÇÕES ESPECIAIS (ANUAIS / TRIMESTRAIS)
+  // ==========================================
+  app.get('/api/special-obligations', async (req: any, res: any) => {
+    try {
+      const year = Number(req.query.year) || new Date().getFullYear();
+      const companies = await prisma.company.findMany({
+        where: externalCompaniesExcluded,
+        select: { id: true, code: true, name: true, taxRegime: true, legacyData: true },
+        orderBy: [{ code: 'asc' }, { name: 'asc' }],
+      });
+
+      const list = companies.map((c: any) => {
+        const leg = (c.legacyData as any) || {};
+        const yearData = leg.specialObligations?.[year] || {};
+        return {
+          id: c.id,
+          code: c.code,
+          name: c.name,
+          taxRegime: c.taxRegime,
+          obligations: yearData,
+        };
+      });
+
+      res.json({ year, companies: list });
+    } catch (error: any) {
+      console.error('Erro ao consultar obrigações especiais:', error);
+      res.status(500).json({ error: 'Erro ao carregar obrigações especiais' });
+    }
+  });
+
+  app.put('/api/companies/:id/special-obligations', async (req: any, res: any) => {
+    try {
+      const { id } = req.params;
+      const { year, key, status, date } = req.body;
+      const company = await prisma.company.findUnique({ where: { id } });
+      if (!company) return res.status(404).json({ error: 'Empresa não encontrada' });
+
+      const currentLegacy = (company.legacyData as any) || {};
+      const specials = currentLegacy.specialObligations || {};
+      const yearSpecials = specials[year] || {};
+
+      yearSpecials[key] = {
+        status: status || 'CONCLUIDO',
+        date: date || new Date().toISOString(),
+      };
+      specials[year] = yearSpecials;
+
+      const updatedLegacy = {
+        ...currentLegacy,
+        specialObligations: specials,
+      };
+
+      await prisma.company.update({
+        where: { id },
+        data: { legacyData: updatedLegacy },
+      });
+
+      res.json({ success: true, obligations: yearSpecials });
+    } catch (error: any) {
+      console.error('Erro ao atualizar obrigação especial:', error);
+      res.status(500).json({ error: 'Erro ao salvar obrigação especial' });
+    }
+  });
 }
+

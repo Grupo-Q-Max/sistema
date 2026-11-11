@@ -23,6 +23,9 @@ import {
   Tv,
   DollarSign,
   Activity,
+  Calculator,
+  Trophy,
+  ShieldCheck,
 } from 'lucide-react';
 import './Dashboard.css';
 import './Progress.css';
@@ -37,6 +40,10 @@ import { WarRoomModal } from './WarRoomModal';
 import { FeeAdjustmentRadarModal } from './FeeAdjustmentRadarModal';
 import { BottleneckForecastModal } from './BottleneckForecastModal';
 import { UserActivityHistoryModal } from './UserActivityHistoryModal';
+import { TaxSimulatorModal } from './TaxSimulatorModal';
+import { GamificationLeaderboardModal } from './GamificationLeaderboardModal';
+import { CndMonitorModal } from './CndMonitorModal';
+import { SpecialObligationsModal } from './SpecialObligationsModal';
 import { RiskRadarWidget } from './RiskRadarWidget';
 import type { CurrentUser } from '../types/auth';
 import { API } from '../api';
@@ -213,6 +220,10 @@ export function Dashboard({ currentView, onNavigate, currentUser, onLogout }: Da
   const [isFeeRadarOpen, setIsFeeRadarOpen] = useState(false);
   const [isBottleneckOpen, setIsBottleneckOpen] = useState(false);
   const [isUserActivityOpen, setIsUserActivityOpen] = useState(false);
+  const [isTaxSimOpen, setIsTaxSimOpen] = useState(false);
+  const [isGamifyOpen, setIsGamifyOpen] = useState(false);
+  const [isCndOpen, setIsCndOpen] = useState(false);
+  const [isSpecialOpen, setIsSpecialOpen] = useState(false);
   const [alertCount, setAlertCount] = useState(0);
   const isPrivileged = currentUser?.role === 'ADMIN' || currentUser?.role === 'SOCIO';
 
@@ -442,6 +453,50 @@ export function Dashboard({ currentView, onNavigate, currentUser, onLogout }: Da
                 <span>Presença Equipe</span>
               </button>
             )}
+
+            <button
+              type="button"
+              className="btn-executive-report"
+              style={{ background: 'rgba(245, 158, 11, 0.15)', borderColor: 'rgba(245, 158, 11, 0.4)' }}
+              title="Ranking e Gamificação de Produtividade da Equipe"
+              onClick={() => setIsGamifyOpen(true)}
+            >
+              <Trophy size={16} color="#f59e0b" />
+              <span>Ranking Equipe</span>
+            </button>
+
+            <button
+              type="button"
+              className="btn-executive-report"
+              style={{ background: 'rgba(56, 189, 248, 0.15)', borderColor: 'rgba(56, 189, 248, 0.4)' }}
+              title="Comparador Tributário: Simples vs Presumido vs Real"
+              onClick={() => setIsTaxSimOpen(true)}
+            >
+              <Calculator size={16} color="#38bdf8" />
+              <span>Simulador Tributário</span>
+            </button>
+
+            <button
+              type="button"
+              className="btn-executive-report"
+              style={{ background: 'rgba(16, 185, 129, 0.15)', borderColor: 'rgba(16, 185, 129, 0.4)' }}
+              title="Monitor Unificado de Certidões Negativas (CNDs)"
+              onClick={() => setIsCndOpen(true)}
+            >
+              <ShieldCheck size={16} color="#10b981" />
+              <span>Monitor CNDs</span>
+            </button>
+
+            <button
+              type="button"
+              className="btn-executive-report"
+              style={{ background: 'rgba(168, 85, 247, 0.15)', borderColor: 'rgba(168, 85, 247, 0.4)' }}
+              title="Calendário de Obrigações Especiais e Anuais (DEFIS, ECD, ECF, etc.)"
+              onClick={() => setIsSpecialOpen(true)}
+            >
+              <Calendar size={16} color="#a855f7" />
+              <span>Obrigações Anuais</span>
+            </button>
 
             {isPrivileged && (
               <button
@@ -815,6 +870,30 @@ export function Dashboard({ currentView, onNavigate, currentUser, onLogout }: Da
         <UserActivityHistoryModal
           isOpen={isUserActivityOpen}
           onClose={() => setIsUserActivityOpen(false)}
+        />
+
+        {/* Comparador Tributário Inteligente */}
+        <TaxSimulatorModal
+          isOpen={isTaxSimOpen}
+          onClose={() => setIsTaxSimOpen(false)}
+        />
+
+        {/* Ranking & Gamificação da Equipe */}
+        <GamificationLeaderboardModal
+          isOpen={isGamifyOpen}
+          onClose={() => setIsGamifyOpen(false)}
+        />
+
+        {/* Monitor Unificado de CNDs */}
+        <CndMonitorModal
+          isOpen={isCndOpen}
+          onClose={() => setIsCndOpen(false)}
+        />
+
+        {/* Calendário de Obrigações Especiais e Anuais */}
+        <SpecialObligationsModal
+          isOpen={isSpecialOpen}
+          onClose={() => setIsSpecialOpen(false)}
         />
       </main>
     </div>

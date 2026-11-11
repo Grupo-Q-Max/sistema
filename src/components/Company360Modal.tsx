@@ -11,11 +11,13 @@ import {
   TrendingUp,
   ExternalLink,
   Award,
+  Calculator,
 } from 'lucide-react';
 import { API } from '../api';
 import type { CurrentUser } from '../types/auth';
 import { formatFlexibleDateBr } from '../config/dateUtils';
 import { CompanyDeliveryReportModal } from './CompanyDeliveryReportModal';
+import { TaxSimulatorModal } from './TaxSimulatorModal';
 import './Company360Modal.css';
 
 export interface Company360ModalProps {
@@ -39,6 +41,7 @@ export function Company360Modal({
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [isDeliveryModalOpen, setIsDeliveryModalOpen] = useState(false);
+  const [isTaxSimOpen, setIsTaxSimOpen] = useState(false);
 
   useEffect(() => {
     if (!companyId) return;
@@ -96,6 +99,28 @@ export function Company360Modal({
           </div>
 
           <div className="c360-header-actions">
+            <button
+              type="button"
+              onClick={() => setIsTaxSimOpen(true)}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '6px',
+                padding: '6px 12px',
+                borderRadius: '8px',
+                background: 'rgba(59, 130, 246, 0.15)',
+                border: '1px solid rgba(59, 130, 246, 0.4)',
+                color: '#3b82f6',
+                fontWeight: 600,
+                fontSize: '13px',
+                cursor: 'pointer',
+              }}
+              title="Comparador Tributário (Simples vs Presumido vs Real)"
+            >
+              <Calculator size={15} />
+              <span>Simulador Tributário</span>
+            </button>
+
             <button
               type="button"
               onClick={() => setIsDeliveryModalOpen(true)}
@@ -310,6 +335,15 @@ export function Company360Modal({
           onClose={() => setIsDeliveryModalOpen(false)}
           companyId={companyId}
           period={`${year}-11-01`}
+        />
+      )}
+
+      {isTaxSimOpen && (
+        <TaxSimulatorModal
+          isOpen={isTaxSimOpen}
+          onClose={() => setIsTaxSimOpen(false)}
+          companyName={company?.name}
+          currentRegime={company?.taxRegime || undefined}
         />
       )}
     </div>
