@@ -452,3 +452,20 @@ model DominioStagingChange {
   @@index([status, sector])
   @@index([companyCode, referencePeriod])
 }
+
+// ========================
+// 12. SNAPSHOT / CONGELAMENTO DE COMPETENCIA
+// ========================
+
+model CompetenceSnapshot {
+  id              String    @id @default(uuid())
+  referencePeriod DateTime
+  sector          String
+  snapshotData    String    @db.LongText
+  summary         String?   @db.LongText
+  closedByUserId  String?
+  closedByName    String?
+  createdAt       DateTime  @default(now())
+
+  @@index([referencePeriod, sector])
+}

@@ -157,6 +157,9 @@ const KNOWN_API_PREFIXES = [
   '/dominio-staging',
   '/events',
   '/health',
+  '/presence',
+  '/notifications',
+  '/competence',
 ];
 
 // Normaliza requisições vindas com prefixo legado /sistema ou sem /api ou com /api duplicado
@@ -251,6 +254,361 @@ app.get('/api/health', async (_req, res) => {
         error: error.message || 'Falha de conexão com o banco',
       },
     });
+  }
+});
+
+// ========================
+// 1. PRESENÇA EM TEMPO REAL ("Quem está editando agora?")
+// ========================
+interface ActivePresence {
+  userId: string;
+  userName: string;
+  userEmail: string;
+  sector: string;
+  companyId?: string;
+  closingId?: string;
+  columnKey?: string;
+  lastSeen: number;
+}
+
+const activePresenceMap = new Map<string, ActivePresence>();
+
+export function getActivePresenceList(): ActivePresence[] {
+  const now = Date.now();
+  const list: ActivePresence[] = [];
+  for (const [key, p] of activePresenceMap.entries()) {
+    if (now - p.lastSeen > 35000) {
+      activePresenceMap.delete(key);
+    } else {
+      list.push(p);
+    }
+  }
+  return list;
+}
+
+// Limpeza e sincronização de presenças expiradas
+setInterval(() => {
+  const beforeCount = activePresenceMap.size;
+  const list = getActivePresenceList();
+  if (list.length !== beforeCount) {
+    broadcastRealtimeEvent('PRESENCE_SYNC', list);
+  }
+}, 15000);
+
+app.post('/api/presence', async (req, res) => {
+  try {
+    const actor = await resolveAuthenticatedUser(prisma, req);
+    if (!actor) {
+      return res.status(401).json({ error: 'Não autenticado' });
+    }
+
+    const { sector = 'GERAL', companyId, closingId, columnKey } = req.body || {};
+    const presenceKey = `${actor.id}_${sector}`;
+
+    activePresenceMap.set(presenceKey, {
+      userId: actor.id,
+      userName: actor.name || actor.email.split('@')[0],
+      userEmail: actor.email,
+      sector,
+      companyId: companyId || undefined,
+      closingId: closingId || undefined,
+      columnKey: columnKey || undefined,
+      lastSeen: Date.now(),
+    });
+
+    const activeList = getActivePresenceList();
+    broadcastRealtimeEvent('PRESENCE_SYNC', activeList);
+
+    res.json({ success: true, activeUsers: activeList });
+  } catch (error) {
+    res.status(500).json({ error: 'Erro ao registrar presença' });
+  }
+});
+
+app.get('/api/presence', (_req, res) => {
+  res.json({ activeUsers: getActivePresenceList() });
+});
+
+// ========================
+// 2. CENTRO DE NOTIFICAÇÕES & ALERTAS PROATIVOS
+// ========================
+let cachedNotifications: { ts: number; payload: any } | null = null;
+
+app.get('/api/notifications', async (_req, res) => {
+  try {
+    const now = Date.now();
+    if (cachedNotifications && now - cachedNotifications.ts < 45000) {
+      return res.json(cachedNotifications.payload);
+    }
+
+    const today = new Date();
+    const companies = await prisma.company.findMany({
+      where: { deletedAt: null },
+      select: {
+        id: true,
+        code: true,
+        name: true,
+        cnpj: true,
+        hasClientCertificate: true,
+        certificateExpiration: true,
+        certificateType: true,
+        responsibles: {
+          include: {
+            user: { select: { id: true, name: true, email: true } },
+          },
+        },
+      },
+      orderBy: { name: 'asc' },
+    });
+
+    const alerts: Array<{
+      id: string;
+      type: 'CERTIFICATE_EXPIRED' | 'CERTIFICATE_EXPIRING' | 'FISCAL_DEADLINE' | 'UNASSIGNED_RESPONSIBLE';
+      severity: 'CRITICAL' | 'WARNING' | 'INFO';
+      title: string;
+      message: string;
+      companyId?: string;
+      companyName?: string;
+      companyCode?: string | null;
+      daysRemaining?: number;
+      date?: string;
+      responsibleName?: string;
+    }> = [];
+
+    for (const c of companies) {
+      if (c.hasClientCertificate && c.certificateExpiration) {
+        const parts = c.certificateExpiration.trim().split('/');
+        let expDate: Date | null = null;
+        if (parts.length === 2) {
+          const month = parseInt(parts[0], 10);
+          const year = parseInt(parts[1], 10);
+          if (month >= 1 && month <= 12 && year > 2000) {
+            expDate = new Date(year, month, 0, 23, 59, 59);
+          }
+        } else {
+          const parsed = new Date(c.certificateExpiration);
+          if (!isNaN(parsed.getTime())) expDate = parsed;
+        }
+
+        if (expDate) {
+          const diffMs = expDate.getTime() - today.getTime();
+          const daysRemaining = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
+          const fiscalResp = c.responsibles.find((r: any) => r.sector === 'FISCAL')?.user?.name;
+
+          if (daysRemaining < 0) {
+            alerts.push({
+              id: `cert_exp_${c.id}`,
+              type: 'CERTIFICATE_EXPIRED',
+              severity: 'CRITICAL',
+              title: 'Certificado Vencido',
+              message: `O certificado de ${c.name} venceu há ${Math.abs(daysRemaining)} dias (${c.certificateExpiration}).`,
+              companyId: c.id,
+              companyName: c.name,
+              companyCode: c.code,
+              daysRemaining,
+              date: c.certificateExpiration,
+              responsibleName: fiscalResp,
+            });
+          } else if (daysRemaining <= 15) {
+            alerts.push({
+              id: `cert_warn_${c.id}`,
+              type: 'CERTIFICATE_EXPIRING',
+              severity: 'CRITICAL',
+              title: 'Certificado Vencendo (Urgente)',
+              message: `Certificado de ${c.name} vence em ${daysRemaining} dia(s) (${c.certificateExpiration})!`,
+              companyId: c.id,
+              companyName: c.name,
+              companyCode: c.code,
+              daysRemaining,
+              date: c.certificateExpiration,
+              responsibleName: fiscalResp,
+            });
+          } else if (daysRemaining <= 30) {
+            alerts.push({
+              id: `cert_info_${c.id}`,
+              type: 'CERTIFICATE_EXPIRING',
+              severity: 'WARNING',
+              title: 'Certificado Próximo do Vencimento',
+              message: `Certificado de ${c.name} vence em ${daysRemaining} dias (${c.certificateExpiration}). Solicite a renovação.`,
+              companyId: c.id,
+              companyName: c.name,
+              companyCode: c.code,
+              daysRemaining,
+              date: c.certificateExpiration,
+              responsibleName: fiscalResp,
+            });
+          }
+        }
+      }
+    }
+
+    const currentDay = today.getDate();
+    if (currentDay >= 15 && currentDay <= 20) {
+      const daysTo20 = 20 - currentDay;
+      alerts.unshift({
+        id: 'tax_deadline_20',
+        type: 'FISCAL_DEADLINE',
+        severity: daysTo20 <= 2 ? 'CRITICAL' : 'WARNING',
+        title: `Vencimento DCTFWeb / DAS em ${daysTo20 === 0 ? 'HOJE' : daysTo20 + ' dia(s)'}!`,
+        message: `Faltam ${daysTo20} dia(s) para o vencimento do dia 20. Revise obrigações com pendência no Fiscal e DP.`,
+        daysRemaining: daysTo20,
+      });
+    }
+
+    const payload = {
+      timestamp: new Date().toISOString(),
+      totalAlerts: alerts.length,
+      criticalCount: alerts.filter(a => a.severity === 'CRITICAL').length,
+      warningCount: alerts.filter(a => a.severity === 'WARNING').length,
+      alerts: alerts.slice(0, 50),
+    };
+
+    cachedNotifications = { ts: now, payload };
+    res.json(payload);
+  } catch (error) {
+    console.error('Erro ao buscar notificações:', error);
+    res.status(500).json({ error: 'Erro ao buscar notificações' });
+  }
+});
+
+// ========================
+// 3. CONGELAMENTO / SNAPSHOT IMUTÁVEL DE COMPETÊNCIA
+// ========================
+app.post('/api/competence/freeze', async (req, res) => {
+  try {
+    const actor = await resolveAuthenticatedUser(prisma, req);
+    if (!actor || !isPrivilegedUser(actor)) {
+      return res.status(403).json({ error: 'Apenas Administradores e Sócios podem congelar competências.' });
+    }
+
+    const { referencePeriod, sector = 'GERAL', summaryNotes } = req.body;
+    if (!referencePeriod) {
+      return res.status(400).json({ error: 'referencePeriod é obrigatório (ex: 2026-10-01).' });
+    }
+
+    const periodDate = new Date(referencePeriod);
+    if (isNaN(periodDate.getTime())) {
+      return res.status(400).json({ error: 'Data de competência inválida.' });
+    }
+
+    const nextPeriodDate = new Date(Date.UTC(periodDate.getUTCFullYear(), periodDate.getUTCMonth() + 1, 1));
+
+    const [companies, closings] = await Promise.all([
+      prisma.company.findMany({
+        where: { deletedAt: null },
+        omit: { legacyData: true, certificatePassword: true, ginfessPassword: true, gissOnlinePassword: true, sdPassword: true, nfPassword: true },
+        include: { responsibles: { include: { user: { select: { id: true, name: true, email: true } } } } },
+      }),
+      prisma.closing.findMany({
+        where: {
+          referencePeriod: { gte: periodDate, lt: nextPeriodDate },
+          ...(sector !== 'GERAL' ? { type: sector } : {}),
+        },
+      }),
+    ]);
+
+    const totalCompanies = companies.length;
+    const totalClosings = closings.length;
+    const completedClosings = closings.filter((c: any) => c.status === 'CONCLUIDO').length;
+    const pendingClosings = closings.filter((c: any) => c.status === 'PENDENTE' || c.status === 'PENDENCIA').length;
+
+    const summary = {
+      period: periodDate.toISOString().slice(0, 7),
+      sector,
+      frozenAt: new Date().toISOString(),
+      closedByUserId: actor.id,
+      closedByName: actor.name || actor.email,
+      totalCompanies,
+      totalClosings,
+      completedClosings,
+      pendingClosings,
+      completionRate: totalClosings > 0 ? Math.round((completedClosings / totalClosings) * 100) : 0,
+      notes: summaryNotes || null,
+    };
+
+    const snapshotPayload = {
+      summary,
+      companiesCount: companies.length,
+      closingsCount: closings.length,
+      closings: closings.map((cl: any) => ({
+        id: cl.id,
+        companyId: cl.companyId,
+        type: cl.type,
+        status: cl.status,
+        columnsData: cl.columnsData,
+        updatedAt: cl.updatedAt,
+      })),
+    };
+
+    const snapshot = await prisma.competenceSnapshot.create({
+      data: {
+        referencePeriod: periodDate,
+        sector,
+        snapshotData: JSON.stringify(snapshotPayload),
+        summary: JSON.stringify(summary),
+        closedByUserId: actor.id,
+        closedByName: actor.name || actor.email,
+      },
+    });
+
+    void logAction(
+      actor.id,
+      actor.email,
+      actor.name || actor.email,
+      'CONGELOU_COMPETENCIA',
+      'COMPETENCIA',
+      snapshot.id,
+      summary,
+      getClientIp(req)
+    );
+
+    broadcastRealtimeEvent('COMPETENCE_FROZEN', { snapshotId: snapshot.id, summary });
+
+    res.json({
+      success: true,
+      message: 'Competência congelada e homologada com sucesso!',
+      snapshot: {
+        id: snapshot.id,
+        referencePeriod: snapshot.referencePeriod,
+        sector: snapshot.sector,
+        summary,
+        createdAt: snapshot.createdAt,
+      },
+    });
+  } catch (error: any) {
+    console.error('Erro ao congelar competência:', error);
+    res.status(500).json({ error: error.message || 'Erro ao congelar competência' });
+  }
+});
+
+app.get('/api/competence/snapshots', async (_req, res) => {
+  try {
+    const snapshots = await prisma.competenceSnapshot.findMany({
+      orderBy: { createdAt: 'desc' },
+      take: 50,
+      select: {
+        id: true,
+        referencePeriod: true,
+        sector: true,
+        summary: true,
+        closedByName: true,
+        createdAt: true,
+      },
+    });
+
+    res.json({
+      snapshots: snapshots.map((s: any) => ({
+        id: s.id,
+        referencePeriod: s.referencePeriod,
+        sector: s.sector,
+        summary: s.summary ? JSON.parse(s.summary) : null,
+        closedByName: s.closedByName,
+        createdAt: s.createdAt,
+      })),
+    });
+  } catch (error) {
+    console.error('Erro ao listar snapshots:', error);
+    res.status(500).json({ error: 'Erro ao buscar histórico de competências congeladas' });
   }
 });
 
@@ -2740,7 +3098,7 @@ app.get('/api/audit/cell-history', async (req, res) => {
     const logs = await prisma.systemLog.findMany({
       where: {
         entityId: String(companyId),
-        action: 'ATUALIZOU_OBRIGACAO',
+        action: { in: ['ATUALIZOU_OBRIGACAO', 'BULK_ACTION_OBRIGACAO'] },
         ...(sector ? { entity: String(sector).toUpperCase() } : {}),
       },
       orderBy: { createdAt: 'desc' },

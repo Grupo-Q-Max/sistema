@@ -53,6 +53,7 @@ import { FISCAL_POPUPS, effectivePopup, type PopupAction } from '../config/fisca
 import { exportToCsv } from '../utils/exportCsv';
 import { compareCodes, formatCompanyCode } from '../utils/codeSort';
 import { applyFiscalRegimeRules, isFiscalObligationNA, setActiveFiscalRegimeRules } from '../config/fiscalRegimeRules';
+import { usePresence } from '../hooks/usePresence';
 import { canUserEditCompany, canUserViewCompany, isUserResponsibleForCompany, companyBelongsToSector } from '../config/companyPermissions';
 import { ColumnHeaderFilter, computeColumnFilterOptions, matchColumnFilterValue } from './ColumnHeaderFilter';
 
@@ -152,14 +153,15 @@ export function Closings({ currentView, onNavigate, currentUser, onLogout }: Clo
   const [workloadOpen, setWorkloadOpen] = useState(false);
   const [focusModeIndex, setFocusModeIndex] = useState<number | null>(null);
 
-  // Senhas reveladas
-
   // Modais
   const [activeModal, setActiveModal] = useState<{
     type: 'POPUP' | 'COMPANY_INFO' | 'CARNE_LEAO' | 'REINF' | 'IMPOSTOS' | 'ISS' | 'MIT' | 'SPED_FISCAL' | 'SPED_CONTRIBUICAO' | 'DESTDA' | 'NOTES';
     row: any;
     colKey?: string;
   } | null>(null);
+
+  // Presença em tempo real ("Quem está editando agora?")
+  const { getEditorsForCompany } = usePresence({ sector: 'FISCAL', currentUserId: currentUser?.id, companyId: activeModal?.row?.company?.id });
 
   // Trilha de Auditoria na Célula
   const [auditTarget, setAuditTarget] = useState<{
@@ -1707,6 +1709,32 @@ export function Closings({ currentView, onNavigate, currentUser, onLogout }: Clo
                                     <div className="company-link-left">
                                       <Building2 size={16} color="#818cf8" style={{ flexShrink: 0 }} />
                                       <span>{c.name}</span>
+                                      {(() => {
+                                        const editors = getEditorsForCompany(c.id);
+                                        if (!editors.length) return null;
+                                        return (
+                                          <span
+                                            className="presence-user-pill"
+                                            title={`${editors.map(e => e.userName).join(', ')} visualizando/editando agora`}
+                                            style={{
+                                              fontSize: 10,
+                                              padding: '1px 6px',
+                                              borderRadius: 9999,
+                                              background: 'rgba(59, 130, 246, 0.25)',
+                                              color: '#93c5fd',
+                                              border: '1px solid rgba(59, 130, 246, 0.4)',
+                                              fontWeight: 600,
+                                              marginLeft: 6,
+                                              display: 'inline-flex',
+                                              alignItems: 'center',
+                                              gap: 4,
+                                            }}
+                                          >
+                                            <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#3b82f6', display: 'inline-block' }} />
+                                            {editors[0].userName.split(' ')[0]}
+                                          </span>
+                                        );
+                                      })()}
                                     </div>
                                     <div className="company-link-icon-chip">
                                       <span>Ver Dados</span>

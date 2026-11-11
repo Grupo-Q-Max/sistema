@@ -1,9 +1,11 @@
 import { useEffect, useMemo, useRef, useState, useDeferredValue } from 'react';
-import { Building2, CheckCircle2, Clock, AlertCircle, Sparkles, Search, ChevronLeft, ChevronRight, RefreshCw, Settings2, Eye, X, ExternalLink, Calendar, FileText, Check } from 'lucide-react';
+import { Building2, CheckCircle2, Clock, AlertCircle, Sparkles, Search, ChevronLeft, ChevronRight, RefreshCw, Settings2, Eye, X, ExternalLink, Calendar, FileText, Check, History } from 'lucide-react';
 import { Sidebar } from './Sidebar';
 import { ClosingSectorTabs } from './ClosingSectorTabs';
 import { ClosingProgressDetails } from './ClosingProgressDetails';
 import { CushmanCompanyModal } from './CushmanCompanyModal';
+import { CellAuditModal } from './CellAuditModal';
+import { usePresence } from '../hooks/usePresence';
 import { formatCnpj, getCertificateStatus } from './CompanyDetailsModal';
 import { TableSkeleton, ButtonSpinner } from './LoadingSkeleton';
 import { useCompetenceCalendar } from './useCompetenceCalendar';
@@ -120,6 +122,12 @@ export function CushmanClosings({ currentView, onNavigate, currentUser, onLogout
   const [notesDraft, setNotesDraft] = useState('');
   const [notesSaving, setNotesSaving] = useState(false);
   const [notesError, setNotesError] = useState('');
+
+  // Trilha de Auditoria na Célula
+  const [auditTarget, setAuditTarget] = useState<{ companyId: string; companyName: string; companyCode?: string | null; columnKey: string; columnLabel: string } | null>(null);
+
+  // Presença em tempo real ("Quem está editando agora?")
+  const { getEditorsForCompany } = usePresence({ sector: 'CUSHMAN', currentUserId: currentUser?.id });
 
   const sequence = useRef(0);
   const periodKey = period.toISOString();
@@ -623,6 +631,32 @@ export function CushmanClosings({ currentView, onNavigate, currentUser, onLogout
                                 <td className="cushman-sticky-company">
                                   <div className="cushman-company-cell">
                                     <strong>{company.name}</strong>
+                                    {(() => {
+                                      const editors = getEditorsForCompany(company.id);
+                                      if (!editors.length) return null;
+                                      return (
+                                        <span
+                                          className="presence-user-pill"
+                                          title={`${editors.map(e => e.userName).join(', ')} visualizando/editando agora`}
+                                          style={{
+                                            fontSize: 10,
+                                            padding: '1px 6px',
+                                            borderRadius: 9999,
+                                            background: 'rgba(59, 130, 246, 0.25)',
+                                            color: '#93c5fd',
+                                            border: '1px solid rgba(59, 130, 246, 0.4)',
+                                            fontWeight: 600,
+                                            marginLeft: 6,
+                                            display: 'inline-flex',
+                                            alignItems: 'center',
+                                            gap: 4,
+                                          }}
+                                        >
+                                          <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#3b82f6', display: 'inline-block' }} />
+                                          {editors[0].userName.split(' ')[0]}
+                                        </span>
+                                      );
+                                    })()}
                                     <small>{company.city || 'Município não informado'}</small>
                                     {certificate && (
                                       <span className={`cushman-certificate ${certificate.status.toLowerCase()}`}>
@@ -845,6 +879,24 @@ export function CushmanClosings({ currentView, onNavigate, currentUser, onLogout
                               <RefreshCw size={15} />
                               LIMPAR / VOLTAR PARA PENDENTE
                             </button>
+
+                            <button
+                              type="button"
+                              className="btn-secondary-light"
+                              onClick={() => {
+                                setAuditTarget({
+                                  companyId: actionModal.row.company.id,
+                                  companyName: actionModal.row.company.name,
+                                  companyCode: actionModal.row.company.code,
+                                  columnKey: actionModal.key,
+                                  columnLabel: actionModal.column.name,
+                                });
+                              }}
+                              style={{ marginTop: 6, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, width: '100%' }}
+                            >
+                              <History size={15} />
+                              HISTÓRICO DA CÉLULA (AUDITORIA)
+                            </button>
                           </div>
 
                           <div style={{ marginTop: 20, paddingTop: 16, borderTop: '1px solid #334155' }}>
@@ -960,6 +1012,20 @@ export function CushmanClosings({ currentView, onNavigate, currentUser, onLogout
                     </div>
                   </div>
                 </div>
+              )}
+
+              {/* Trilha de Auditoria na Célula */}
+              {auditTarget && (
+                <CellAuditModal
+                  isOpen={Boolean(auditTarget)}
+                  onClose={() => setAuditTarget(null)}
+                  companyId={auditTarget.companyId}
+                  companyName={auditTarget.companyName}
+                  companyCode={auditTarget.companyCode}
+                  columnKey={auditTarget.columnKey}
+                  columnLabel={auditTarget.columnLabel}
+                  sector="CUSHMAN"
+                />
               )}
             </>
           )}

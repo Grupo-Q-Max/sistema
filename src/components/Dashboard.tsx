@@ -19,6 +19,7 @@ import {
   AlertCircle,
   Bell,
   FileSpreadsheet,
+  Snowflake,
 } from 'lucide-react';
 import './Dashboard.css';
 import './Progress.css';
@@ -28,6 +29,7 @@ import { ManualCompetenceModal } from './ManualCompetenceModal';
 import { DashboardSkeleton, LoadingSpinner } from './LoadingSkeleton';
 import { SmartAlertDrawer } from './SmartAlertDrawer';
 import { ExecutiveReportModal } from './ExecutiveReportModal';
+import { CompetenceSnapshotModal } from './CompetenceSnapshotModal';
 import { RiskRadarWidget } from './RiskRadarWidget';
 import type { CurrentUser } from '../types/auth';
 import { API } from '../api';
@@ -196,10 +198,12 @@ export function Dashboard({ currentView, onNavigate, currentUser, onLogout }: Da
   const [selectedRegime, setSelectedRegime] = useState<string | null>(null);
   const [searchFilter, setSearchFilter] = useState('');
 
-  // Alertas e Relatório Executivo
+  // Alertas, Relatório Executivo e Congelamento
   const [isAlertDrawerOpen, setIsAlertDrawerOpen] = useState(false);
   const [isReportOpen, setIsReportOpen] = useState(false);
+  const [isSnapshotModalOpen, setIsSnapshotModalOpen] = useState(false);
   const [alertCount, setAlertCount] = useState(0);
+  const isPrivileged = currentUser?.role === 'ADMIN' || currentUser?.role === 'SOCIO';
 
   useEffect(() => {
     fetch(`${API}/api/alerts/summary`)
@@ -380,6 +384,19 @@ export function Dashboard({ currentView, onNavigate, currentUser, onLogout }: Da
           </div>
 
           <div className="crm-header-right" style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            {isPrivileged && (
+              <button
+                type="button"
+                className="btn-executive-report"
+                style={{ background: 'rgba(59, 130, 246, 0.15)', borderColor: 'rgba(59, 130, 246, 0.4)' }}
+                title="Congelar e Homologar Snapshot Imutável da Competência"
+                onClick={() => setIsSnapshotModalOpen(true)}
+              >
+                <Snowflake size={16} color="#60a5fa" />
+                <span>Congelar Competência</span>
+              </button>
+            )}
+
             <button
               type="button"
               className="btn-executive-report"
@@ -705,6 +722,14 @@ export function Dashboard({ currentView, onNavigate, currentUser, onLogout }: Da
           onClose={() => setIsReportOpen(false)}
           year={selectedYear}
           month={selectedMonth}
+        />
+
+        {/* Modal de Congelamento e Homologação de Snapshot */}
+        <CompetenceSnapshotModal
+          isOpen={isSnapshotModalOpen}
+          onClose={() => setIsSnapshotModalOpen(false)}
+          referencePeriod={`${selectedYear}-${String(selectedMonth + 1).padStart(2, '0')}-01`}
+          periodLabel={`${String(selectedMonth + 1).padStart(2, '0')}/${selectedYear}`}
         />
       </main>
     </div>

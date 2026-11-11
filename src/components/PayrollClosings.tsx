@@ -20,6 +20,7 @@ import { compareCodes, formatCompanyCode } from '../utils/codeSort';
 import { canUserEditCompany, canUserViewCompany, isUserResponsibleForCompany, companyBelongsToSector } from '../config/companyPermissions';
 import { installmentHeaders } from '../config/installments';
 import { ColumnHeaderFilter, computeColumnFilterOptions, matchColumnFilterValue } from './ColumnHeaderFilter';
+import { usePresence } from '../hooks/usePresence';
 import './Closings.css';
 import './PayrollClosings.css';
 
@@ -178,6 +179,9 @@ export function PayrollClosings({ currentView, onNavigate, currentUser, onLogout
   const [bulkToast, setBulkToast] = useState<string | null>(null);
   const [openHeaderFilter, setOpenHeaderFilter] = useState<string | null>(null);
   const [copyMessage, setCopyMessage] = useState('');
+
+  // Presença em tempo real ("Quem está editando agora?")
+  const { getEditorsForCompany } = usePresence({ sector: 'DP', currentUserId: currentUser?.id });
   const [scrollWidth, setScrollWidth] = useState(0);
   const filterContainer = useRef<HTMLDivElement>(null);
   const [companyDetails, setCompanyDetails] = useState<any | null>(null);
@@ -1132,7 +1136,36 @@ export function PayrollClosings({ currentView, onNavigate, currentUser, onLogout
                                   <td className="sticky-col-company">
                                     <div className="company-cell-wrapper">
                                       <button type="button" className="company-interactive-link" title="Ver dados da empresa e certificado" onClick={() => setCompanyDetails(c)}>
-                                        <div className="company-link-left"><Building2 size={16} color="#818cf8" style={{ flexShrink: 0 }} /><span>{c.name}</span></div>
+                                        <div className="company-link-left">
+                                          <Building2 size={16} color="#818cf8" style={{ flexShrink: 0 }} />
+                                          <span>{c.name}</span>
+                                          {(() => {
+                                            const editors = getEditorsForCompany(c.id);
+                                            if (!editors.length) return null;
+                                            return (
+                                              <span
+                                                className="presence-user-pill"
+                                                title={`${editors.map(e => e.userName).join(', ')} visualizando/editando agora`}
+                                                style={{
+                                                  fontSize: 10,
+                                                  padding: '1px 6px',
+                                                  borderRadius: 9999,
+                                                  background: 'rgba(59, 130, 246, 0.25)',
+                                                  color: '#93c5fd',
+                                                  border: '1px solid rgba(59, 130, 246, 0.4)',
+                                                  fontWeight: 600,
+                                                  marginLeft: 6,
+                                                  display: 'inline-flex',
+                                                  alignItems: 'center',
+                                                  gap: 4,
+                                                }}
+                                              >
+                                                <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#3b82f6', display: 'inline-block' }} />
+                                                {editors[0].userName.split(' ')[0]}
+                                              </span>
+                                            );
+                                          })()}
+                                        </div>
                                         <div className="company-link-icon-chip"><span>Ver Dados</span><ExternalLink size={10} /></div>
                                       </button>
                                       {c.tradeName && <div className="company-cell-trade">{c.tradeName}</div>}

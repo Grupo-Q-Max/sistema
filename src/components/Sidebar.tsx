@@ -27,6 +27,7 @@ import {
 import type { CurrentUser } from '../types/auth';
 import { ChangePasswordModal } from './ChangePasswordModal';
 import { WhatsNewModal } from './WhatsNewModal';
+import { NotificationCenter } from './NotificationCenter';
 import './Dashboard.css';
 import './Sidebar.css';
 import './CompanyQuality.css';
@@ -522,6 +523,7 @@ export function Sidebar({ currentView, onNavigate, currentUser, onLogout }: Side
             )}
           </div>
           <div className="sidebar-footer-actions">
+            <NotificationCenter />
             <button
               type="button"
               className="change-password-btn"
