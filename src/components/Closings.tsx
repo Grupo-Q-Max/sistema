@@ -31,6 +31,9 @@ import {
   Zap,
   Users,
   BarChart3,
+  Target,
+  Award,
+  ShieldAlert,
 } from 'lucide-react';
 import type { CurrentUser } from '../types/auth';
 import { API } from '../api';
@@ -56,6 +59,9 @@ import { applyFiscalRegimeRules, isFiscalObligationNA, setActiveFiscalRegimeRule
 import { usePresence } from '../hooks/usePresence';
 import { canUserEditCompany, canUserViewCompany, isUserResponsibleForCompany, companyBelongsToSector } from '../config/companyPermissions';
 import { ColumnHeaderFilter, computeColumnFilterOptions, matchColumnFilterValue } from './ColumnHeaderFilter';
+import { FocusModeModal } from './FocusModeModal';
+import { CompanyDeliveryReportModal } from './CompanyDeliveryReportModal';
+import { checkSimplesGuardian } from '../config/simplesGuardian';
 
 function brDateToIso(val: string): string {
   const m = String(val || '').trim().match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
@@ -852,6 +858,8 @@ export function Closings({ currentView, onNavigate, currentUser, onLogout }: Clo
   const [bulkModalOpen, setBulkModalOpen] = useState(false);
   const [bulkAssignOpen, setBulkAssignOpen] = useState(false);
   const [bulkFeedback, setBulkFeedback] = useState<string | null>(null);
+  const [isFocusModeOpen, setIsFocusModeOpen] = useState(false);
+  const [deliveryReportCompanyId, setDeliveryReportCompanyId] = useState<string | null>(null);
 
   const editableFilteredRows = useMemo(() => {
     return filteredRows.filter(r => isRowEditable(r));
@@ -1268,6 +1276,17 @@ export function Closings({ currentView, onNavigate, currentUser, onLogout }: Clo
               {viewInstallments && <select className="closings-select" aria-label="Filtrar parcelamentos" value={installmentFilter} onChange={event => setInstallmentFilter(event.target.value)}>{[{ value: 'ALL', label: 'Parcelamentos: Todos' }, { value: 'HAS_PLAN', label: 'Com parcelamento' }, { value: 'PENDING', label: 'Pendente' }, { value: 'OVERDUE', label: 'Atrasado / atrasos anteriores' }, { value: 'PAID', label: 'Pago no mês' }, { value: 'NO_INSTALLMENT', label: 'Sem parcela no mês' }, { value: 'NA', label: 'N/A — sem parcelamento' }].map(item => <option key={item.value} value={item.value}>{item.label}</option>)}</select>}
               {viewInstallments && <button className="btn-secondary-light fiscal-create-installment" onClick={() => { setInstallmentCreate(false); setInstallmentFocus(null); setAllInstallmentsOpen(true); }}>Consultar parcelamentos</button>}
               {canCreateInstallment(currentUser) && <button className="btn-primary-gradient fiscal-create-installment" onClick={() => { setInstallmentCreate(true); setInstallmentFocus(null); setChooseInstallmentCompany(true); }}><Plus size={17} />Criar parcelamento</button>}
+
+              <button
+                type="button"
+                className="btn-secondary-light"
+                style={{ background: 'rgba(56, 189, 248, 0.15)', borderColor: 'rgba(56, 189, 248, 0.4)', color: '#38bdf8', fontWeight: 700 }}
+                onClick={() => setIsFocusModeOpen(true)}
+                title="Abrir fila de trabalho rápida anti-ansiedade com atalhos de teclado"
+              >
+                <Target size={16} />
+                <span>Modo Foco (Fila do Dia)</span>
+              </button>
 
               <button className="btn-secondary-light" onClick={handleExport} title="Exportar para Excel (CSV)">
                 <FileSpreadsheet size={16} />
@@ -1791,8 +1810,63 @@ export function Closings({ currentView, onNavigate, currentUser, onLogout }: Clo
                                     <Zap size={11} />
                                     <span>Foco</span>
                                   </button>
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setDeliveryReportCompanyId(c.id);
+                                    }}
+                                    title="Gerar Extrato / Comprovante de Entregas para o Cliente (PDF)"
+                                    style={{
+                                      background: 'rgba(16, 185, 129, 0.1)',
+                                      border: '1px solid rgba(16, 185, 129, 0.25)',
+                                      color: '#10b981',
+                                      borderRadius: '6px',
+                                      padding: '4px 6px',
+                                      cursor: 'pointer',
+                                      display: 'inline-flex',
+                                      alignItems: 'center',
+                                      gap: '3px',
+                                      fontSize: '11px',
+                                      fontWeight: 600,
+                                      flexShrink: 0,
+                                    }}
+                                  >
+                                    <Award size={11} />
+                                    <span>Extrato</span>
+                                  </button>
                                 </div>
                                 {c.tradeName && <div className="company-cell-trade">{c.tradeName}</div>}
+
+                                {/* Guardião Fiscal do Simples Nacional (RBT12 / Sublimite) */}
+                                {(() => {
+                                  const guardian = checkSimplesGuardian(c.taxRegime, r.columnsData);
+                                  if (guardian.isSimples && guardian.risk !== 'SAFE') {
+                                    return (
+                                      <div
+                                        style={{
+                                          marginTop: '3px',
+                                          display: 'inline-flex',
+                                          alignItems: 'center',
+                                          gap: '4px',
+                                          fontSize: '10px',
+                                          padding: '2px 6px',
+                                          borderRadius: '4px',
+                                          background: `${guardian.badgeColor}22`,
+                                          color: guardian.badgeColor,
+                                          border: `1px solid ${guardian.badgeColor}55`,
+                                          fontWeight: 700,
+                                          cursor: 'help'
+                                        }}
+                                        title={guardian.advice}
+                                      >
+                                        <ShieldAlert size={12} />
+                                        <span>{guardian.badgeLabel}</span>
+                                      </div>
+                                    );
+                                  }
+                                  return null;
+                                })()}
 
                                 {/* Alerta Visual de Vencimento de Certificado Digital */}
                                 {certInfo && (
@@ -2419,6 +2493,26 @@ export function Closings({ currentView, onNavigate, currentUser, onLogout }: Clo
             void fetchClosings();
           }}
         />
+
+        {/* Modo Foco / Fila do Dia */}
+        <FocusModeModal
+          isOpen={isFocusModeOpen}
+          onClose={() => setIsFocusModeOpen(false)}
+          rows={filteredRows}
+          onCompleteClosing={() => {
+            void fetchClosings();
+          }}
+        />
+
+        {/* Extrato Mensal de Entregas para o Cliente */}
+        {deliveryReportCompanyId && (
+          <CompanyDeliveryReportModal
+            isOpen={Boolean(deliveryReportCompanyId)}
+            onClose={() => setDeliveryReportCompanyId(null)}
+            companyId={deliveryReportCompanyId}
+            period={`${selectedYear}-${String(selectedMonth).padStart(2, '0')}-01`}
+          />
+        )}
       </main>
     </div>
   );

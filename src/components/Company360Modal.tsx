@@ -9,11 +9,13 @@ import {
   Users,
   ShieldCheck,
   TrendingUp,
-  ExternalLink
+  ExternalLink,
+  Award,
 } from 'lucide-react';
 import { API } from '../api';
 import type { CurrentUser } from '../types/auth';
 import { formatFlexibleDateBr } from '../config/dateUtils';
+import { CompanyDeliveryReportModal } from './CompanyDeliveryReportModal';
 import './Company360Modal.css';
 
 export interface Company360ModalProps {
@@ -36,6 +38,7 @@ export function Company360Modal({
   const [year, setYear] = useState<number>(currentYear);
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [isDeliveryModalOpen, setIsDeliveryModalOpen] = useState(false);
 
   useEffect(() => {
     if (!companyId) return;
@@ -93,6 +96,27 @@ export function Company360Modal({
           </div>
 
           <div className="c360-header-actions">
+            <button
+              type="button"
+              onClick={() => setIsDeliveryModalOpen(true)}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '6px',
+                padding: '6px 12px',
+                borderRadius: '8px',
+                background: 'rgba(16, 185, 129, 0.15)',
+                border: '1px solid rgba(16, 185, 129, 0.4)',
+                color: '#10b981',
+                fontWeight: 600,
+                fontSize: '13px',
+                cursor: 'pointer',
+              }}
+            >
+              <Award size={15} />
+              <span>Extrato do Cliente</span>
+            </button>
+
             <div className="c360-year-select">
               <Calendar size={14} />
               <select value={year} onChange={(e) => setYear(Number(e.target.value))}>
@@ -279,6 +303,15 @@ export function Company360Modal({
           )}
         </div>
       </div>
+
+      {isDeliveryModalOpen && companyId && (
+        <CompanyDeliveryReportModal
+          isOpen={isDeliveryModalOpen}
+          onClose={() => setIsDeliveryModalOpen(false)}
+          companyId={companyId}
+          period={`${year}-11-01`}
+        />
+      )}
     </div>
   );
 }

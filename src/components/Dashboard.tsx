@@ -22,6 +22,7 @@ import {
   Snowflake,
   Tv,
   DollarSign,
+  Activity,
 } from 'lucide-react';
 import './Dashboard.css';
 import './Progress.css';
@@ -34,6 +35,8 @@ import { ExecutiveReportModal } from './ExecutiveReportModal';
 import { CompetenceSnapshotModal } from './CompetenceSnapshotModal';
 import { WarRoomModal } from './WarRoomModal';
 import { FeeAdjustmentRadarModal } from './FeeAdjustmentRadarModal';
+import { BottleneckForecastModal } from './BottleneckForecastModal';
+import { UserActivityHistoryModal } from './UserActivityHistoryModal';
 import { RiskRadarWidget } from './RiskRadarWidget';
 import type { CurrentUser } from '../types/auth';
 import { API } from '../api';
@@ -208,6 +211,8 @@ export function Dashboard({ currentView, onNavigate, currentUser, onLogout }: Da
   const [isSnapshotModalOpen, setIsSnapshotModalOpen] = useState(false);
   const [isWarRoomOpen, setIsWarRoomOpen] = useState(false);
   const [isFeeRadarOpen, setIsFeeRadarOpen] = useState(false);
+  const [isBottleneckOpen, setIsBottleneckOpen] = useState(false);
+  const [isUserActivityOpen, setIsUserActivityOpen] = useState(false);
   const [alertCount, setAlertCount] = useState(0);
   const isPrivileged = currentUser?.role === 'ADMIN' || currentUser?.role === 'SOCIO';
 
@@ -411,6 +416,30 @@ export function Dashboard({ currentView, onNavigate, currentUser, onLogout }: Da
               >
                 <DollarSign size={16} color="#10b981" />
                 <span>Radar Honorários</span>
+              </button>
+            )}
+
+            <button
+              type="button"
+              className="btn-executive-report"
+              style={{ background: 'rgba(56, 189, 248, 0.15)', borderColor: 'rgba(56, 189, 248, 0.4)' }}
+              title="Previsão de Gargalos e SLA de Entrega para o Dia 20"
+              onClick={() => setIsBottleneckOpen(true)}
+            >
+              <Activity size={16} color="#38bdf8" />
+              <span>Previsor Gargalos</span>
+            </button>
+
+            {isPrivileged && (
+              <button
+                type="button"
+                className="btn-executive-report"
+                style={{ background: 'rgba(16, 185, 129, 0.15)', borderColor: 'rgba(16, 185, 129, 0.4)' }}
+                title="Painel de Presença, Horas Ativas e Produtividade por Pessoa"
+                onClick={() => setIsUserActivityOpen(true)}
+              >
+                <Users size={16} color="#10b981" />
+                <span>Presença Equipe</span>
               </button>
             )}
 
@@ -774,6 +803,18 @@ export function Dashboard({ currentView, onNavigate, currentUser, onLogout }: Da
         <FeeAdjustmentRadarModal
           isOpen={isFeeRadarOpen}
           onClose={() => setIsFeeRadarOpen(false)}
+        />
+
+        {/* Previsor de Gargalos e SLA */}
+        <BottleneckForecastModal
+          isOpen={isBottleneckOpen}
+          onClose={() => setIsBottleneckOpen(false)}
+        />
+
+        {/* Painel de Presença e Histórico por Pessoa */}
+        <UserActivityHistoryModal
+          isOpen={isUserActivityOpen}
+          onClose={() => setIsUserActivityOpen(false)}
         />
       </main>
     </div>

@@ -1,0 +1,130 @@
+.delivery-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background-color: rgba(15, 23, 42, 0.75);
+  backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+  padding: 1.5rem;
+}
+
+.delivery-modal-card {
+  background: #0f172a;
+  border: 1px solid #334155;
+  border-radius: 16px;
+  width: 100%;
+  max-width: 800px;
+  max-height: 90vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+  color: #f8fafc;
+}
+
+.delivery-header {
+  padding: 1.25rem 1.5rem;
+  border-bottom: 1px solid #1e293b;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: #1e293b/40;
+}
+
+.delivery-title-group {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.delivery-icon {
+  color: #10b981;
+  width: 24px;
+  height: 24px;
+}
+
+.delivery-title {
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: #f8fafc;
+  margin: 0;
+}
+
+.delivery-subtitle {
+  font-size: 0.8125rem;
+  color: #94a3b8;
+  margin-top: 0.2rem;
+}
+
+.delivery-btn-print {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  background: #10b981;
+  color: #0f172a;
+  border: none;
+  padding: 0.45rem 0.9rem;
+  border-radius: 8px;
+  font-weight: 700;
+  font-size: 0.8125rem;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.delivery-btn-print:hover {
+  background: #059669;
+  color: #ffffff;
+}
+
+.delivery-close-btn {
+  background: transparent;
+  border: none;
+  color: #94a3b8;
+  cursor: pointer;
+  padding: 0.5rem;
+  border-radius: 8px;
+  transition: all 0.2s;
+}
+
+.delivery-close-btn:hover {
+  background: #334155;
+  color: #f8fafc;
+}
+
+.delivery-content {
+  padding: 1.5rem;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+@media print {
+  body * {
+    visibility: hidden;
+  }
+  .delivery-modal-overlay,
+  .delivery-modal-card {
+    position: static !important;
+    background: #ffffff !important;
+    color: #000000 !important;
+    border: none !important;
+    box-shadow: none !important;
+    width: 100% !important;
+    max-width: 100% !important;
+  }
+  .delivery-modal-card * {
+    visibility: visible;
+  }
+  .delivery-header,
+  .delivery-btn-print,
+  .delivery-close-btn {
+    display: none !important;
+  }
+  .delivery-content {
+    padding: 0 !important;
+    color: #000000 !important;
+  }
+}

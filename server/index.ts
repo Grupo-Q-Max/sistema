@@ -7,6 +7,7 @@ import {registerWorkloadAndHistory} from './workloadAndHistory';
 import {registerDeploy} from './deploy';
 import {registerAutomation} from './automation';
 import {registerDominioStaging} from './dominioStaging';
+import {registerPowerPack} from './powerPack';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {externalCompaniesExcluded} from '../src/config/installmentCompanies';
@@ -741,6 +742,7 @@ registerWorkloadAndHistory(app,prisma);
 registerDeploy(app);
 registerAutomation(app,prisma);
 registerDominioStaging(app,prisma);
+registerPowerPack(app,prisma,pool);
 
 let appConfigCache: {
   ts: number;
