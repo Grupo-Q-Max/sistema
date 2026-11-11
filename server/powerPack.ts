@@ -1,6 +1,70 @@
+import crypto from 'node:crypto';
 import { externalCompaniesExcluded } from '../src/config/installmentCompanies';
 import { latestOpenPeriod, normalizePeriod } from '../src/config/competenceCalendar';
 import { resolveColumnKey } from '../src/config/payrollColumns';
+import { resolveAuthenticatedUser, getSessionSecret } from './installments';
+
+// Rate limiter em memória para proteção contra brute-force do portal público (max 40 req/min por IP)
+const portalIpRateLimit = new Map<string, { count: number; resetAt: number }>();
+function checkPortalRateLimit(ip: string): boolean {
+  const now = Date.now();
+  const entry = portalIpRateLimit.get(ip);
+  if (!entry || now > entry.resetAt) {
+    portalIpRateLimit.set(ip, { count: 1, resetAt: now + 60_000 });
+    return true;
+  }
+  if (entry.count >= 40) return false;
+  entry.count++;
+  return true;
+}
+
+// Limpeza periódica de IP rate limit a cada 10 minutos
+setInterval(() => {
+  const now = Date.now();
+  for (const [ip, data] of portalIpRateLimit.entries()) {
+    if (now > data.resetAt) portalIpRateLimit.delete(ip);
+  }
+}, 10 * 60_000);
+
+// Gera token criptográfico assinado com HMAC (impossível de adivinhar ou forjar)
+function generatePortalToken(companyId: string): string {
+  const secret = getSessionSecret();
+  const hmac = crypto.createHmac('sha256', secret).update(`portal_${companyId}`).digest('base64url').substring(0, 24);
+  return `${companyId}_${hmac}`;
+}
+
+// Valida a assinatura criptográfica com timingSafeEqual contra timing attacks
+function verifyPortalToken(token: string): string | null {
+  if (!token || typeof token !== 'string') return null;
+  const parts = token.split('_');
+  if (parts.length !== 2) return null;
+  const [companyId, signature] = parts;
+  if (!companyId || !signature) return null;
+
+  const secret = getSessionSecret();
+  const expectedHmac = crypto.createHmac('sha256', secret).update(`portal_${companyId}`).digest('base64url').substring(0, 24);
+
+  const a = Buffer.from(signature);
+  const b = Buffer.from(expectedHmac);
+  if (a.length !== b.length || !crypto.timingSafeEqual(a, b)) {
+    return null;
+  }
+  return companyId;
+}
+
+// Helper para exigir autenticação válida nas rotas administrativas
+async function requireAuthUser(prisma: any, req: any, res: any): Promise<any | null> {
+  const actor = await resolveAuthenticatedUser(prisma, req);
+  if (!actor) {
+    res.status(401).json({ error: 'Sessão expirada ou não autenticado. Faça login novamente.' });
+    return null;
+  }
+  if (actor.active === false) {
+    res.status(403).json({ error: 'Usuário inativo. Contate o administrador.' });
+    return null;
+  }
+  return actor;
+}
 
 export function registerPowerPack(app: any, prisma: any, pool?: any) {
   // ==========================================
@@ -454,6 +518,7 @@ export function registerPowerPack(app: any, prisma: any, pool?: any) {
 
   app.put('/api/companies/:id/financial-status', async (req: any, res: any) => {
     try {
+      if (!await requireAuthUser(prisma, req, res)) return;
       const { id } = req.params;
       const { status, reason } = req.body; // 'REGULAR' | 'PENDING_1M' | 'BLOCKED_2M'
       const company = await prisma.company.findUnique({ where: { id } });
@@ -601,6 +666,7 @@ export function registerPowerPack(app: any, prisma: any, pool?: any) {
 
   app.put('/api/companies/:id/cnd-status', async (req: any, res: any) => {
     try {
+      if (!await requireAuthUser(prisma, req, res)) return;
       const { id } = req.params;
       const { cnd } = req.body;
       const company = await prisma.company.findUnique({ where: { id } });
@@ -657,6 +723,7 @@ export function registerPowerPack(app: any, prisma: any, pool?: any) {
 
   app.put('/api/companies/:id/special-obligations', async (req: any, res: any) => {
     try {
+      if (!await requireAuthUser(prisma, req, res)) return;
       const { id } = req.params;
       const { year, key, status, date } = req.body;
       const company = await prisma.company.findUnique({ where: { id } });
@@ -919,6 +986,7 @@ export function registerPowerPack(app: any, prisma: any, pool?: any) {
 
   app.put('/api/companies/:id/document-reception', async (req: any, res: any) => {
     try {
+      if (!await requireAuthUser(prisma, req, res)) return;
       const { id } = req.params;
       const { periodKey, reception } = req.body;
       if (!periodKey || !reception) {
@@ -1316,6 +1384,7 @@ export function registerPowerPack(app: any, prisma: any, pool?: any) {
 
   app.put('/api/companies/:id/power-of-attorney', async (req: any, res: any) => {
     try {
+      if (!await requireAuthUser(prisma, req, res)) return;
       const { id } = req.params;
       const { system, expirationDate } = req.body; // system: 'ecac' | 'caixa' | 'municipal'
       if (!system || !['ecac', 'caixa', 'municipal'].includes(system)) {
@@ -1392,10 +1461,21 @@ export function registerPowerPack(app: any, prisma: any, pool?: any) {
 
   app.post('/api/extra-services', async (req: any, res: any) => {
     try {
+      const actor = await requireAuthUser(prisma, req, res);
+      if (!actor) return;
+
       const { companyId, serviceType, description, amount, requestedBy } = req.body;
       if (!companyId || !serviceType || !amount) {
         return res.status(400).json({ error: 'Dados incompletos' });
       }
+
+      const numericAmount = Number(amount);
+      if (isNaN(numericAmount) || numericAmount <= 0 || numericAmount > 500000) {
+        return res.status(400).json({ error: 'Valor inválido. Deve ser entre R$ 1 e R$ 500.000' });
+      }
+
+      const safeServiceType = String(serviceType).trim().slice(0, 100);
+      const safeDescription = description ? String(description).trim().slice(0, 500) : '';
 
       const company = await prisma.company.findUnique({ where: { id: companyId } });
       if (!company) return res.status(404).json({ error: 'Empresa não encontrada' });
@@ -1405,10 +1485,10 @@ export function registerPowerPack(app: any, prisma: any, pool?: any) {
 
       const newService = {
         id: `svc_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
-        serviceType,
-        description: description || '',
-        amount: Number(amount),
-        requestedBy: requestedBy || 'Sistema',
+        serviceType: safeServiceType,
+        description: safeDescription,
+        amount: numericAmount,
+        requestedBy: actor.name || requestedBy || 'Sistema',
         status: 'PENDING_BILLING',
         createdAt: new Date().toISOString(),
       };
@@ -1434,6 +1514,7 @@ export function registerPowerPack(app: any, prisma: any, pool?: any) {
 
   app.put('/api/extra-services/:id/status', async (req: any, res: any) => {
     try {
+      if (!await requireAuthUser(prisma, req, res)) return;
       const { id } = req.params;
       const { companyId, status } = req.body; // status: 'BILLED' | 'CANCELLED' | 'PENDING_BILLING'
 
@@ -1472,6 +1553,7 @@ export function registerPowerPack(app: any, prisma: any, pool?: any) {
   // ==========================================
   app.get('/api/companies/:id/portal-link', async (req: any, res: any) => {
     try {
+      if (!await requireAuthUser(prisma, req, res)) return;
       const { id } = req.params;
       const company = await prisma.company.findUnique({
         where: { id },
@@ -1479,8 +1561,8 @@ export function registerPowerPack(app: any, prisma: any, pool?: any) {
       });
       if (!company) return res.status(404).json({ error: 'Empresa não encontrada' });
 
-      // Gera token seguro e persistente baseado no ID da empresa
-      const token = Buffer.from(`portal_${company.id}_${company.cnpj || 'empresa'}`).toString('base64url');
+      // Gera token criptográfico HMAC assinado exclusivamente para esta empresa
+      const token = generatePortalToken(company.id);
 
       res.json({
         token,
@@ -1494,21 +1576,17 @@ export function registerPowerPack(app: any, prisma: any, pool?: any) {
 
   app.get('/api/client-portal/:token', async (req: any, res: any) => {
     try {
+      const clientIp = String(req.headers['x-forwarded-for'] || req.socket?.remoteAddress || '127.0.0.1');
+      if (!checkPortalRateLimit(clientIp)) {
+        return res.status(429).json({ error: 'Muitas consultas. Aguarde um minuto e tente novamente.' });
+      }
+
       const { token } = req.params;
-      let decoded = '';
-      try {
-        decoded = Buffer.from(token, 'base64url').toString('utf8');
-      } catch {
-        return res.status(400).json({ error: 'Token inválido' });
+      const companyId = verifyPortalToken(token);
+      if (!companyId) {
+        return res.status(400).json({ error: 'Link de consulta inválido, adulterado ou expirado.' });
       }
 
-      // Token format: portal_{companyId}_{cnpj}
-      const parts = decoded.split('_');
-      if (parts.length < 3 || parts[0] !== 'portal') {
-        return res.status(400).json({ error: 'Token mal formatado' });
-      }
-
-      const companyId = parts[1];
       const openPeriod = latestOpenPeriod();
 
       const [company, fiscalClosing, payrollClosing] = await Promise.all([

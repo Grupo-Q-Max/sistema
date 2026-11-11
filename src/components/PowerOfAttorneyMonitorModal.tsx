@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { KeyRound, X, Search } from 'lucide-react';
-import { API } from '../api';
+import { API, authHeaders } from '../api';
 import './PowerOfAttorneyMonitorModal.css';
 
 interface PowerOfAttorneyMonitorModalProps {
@@ -17,7 +17,7 @@ export function PowerOfAttorneyMonitorModal({ isOpen, onClose }: PowerOfAttorney
 
   const loadData = () => {
     setLoading(true);
-    fetch(`${API}/api/power-of-attorneys`)
+    fetch(`${API}/api/power-of-attorneys`, { headers: authHeaders() })
       .then(res => res.json())
       .then(json => {
         setData(json);
@@ -40,7 +40,7 @@ export function PowerOfAttorneyMonitorModal({ isOpen, onClose }: PowerOfAttorney
     try {
       const res = await fetch(`${API}/api/companies/${editingCompany.id}/power-of-attorney`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
+        headers: authHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({ system: editingCompany.system, expirationDate: expInput }),
       });
       if (res.ok) {

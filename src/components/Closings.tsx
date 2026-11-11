@@ -37,7 +37,7 @@ import {
   DollarSign,
 } from 'lucide-react';
 import type { CurrentUser } from '../types/auth';
-import { API } from '../api';
+import { API, authHeaders } from '../api';
 import { TableSkeleton, ButtonSpinner } from './LoadingSkeleton';
 import './Closings.css';
 import './PayrollClosings.css';
@@ -234,7 +234,7 @@ export function Closings({ currentView, onNavigate, currentUser, onLogout }: Clo
 
   const fetchFinancialStatus = async () => {
     try {
-      const res = await fetch(`${API}/api/companies/financial-status`);
+      const res = await fetch(`${API}/api/companies/financial-status`, { headers: authHeaders() });
       if (res.ok) {
         const data = await res.json();
         if (data.statuses) {
@@ -252,7 +252,7 @@ export function Closings({ currentView, onNavigate, currentUser, onLogout }: Clo
     try {
       const res = await fetch(`${API}/api/companies/${financialEditModal.companyId}/financial-status`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
+        headers: authHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({ status, reason }),
       });
       if (res.ok) {

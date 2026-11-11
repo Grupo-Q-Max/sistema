@@ -42,23 +42,33 @@ export function CompetenceExportModal({ isOpen, onClose }: CompetenceExportModal
         'Atraso Culpa do Cliente',
       ];
 
+      // Sanitização contra CSV/Excel Formula Injection (DDE)
+      const sanitizeCsvCell = (val: unknown): string => {
+        if (val === null || val === undefined) return '""';
+        let str = String(val).replace(/"/g, '""');
+        if (/^[=\+\-@\t\r]/.test(str)) {
+          str = `'${str}`; // Neutraliza execução de fórmula no Excel
+        }
+        return `"${str}"`;
+      };
+
       const csvContent = [
         headers.join(';'),
         ...rows.map((r: any) =>
           [
-            `"${r.code}"`,
-            `"${r.name.replace(/"/g, '""')}"`,
-            `"${r.cnpj}"`,
-            `"${r.taxRegime}"`,
-            `"${r.fiscalStatus}"`,
-            r.fiscalProgress,
-            `"${r.payrollStatus}"`,
-            r.payrollProgress,
-            `"${r.financialStatus}"`,
-            `"${r.docsFiscal}"`,
-            `"${r.docsBank}"`,
-            `"${r.docsPayroll}"`,
-            `"${r.clientBlamed}"`,
+            sanitizeCsvCell(r.code),
+            sanitizeCsvCell(r.name),
+            sanitizeCsvCell(r.cnpj),
+            sanitizeCsvCell(r.taxRegime),
+            sanitizeCsvCell(r.fiscalStatus),
+            Number(r.fiscalProgress) || 0,
+            sanitizeCsvCell(r.payrollStatus),
+            Number(r.payrollProgress) || 0,
+            sanitizeCsvCell(r.financialStatus),
+            sanitizeCsvCell(r.docsFiscal),
+            sanitizeCsvCell(r.docsBank),
+            sanitizeCsvCell(r.docsPayroll),
+            sanitizeCsvCell(r.clientBlamed),
           ].join(';')
         ),
       ].join('\r\n');

@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { FileCheck, X, Search, ShieldAlert, Check } from 'lucide-react';
-import { API } from '../api';
+import { API, authHeaders } from '../api';
 import './DocumentReceptionModal.css';
 
 interface DocumentReceptionModalProps {
@@ -19,7 +19,7 @@ export function DocumentReceptionModal({ isOpen, onClose }: DocumentReceptionMod
 
   const fetchDocuments = () => {
     setLoading(true);
-    fetch(`${API}/api/document-reception?year=${year}&month=${month}`)
+    fetch(`${API}/api/document-reception?year=${year}&month=${month}`, { headers: authHeaders() })
       .then(res => res.json())
       .then(json => {
         setData(json);
@@ -43,7 +43,7 @@ export function DocumentReceptionModal({ isOpen, onClose }: DocumentReceptionMod
     try {
       const res = await fetch(`${API}/api/companies/${companyId}/document-reception`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
+        headers: authHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({
           periodKey: data?.periodKey || `${year}-${String(month).padStart(2, '0')}`,
           reception: updatedReception,

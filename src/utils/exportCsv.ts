@@ -27,7 +27,11 @@ export function exportToCsv(filename: string, columns: { header: string; key: st
 
 function escapeCsv(value: any): string {
   if (value === null || value === undefined) return '';
-  const str = String(value).trim();
+  let str = String(value).trim();
+  // Neutraliza CSV / Excel Formula Injection (DDE) caso o valor comece com =, +, -, @
+  if (/^[=\+\-@\t\r]/.test(str)) {
+    str = `'${str}`;
+  }
   // Se contiver ponto-e-vírgula, aspas, quebra de linha ou for um número longo (como CNPJ que o Excel pode estragar), colocar entre aspas.
   // Para forçar o Excel a tratar como texto e não estragar zeros à esquerda (ex: 00006, 00434-B) ou notação científica (ex: CNPJ), adicionamos ="valor"
   if (/^0\d+(?:-[A-Za-z0-9]+)?$/.test(str) || (/^[\d.\-\/]+$/.test(str) && (str.length > 11))) {

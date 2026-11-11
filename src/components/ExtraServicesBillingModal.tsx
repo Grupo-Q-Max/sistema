@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Tag, X, Plus, CheckCircle, Clock } from 'lucide-react';
-import { API } from '../api';
+import { API, authHeaders } from '../api';
 import './ExtraServicesBillingModal.css';
 
 interface ExtraServicesBillingModalProps {
@@ -23,7 +23,7 @@ export function ExtraServicesBillingModal({ isOpen, onClose }: ExtraServicesBill
 
   const loadData = () => {
     setLoading(true);
-    fetch(`${API}/api/extra-services`)
+    fetch(`${API}/api/extra-services`, { headers: authHeaders() })
       .then(res => res.json())
       .then(json => {
         setData(json);
@@ -57,7 +57,7 @@ export function ExtraServicesBillingModal({ isOpen, onClose }: ExtraServicesBill
     try {
       const res = await fetch(`${API}/api/extra-services`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: authHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({
           companyId: selectedCompanyId,
           serviceType,
@@ -82,7 +82,7 @@ export function ExtraServicesBillingModal({ isOpen, onClose }: ExtraServicesBill
     try {
       const res = await fetch(`${API}/api/extra-services/${service.id}/status`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
+        headers: authHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({
           companyId: service.companyId,
           status: nextStatus,

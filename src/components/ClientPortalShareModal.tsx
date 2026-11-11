@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { ExternalLink, X, Copy, Check, Share2, ShieldCheck, MessageCircle } from 'lucide-react';
-import { API } from '../api';
+import { API, authHeaders } from '../api';
 import './ClientPortalShareModal.css';
 
 interface ClientPortalShareModalProps {
@@ -45,7 +45,9 @@ export function ClientPortalShareModal({
       return;
     }
     setLoading(true);
-    fetch(`${API}/api/companies/${selectedId}/portal-link`)
+    fetch(`${API}/api/companies/${selectedId}/portal-link`, {
+      headers: authHeaders(),
+    })
       .then(res => res.json())
       .then(json => {
         setToken(json.token || '');
@@ -241,3 +243,4 @@ export function ClientPortalShareModal({
     </div>
   );
 }
+
