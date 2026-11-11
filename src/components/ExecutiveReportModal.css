@@ -1,36 +1,35 @@
-.exec-modal-overlay {
+.exec-overlay {
   position: fixed;
   inset: 0;
-  background-color: rgba(15, 23, 42, 0.75);
+  background: rgba(15, 23, 42, 0.75);
   backdrop-filter: blur(4px);
+  z-index: 9999;
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 9999;
   padding: 1.5rem;
 }
 
-.exec-modal-card {
+.exec-card {
   background: #0f172a;
   border: 1px solid #334155;
   border-radius: 16px;
   width: 100%;
-  max-width: 900px;
+  max-width: 960px;
   max-height: 90vh;
   display: flex;
   flex-direction: column;
-  overflow: hidden;
   box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
-  color: #f8fafc;
+  overflow: hidden;
 }
 
 .exec-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
   padding: 1.25rem 1.5rem;
   border-bottom: 1px solid #1e293b;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  background: #1e293b/40;
+  background: #1e293b;
 }
 
 .exec-title-group {
@@ -40,47 +39,22 @@
 }
 
 .exec-icon {
-  color: #a855f7;
-  width: 24px;
-  height: 24px;
+  color: #38bdf8;
+  width: 28px;
+  height: 28px;
 }
 
 .exec-title {
+  margin: 0;
   font-size: 1.25rem;
   font-weight: 700;
   color: #f8fafc;
-  margin: 0;
 }
 
 .exec-subtitle {
   font-size: 0.8125rem;
   color: #94a3b8;
-  margin-top: 0.2rem;
-}
-
-.exec-actions {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-}
-
-.exec-btn-print {
-  display: flex;
-  align-items: center;
-  gap: 0.4rem;
-  background: #a855f7;
-  color: #ffffff;
-  border: none;
-  padding: 0.45rem 0.9rem;
-  border-radius: 8px;
-  font-weight: 600;
-  font-size: 0.8125rem;
-  cursor: pointer;
-  transition: all 0.2s;
-}
-
-.exec-btn-print:hover {
-  background: #9333ea;
+  margin-top: 2px;
 }
 
 .exec-close-btn {
@@ -106,37 +80,27 @@
   gap: 1.25rem;
 }
 
-/* Formatação especial para impressão A4 formal */
 @media print {
   body * {
     visibility: hidden;
   }
-  .exec-modal-overlay,
-  .exec-modal-card {
-    position: static !important;
-    inset: auto !important;
-    background: #ffffff !important;
-    color: #000000 !important;
-    box-shadow: none !important;
-    border: none !important;
-    max-width: 100% !important;
-    max-height: 100% !important;
-  }
-  .exec-modal-card * {
+  .exec-card,
+  .exec-card * {
     visibility: visible;
   }
-  .exec-header,
-  .exec-actions,
-  .exec-close-btn {
-    display: none !important;
-  }
-  .exec-content {
-    padding: 0 !important;
-    color: #000000 !important;
-  }
-  .exec-printable {
+  .exec-card {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    max-width: 100%;
+    border: none;
+    box-shadow: none;
     background: #ffffff !important;
     color: #000000 !important;
-    border: 1px solid #cccccc !important;
+  }
+  .exec-close-btn,
+  .exec-print-btn {
+    display: none !important;
   }
 }

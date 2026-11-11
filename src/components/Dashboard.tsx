@@ -26,6 +26,10 @@ import {
   Calculator,
   Trophy,
   ShieldCheck,
+  HeartPulse,
+  Timer,
+  FileCheck,
+  Download,
 } from 'lucide-react';
 import './Dashboard.css';
 import './Progress.css';
@@ -44,6 +48,11 @@ import { TaxSimulatorModal } from './TaxSimulatorModal';
 import { GamificationLeaderboardModal } from './GamificationLeaderboardModal';
 import { CndMonitorModal } from './CndMonitorModal';
 import { SpecialObligationsModal } from './SpecialObligationsModal';
+import { CustomerHealthRadarModal } from './CustomerHealthRadarModal';
+import { SlaMatrixModal } from './SlaMatrixModal';
+import { DocumentReceptionModal } from './DocumentReceptionModal';
+import { PricingCalculatorModal } from './PricingCalculatorModal';
+import { CompetenceExportModal } from './CompetenceExportModal';
 import { RiskRadarWidget } from './RiskRadarWidget';
 import type { CurrentUser } from '../types/auth';
 import { API } from '../api';
@@ -224,6 +233,11 @@ export function Dashboard({ currentView, onNavigate, currentUser, onLogout }: Da
   const [isGamifyOpen, setIsGamifyOpen] = useState(false);
   const [isCndOpen, setIsCndOpen] = useState(false);
   const [isSpecialOpen, setIsSpecialOpen] = useState(false);
+  const [isChurnOpen, setIsChurnOpen] = useState(false);
+  const [isSlaOpen, setIsSlaOpen] = useState(false);
+  const [isDocRecOpen, setIsDocRecOpen] = useState(false);
+  const [isPricingOpen, setIsPricingOpen] = useState(false);
+  const [isExportOpen, setIsExportOpen] = useState(false);
   const [alertCount, setAlertCount] = useState(0);
   const isPrivileged = currentUser?.role === 'ADMIN' || currentUser?.role === 'SOCIO';
 
@@ -496,6 +510,61 @@ export function Dashboard({ currentView, onNavigate, currentUser, onLogout }: Da
             >
               <Calendar size={16} color="#a855f7" />
               <span>Obrigações Anuais</span>
+            </button>
+
+            <button
+              type="button"
+              className="btn-executive-report"
+              style={{ background: 'rgba(239, 68, 68, 0.15)', borderColor: 'rgba(239, 68, 68, 0.4)' }}
+              title="Radar de Saúde do Cliente & Risco de Churn"
+              onClick={() => setIsChurnOpen(true)}
+            >
+              <HeartPulse size={16} color="#ef4444" />
+              <span>Radar Churn</span>
+            </button>
+
+            <button
+              type="button"
+              className="btn-executive-report"
+              style={{ background: 'rgba(56, 189, 248, 0.15)', borderColor: 'rgba(56, 189, 248, 0.4)' }}
+              title="Matriz de SLA e Lead Time Operacional"
+              onClick={() => setIsSlaOpen(true)}
+            >
+              <Timer size={16} color="#38bdf8" />
+              <span>Matriz SLA</span>
+            </button>
+
+            <button
+              type="button"
+              className="btn-executive-report"
+              style={{ background: 'rgba(16, 185, 129, 0.15)', borderColor: 'rgba(16, 185, 129, 0.4)' }}
+              title="Checklist de Entrada e Recepção de Documentos"
+              onClick={() => setIsDocRecOpen(true)}
+            >
+              <FileCheck size={16} color="#10b981" />
+              <span>Recepção Docs</span>
+            </button>
+
+            <button
+              type="button"
+              className="btn-executive-report"
+              style={{ background: 'rgba(245, 158, 11, 0.15)', borderColor: 'rgba(245, 158, 11, 0.4)' }}
+              title="Calculadora de Precificação Justa & Rentabilidade de Contratos"
+              onClick={() => setIsPricingOpen(true)}
+            >
+              <DollarSign size={16} color="#f59e0b" />
+              <span>Precificação</span>
+            </button>
+
+            <button
+              type="button"
+              className="btn-executive-report"
+              style={{ background: 'rgba(56, 189, 248, 0.15)', borderColor: 'rgba(56, 189, 248, 0.4)' }}
+              title="Exportação Consolidada da Competência (Auditoria & Excel)"
+              onClick={() => setIsExportOpen(true)}
+            >
+              <Download size={16} color="#38bdf8" />
+              <span>Exportar Excel</span>
             </button>
 
             {isPrivileged && (
@@ -894,6 +963,36 @@ export function Dashboard({ currentView, onNavigate, currentUser, onLogout }: Da
         <SpecialObligationsModal
           isOpen={isSpecialOpen}
           onClose={() => setIsSpecialOpen(false)}
+        />
+
+        {/* Radar de Risco de Churn e Retenção */}
+        <CustomerHealthRadarModal
+          isOpen={isChurnOpen}
+          onClose={() => setIsChurnOpen(false)}
+        />
+
+        {/* Matriz de SLA e Lead Time */}
+        <SlaMatrixModal
+          isOpen={isSlaOpen}
+          onClose={() => setIsSlaOpen(false)}
+        />
+
+        {/* Painel de Recepção de Documentos */}
+        <DocumentReceptionModal
+          isOpen={isDocRecOpen}
+          onClose={() => setIsDocRecOpen(false)}
+        />
+
+        {/* Calculadora de Precificação de Contratos */}
+        <PricingCalculatorModal
+          isOpen={isPricingOpen}
+          onClose={() => setIsPricingOpen(false)}
+        />
+
+        {/* Central de Exportação Consolidada */}
+        <CompetenceExportModal
+          isOpen={isExportOpen}
+          onClose={() => setIsExportOpen(false)}
         />
       </main>
     </div>

@@ -165,6 +165,10 @@ const KNOWN_API_PREFIXES = [
   '/gamification',
   '/cnd',
   '/special-obligations',
+  '/churn-radar',
+  '/sla-matrix',
+  '/document-reception',
+  '/executive-report',
 ];
 
 // Normaliza requisições vindas com prefixo legado /sistema ou sem /api ou com /api duplicado

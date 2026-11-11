@@ -12,12 +12,14 @@ import {
   ExternalLink,
   Award,
   Calculator,
+  DollarSign,
 } from 'lucide-react';
 import { API } from '../api';
 import type { CurrentUser } from '../types/auth';
 import { formatFlexibleDateBr } from '../config/dateUtils';
 import { CompanyDeliveryReportModal } from './CompanyDeliveryReportModal';
 import { TaxSimulatorModal } from './TaxSimulatorModal';
+import { PricingCalculatorModal } from './PricingCalculatorModal';
 import './Company360Modal.css';
 
 export interface Company360ModalProps {
@@ -42,6 +44,7 @@ export function Company360Modal({
   const [loading, setLoading] = useState(true);
   const [isDeliveryModalOpen, setIsDeliveryModalOpen] = useState(false);
   const [isTaxSimOpen, setIsTaxSimOpen] = useState(false);
+  const [isPricingOpen, setIsPricingOpen] = useState(false);
 
   useEffect(() => {
     if (!companyId) return;
@@ -119,6 +122,28 @@ export function Company360Modal({
             >
               <Calculator size={15} />
               <span>Simulador Tributário</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setIsPricingOpen(true)}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '6px',
+                padding: '6px 12px',
+                borderRadius: '8px',
+                background: 'rgba(245, 158, 11, 0.15)',
+                border: '1px solid rgba(245, 158, 11, 0.4)',
+                color: '#f59e0b',
+                fontWeight: 600,
+                fontSize: '13px',
+                cursor: 'pointer',
+              }}
+              title="Calcular Rentabilidade & Precificação Justa do Contrato"
+            >
+              <DollarSign size={15} />
+              <span>Precificação</span>
             </button>
 
             <button
@@ -344,6 +369,14 @@ export function Company360Modal({
           onClose={() => setIsTaxSimOpen(false)}
           companyName={company?.name}
           currentRegime={company?.taxRegime || undefined}
+        />
+      )}
+
+      {isPricingOpen && (
+        <PricingCalculatorModal
+          isOpen={isPricingOpen}
+          onClose={() => setIsPricingOpen(false)}
+          companyName={company?.name}
         />
       )}
     </div>
