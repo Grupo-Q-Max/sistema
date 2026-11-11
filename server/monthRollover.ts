@@ -12,18 +12,60 @@ const owns = (object: Record<string, any>, key: string) => Object.prototype.hasO
 export function isNotApplicable(value: any): boolean {
   return typeof value === 'string' ? value.trim().toUpperCase() === 'N/A' : !!value && typeof value === 'object' && typeof value.status === 'string' && value.status.trim().toUpperCase() === 'N/A';
 }
-export function replicatedData(columns: any[], source: Record<string, any>, target: Record<string, any>, period: Date): Record<string, any> {
+
+export function isColumnReplicable(column: any, columnKey?: string, value?: any): boolean {
+  if (column?.replicates) return true;
+  if (isNotApplicable(value)) return true;
+  const k = (columnKey || (column ? resolveColumnKey(column) : '') || column?.columnKey || column?.id || '').toLowerCase();
+  const KNOWN_REPLICABLE = [
+    'dp_qtde_funcionarios',
+    'dp_folha_pagto',
+    'dp_tipo_folha',
+    'dp_data_pagto',
+    'dp_observacao',
+    'cush_observacao'
+  ];
+  return KNOWN_REPLICABLE.includes(k);
+}
+
+export function replicatedData(
+  columns: any[],
+  source: Record<string, any>,
+  target: Record<string, any>,
+  period: Date,
+  overwriteReplicating = false
+): Record<string, any> {
   const copied: Record<string, any> = {};
   for (const column of columns) {
     const key = resolveColumnKey(column) || column.id;
     if (key === 'dp_reinf_fiscal' || column.inputType === 'READONLY' || !isColumnActive(column, period)) continue;
     const aliases = Array.from(new Set([key, column.columnKey, column.id, column.name].filter(Boolean)));
-    // Um valor existente no destino, inclusive vazio/null, representa uma escolha do usuário.
-    if (aliases.some(alias => owns(target, alias))) continue;
+    
     const sourceKey = aliases.find(alias => owns(source, alias));
     if (!sourceKey) continue;
     const value = source[sourceKey];
-    if (value !== undefined && (column.replicates || isNotApplicable(value))) copied[key] = structuredClone(value);
+    if (value === undefined) continue;
+
+    const replicable = isColumnReplicable(column, key, value);
+    if (!replicable) continue;
+
+    const destKey = aliases.find(alias => owns(target, alias));
+    const destVal = destKey ? target[destKey] : undefined;
+
+    // Se o valor não existe no mês destino, replica sempre
+    if (destVal === undefined) {
+      copied[key] = structuredClone(value);
+      continue;
+    }
+
+    // Se já existe no destino:
+    // Se overwriteReplicating for true, ou se o destino estava vazio/zerado e a fonte tem valor preenchido:
+    const destIsEmpty = destVal === null || destVal === '' || (key === 'dp_qtde_funcionarios' && (destVal === 0 || destVal === '0'));
+    if (overwriteReplicating || destIsEmpty) {
+      if (JSON.stringify(destVal) !== JSON.stringify(value)) {
+        copied[key] = structuredClone(value);
+      }
+    }
   }
   return copied;
 }
@@ -75,7 +117,7 @@ export function createRolloverEngine(prisma: any, now: () => Date = () => new Da
       let columns = definitions.filter((column:any)=>column.department===sector);
       // Instalações antigas do Fiscal ainda podem não possuir definições persistidas.
       if (!columns.length && sector === 'FISCAL') columns = Object.keys(FISCAL_POPUPS).map(columnKey=>({id:columnKey,columnKey,inputType:'POPUP',countsProgress:true}));
-      const copy = replicatedData(columns, source?.columnsData || {}, destination?.columnsData || {}, monthStart);
+      const copy = replicatedData(columns, source?.columnsData || {}, destination?.columnsData || {}, monthStart, force);
       const copiedKeys = Object.keys(copy);
       if (destination && !copiedKeys.length) continue;
       if (destination) {
@@ -140,4 +182,174 @@ export function createRolloverEngine(prisma: any, now: () => Date = () => new Da
     return automaticRun;
   }
   return {sync,ensureAutomatic};
+}
+
+export async function propagateReplicableColumnToFutureMonths({
+  prisma,
+  companyId,
+  sector,
+  fromPeriod,
+  columnKey,
+  storedValue,
+  columnDef,
+  companyTaxRegime,
+  onClosingUpdated
+}: {
+  prisma: any;
+  companyId: string;
+  sector: string;
+  fromPeriod: Date;
+  columnKey: string;
+  storedValue: any;
+  columnDef?: any;
+  companyTaxRegime?: string | null;
+  onClosingUpdated?: (closing: any, updatedData: any, progress: any) => void;
+}) {
+  const normFrom = normalizePeriod(fromPeriod);
+
+  // Busca todos os fechamentos já criados no banco para esta empresa e setor em competências posteriores
+  const futureClosings = await prisma.closing.findMany({
+    where: {
+      companyId,
+      type: sector,
+      referencePeriod: { gt: normFrom },
+    },
+    orderBy: { referencePeriod: 'asc' },
+  });
+
+  if (!futureClosings.length) return { updatedCount: 0 };
+
+  const definitions = await prisma.departmentColumn.findMany({
+    where: { department: sector }
+  });
+  let configuredColumns = (definitions || [])
+    .sort((a: any, b: any) => (a.orderIndex ?? 0) - (b.orderIndex ?? 0));
+  if (!configuredColumns.length && sector === 'FISCAL') {
+    configuredColumns = Object.keys(FISCAL_POPUPS).map(k => ({ id: k, columnKey: k, inputType: 'POPUP', countsProgress: true }));
+  }
+
+  let updatedCount = 0;
+
+  for (const fc of futureClosings) {
+    const period = new Date(fc.referencePeriod);
+    const targetCol = configuredColumns.find((c: any) => (resolveColumnKey(c) || c.columnKey || c.id) === columnKey) || columnDef;
+
+    // Se a coluna não estiver ativa no mês futuro, pula
+    if (targetCol && !isColumnActive(targetCol, period)) continue;
+
+    const currentData = (fc.columnsData as Record<string, any>) || {};
+    let nextData = {
+      ...currentData,
+      [columnKey]: structuredClone(storedValue),
+    };
+
+    if (sector === 'FISCAL' && companyTaxRegime) {
+      nextData = applyFiscalRegimeRules(companyTaxRegime, nextData);
+    }
+
+    const nextStatus = closingStatus(configuredColumns, nextData, period);
+
+    const dashboardMetrics = { ...(fc.dashboardMetrics || {}) };
+    if (sector === 'DP' && columnKey === 'dp_qtde_funcionarios') {
+      dashboardMetrics.employees = (storedValue === '' || storedValue === null || storedValue === undefined)
+        ? 0
+        : Number(storedValue);
+    }
+
+    const updated = await prisma.closing.update({
+      where: { id: fc.id },
+      data: {
+        columnsData: nextData,
+        status: nextStatus as any,
+        ...(sector === 'DP' && columnKey === 'dp_qtde_funcionarios' ? { dashboardMetrics } : {}),
+      },
+    });
+
+    updatedCount++;
+
+    if (onClosingUpdated) {
+      onClosingUpdated(updated, nextData, { calculatedStatus: nextStatus });
+    }
+  }
+
+  return { updatedCount };
+}
+
+export async function syncAllFutureClosingsWithAnteriorReplicables(prisma: any, pool?: any): Promise<number> {
+  try {
+    const definitions = await prisma.departmentColumn.findMany();
+
+    const periodsRaw = await prisma.closing.findMany({
+      select: { referencePeriod: true },
+      distinct: ['referencePeriod'],
+      orderBy: { referencePeriod: 'asc' },
+    });
+    const periods: Date[] = periodsRaw.map((p: any) => normalizePeriod(new Date(p.referencePeriod)));
+    if (periods.length <= 1) return 0;
+
+    let totalUpdated = 0;
+
+    for (let i = 0; i < periods.length - 1; i++) {
+      const srcPeriod = periods[i];
+      const dstPeriod = periods[i + 1];
+      const srcNext = new Date(Date.UTC(srcPeriod.getUTCFullYear(), srcPeriod.getUTCMonth() + 1, 1));
+      const dstNext = new Date(Date.UTC(dstPeriod.getUTCFullYear(), dstPeriod.getUTCMonth() + 1, 1));
+
+      const [srcClosings, dstClosings] = await Promise.all([
+        queryClosingsByRangeAllSectors(pool, prisma, srcPeriod, srcNext),
+        queryClosingsByRangeAllSectors(pool, prisma, dstPeriod, dstNext),
+      ]);
+
+      const srcMap = new Map<string, any>(srcClosings.map((c: any) => [`${c.companyId}:${c.type}`, c]));
+      const updates: Array<{ id: string; columnsData: any; status: string; dashboardMetrics?: any }> = [];
+
+      for (const dst of dstClosings) {
+        const key = `${dst.companyId}:${dst.type}`;
+        const src = srcMap.get(key);
+        if (!src) continue;
+
+        let cols = definitions.filter((col: any) => col.department === dst.type);
+        if (!cols.length && dst.type === 'FISCAL') {
+          cols = Object.keys(FISCAL_POPUPS).map(columnKey => ({ id: columnKey, columnKey, inputType: 'POPUP', countsProgress: true }));
+        }
+
+        const copy = replicatedData(cols, src.columnsData || {}, dst.columnsData || {}, dstPeriod, false);
+        const copiedKeys = Object.keys(copy);
+        if (!copiedKeys.length) continue;
+
+        const nextData = { ...(dst.columnsData || {}), ...copy };
+        const dashboardMetrics = { ...(dst.dashboardMetrics || {}) };
+        if (dst.type === 'DP' && owns(copy, 'dp_qtde_funcionarios')) {
+          dashboardMetrics.employees = Number(copy.dp_qtde_funcionarios) || 0;
+        }
+
+        updates.push({
+          id: dst.id,
+          columnsData: nextData,
+          status: closingStatus(cols, nextData, dstPeriod),
+          ...(dst.type === 'DP' && owns(copy, 'dp_qtde_funcionarios') ? { dashboardMetrics } : {})
+        });
+      }
+
+      for (const u of updates) {
+        await prisma.closing.update({
+          where: { id: u.id },
+          data: {
+            columnsData: u.columnsData,
+            status: u.status as any,
+            ...(u.dashboardMetrics ? { dashboardMetrics: u.dashboardMetrics } : {})
+          }
+        });
+        totalUpdated++;
+      }
+    }
+
+    if (totalUpdated > 0) {
+      console.log(`[REPLICATION] Sincronização automática para meses futuros concluída: ${totalUpdated} fechamentos atualizados.`);
+    }
+    return totalUpdated;
+  } catch (err) {
+    console.error('[REPLICATION] Erro na sincronização progressiva de competências:', err);
+    return 0;
+  }
 }

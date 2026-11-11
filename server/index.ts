@@ -15,7 +15,7 @@ import { issueSession, getSessionSecret, resolveAuthenticatedUser, invalidateAut
 import { queryClosingsBySectorAndRange, queryClosingsForDashboard, queryFiscalReinfMap, queryFallbackClosingsForPeriods } from './cleanClosingsSql';
 import { createAccountingYearEngine } from './accountingYear';
 import { ACCOUNTING_COLUMNS, ACCOUNTING_API_VERSION, accountingYear, accountingMonth, annualColumnActive, annualValues, accountingProgress } from '../src/config/accountingColumns';
-import { createRolloverEngine, replicatedData } from './monthRollover';
+import { createRolloverEngine, replicatedData, isColumnReplicable, propagateReplicableColumnToFutureMonths, syncAllFutureClosingsWithAnteriorReplicables } from './monthRollover';
 import { formatCompanyCode } from '../src/utils/codeSort';
 import { latestOpenPeriod, periodIsOpen, blockedPeriodMessage, setManualLatestPeriod, normalizePeriod } from '../src/config/competenceCalendar';
 import { PAYROLL_API_VERSION, resolveColumnKey, effectiveFieldConfig, validateFieldConfig, validatePayrollValue } from '../src/config/payrollColumns';
@@ -1331,6 +1331,7 @@ app.post('/api/closings/rollover', async (req, res) => {
     await accountingEngine.ensureAutomatic();
     const result = await syncMonthClosingsAndReplicate(target, isManual);
     setManualLatestPeriod(target);
+    await syncAllFutureClosingsWithAnteriorReplicables(prisma, pool);
 
     const monthLabel = target.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric', timeZone: 'UTC' });
 
@@ -1432,15 +1433,15 @@ app.get('/api/closings', async (req, res) => {
 
     const missingCompanies = companies.filter((c: any) => !closingMap.has(c.id));
     const companiesNeedingFallbackIds = new Set<string>(missingCompanies.map((c: any) => c.id));
-    // Só busca fallback de colunas permanentes em outras competências quando estiver visualizando mês anterior
-    if (replicatingCols.length > 0 && monthStart.getTime() < openLatest.getTime()) {
+    // Busca fallback de colunas replicáveis quando ausentes no fechamento (mesmo se o mês já tiver sido criado)
+    if (replicatingCols.length > 0) {
       for (const c of companies) {
         const cl = closingMap.get(c.id);
         if (!cl) continue;
         const cData = (cl.columnsData as Record<string, any>) || {};
         for (const col of replicatingCols) {
           const key = resolveColumnKey(col) || col.id;
-          if (cData[key] === undefined) {
+          if (cData[key] === undefined || cData[key] === null || cData[key] === '') {
             companiesNeedingFallbackIds.add(c.id);
             break;
           }
@@ -1450,9 +1451,10 @@ app.get('/api/closings', async (req, res) => {
 
     const latestByCompany = new Map<string, Record<string, any>>();
     if (companiesNeedingFallbackIds.size > 0) {
-      const refPeriods = monthStart.getTime() < openLatest.getTime()
-        ? [openLatest, prevMonthStart]
-        : [prevMonthStart];
+      const p1 = new Date(Date.UTC(monthStart.getUTCFullYear(), monthStart.getUTCMonth() - 1, 1));
+      const p2 = new Date(Date.UTC(monthStart.getUTCFullYear(), monthStart.getUTCMonth() - 2, 1));
+      const p3 = new Date(Date.UTC(monthStart.getUTCFullYear(), monthStart.getUTCMonth() - 3, 1));
+      const refPeriods = Array.from(new Set([p1, p2, p3, openLatest].filter(p => p.getTime() !== monthStart.getTime())));
       const refClosings = await queryFallbackClosingsForPeriods(
         pool,
         prisma,
@@ -1513,8 +1515,8 @@ app.get('/api/closings', async (req, res) => {
         const fallback = latestByCompany.get(c.id);
         for (const col of replicatingCols) {
           const key = resolveColumnKey(col) || col.id;
-          if (columnsData[key] === undefined) {
-            if (fallback && fallback[key] !== undefined) {
+          if (columnsData[key] === undefined || columnsData[key] === null || columnsData[key] === '') {
+            if (fallback && fallback[key] !== undefined && fallback[key] !== null && fallback[key] !== '') {
               columnsData[key] = fallback[key];
             } else if (/dissidio/i.test(col.name || '') && c.dissidioMonthYear) {
               columnsData[key] = c.dissidioMonthYear;
@@ -1675,6 +1677,33 @@ app.put('/api/closings/:id/column', async (req, res) => {
         ...(existing.type === 'DP' && columnKey === 'dp_qtde_funcionarios' ? { dashboardMetrics: { ...(existing.dashboardMetrics || {}), employees: columnValue === '' || columnValue === null ? 0 : Number(columnValue) } } : {}),
       },
     });
+
+    // Cascata automática progressiva: se a coluna for replicável, propaga o valor para todas as competências futuras já geradas
+    if (isColumnReplicable(popupColumn, columnKey, columnValue)) {
+      void propagateReplicableColumnToFutureMonths({
+        prisma,
+        companyId: existing.companyId,
+        sector: existing.type,
+        fromPeriod: new Date(existing.referencePeriod),
+        columnKey,
+        storedValue: updatedData[columnKey],
+        columnDef: popupColumn,
+        companyTaxRegime: closingCompany?.taxRegime,
+        onClosingUpdated: (fc, nextData, fcProg) => {
+          const resp = sanitizeColumnsData(nextData);
+          broadcastRealtimeEvent('CLOSING_UPDATED', {
+            closingId: fc.id,
+            companyId: existing.companyId,
+            sector: existing.type,
+            columnKey,
+            columnValue,
+            columnsData: resp,
+            calculatedStatus: fcProg.calculatedStatus,
+            updatedAt: fc.updatedAt,
+          });
+        }
+      }).catch(err => console.error('Erro na propagação para meses futuros:', err));
+    }
 
     if (req.body.userId) {
       void logAction(
@@ -1862,6 +1891,32 @@ app.post('/api/closings/bulk-action', async (req, res) => {
           ...(closing.type === 'DP' && columnKey === 'dp_qtde_funcionarios' ? { dashboardMetrics: { ...(closing.dashboardMetrics || {}), employees: columnValue === '' || columnValue === null ? 0 : Number(columnValue) } } : {})
         }
       });
+
+      // Propagação progressiva em lote para meses futuros
+      if (isColumnReplicable(targetColumn, columnKey, columnValue)) {
+        void propagateReplicableColumnToFutureMonths({
+          prisma,
+          companyId: closing.companyId,
+          sector: closing.type,
+          fromPeriod: new Date(closing.referencePeriod),
+          columnKey,
+          storedValue: updatedData[columnKey],
+          columnDef: targetColumn,
+          companyTaxRegime: company.taxRegime,
+          onClosingUpdated: (fc, nextData, fcProg) => {
+            broadcastRealtimeEvent('CLOSING_UPDATED', {
+              closingId: fc.id,
+              companyId: closing.companyId,
+              sector: closing.type,
+              columnKey,
+              columnValue,
+              columnsData: sanitizeColumnsData(nextData),
+              calculatedStatus: fcProg.calculatedStatus,
+              updatedAt: fc.updatedAt,
+            });
+          }
+        }).catch(err => console.error('Erro na propagação de ação em massa para meses futuros:', err));
+      }
 
       void logAction(
         actor.id,
@@ -4148,6 +4203,7 @@ async function runAutomaticRollover() {
     const result = await rolloverEngine.ensureAutomatic();
     await accountingEngine.ensureAutomatic();
     if (result.createdCount || result.replicatedColsCount) console.log('[Competências automáticas]', result);
+    await syncAllFutureClosingsWithAnteriorReplicables(prisma, pool);
   } catch(error) { console.error('Falha na abertura automática; será tentada novamente:', error); }
 }
 

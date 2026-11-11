@@ -8,6 +8,7 @@ import {effectivePopup} from '../src/config/fiscalPopups';
 import {validatePayrollValue} from '../src/config/payrollColumns';
 import {validDate} from '../src/config/installments';
 import {formatCompanyCode} from '../src/utils/codeSort';
+import {isColumnReplicable, propagateReplicableColumnToFutureMonths} from './monthRollover';
 const fail=(status:number,message:string):never=>{throw Object.assign(new Error(message),{status});};
 function validPopupDate(value:any):boolean {
  if(typeof value!=='string')return false;
@@ -159,6 +160,20 @@ export function registerCushman(app:any,prisma:any,options:{sync:(period:Date)=>
   const error=column.inputType==='POPUP'?validateCushmanPopup(column,columnValue,columnKey):validatePayrollValue(column,columnValue);if(error)fail(400,error);
   const data={...(closing.columnsData||{}),[columnKey]:column.inputType==='PASSWORD'?options.encrypt(columnValue):columnValue};const progress=calculateColumnProgress(columns.filter((item:any)=>item.countsProgress&&isColumnActive(item,period)),data,column=>resolveCushmanKey(column)||column.id);
   const updated=await prisma.closing.updateMany({where:{id:closing.id},data:{columnsData:data,status:progress.calculatedStatus}});if(!updated.count)fail(409,'O fechamento mudou durante a edição. Atualize a tela.');
+  if (isColumnReplicable(column, columnKey, columnValue)) {
+    void propagateReplicableColumnToFutureMonths({
+      prisma,
+      companyId: closing.companyId,
+      sector: 'CUSHMAN',
+      fromPeriod: period,
+      columnKey,
+      storedValue: data[columnKey],
+      columnDef: column,
+      onClosingUpdated: () => {
+        options.onClosingUpdated?.();
+      }
+    }).catch(err => console.error('Erro ao propagar Cushman para meses futuros:', err));
+  }
   options.onClosingUpdated?.();
   const fresh=await prisma.closing.findUnique({where:{id:closing.id}});const responseData={...(fresh.columnsData||{})};delete responseData._legacy;for(const item of columns)if(item.inputType==='PASSWORD'){const key=resolveCushmanKey(item)||item.id;if(responseData[key])responseData[key]=options.decrypt(responseData[key]);}
   res.json({closing:{...fresh,columnsData:responseData},...progress});
