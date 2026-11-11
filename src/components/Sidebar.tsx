@@ -220,13 +220,13 @@ export function Sidebar({ currentView, onNavigate, currentUser, onLogout }: Side
         type="button"
         className="sidebar-search-trigger"
         onClick={() => window.dispatchEvent(new CustomEvent('open-spotlight'))}
-        title="Buscar empresas ou atalhos (Ctrl + K)"
+        title="Buscar empresas, ferramentas ou atalhos (Ctrl + Espaço ou /)"
       >
         <Search size={16} />
         {!collapsed && (
           <>
             <span>Buscar...</span>
-            <kbd>Ctrl K</kbd>
+            <kbd>Ctrl Espaço</kbd>
           </>
         )}
       </button>

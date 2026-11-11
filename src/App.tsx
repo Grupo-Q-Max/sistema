@@ -26,6 +26,7 @@ const Company360Modal = lazy(() => import('./components/Company360Modal').then(m
 const WorkloadBalancerModal = lazy(() => import('./components/WorkloadBalancerModal').then(m => ({ default: m.WorkloadBalancerModal })));
 const DominioStagingModal = lazy(() => import('./components/DominioStagingModal').then(m => ({ default: m.DominioStagingModal })));
 const ClientPortalView = lazy(() => import('./components/ClientPortalView').then(m => ({ default: m.ClientPortalView })));
+const DatabaseBackupModal = lazy(() => import('./components/DatabaseBackupModal').then(m => ({ default: m.DatabaseBackupModal })));
 
 const ViewLoading = () => (
   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', width: '100%', background: '#090d16', color: '#94a3b8' }}>
@@ -47,16 +48,25 @@ function App() {
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
-  // Modais Globais (Spotlight, Raio-X 360, Balanceador de Carga, Aprovação Domínio)
+  // Modais Globais (Spotlight, Raio-X 360, Balanceador de Carga, Aprovação Domínio, Backup)
   const [isSpotlightOpen, setIsSpotlightOpen] = useState(false);
   const [selected360CompanyId, setSelected360CompanyId] = useState<string | null>(null);
   const [isWorkloadOpen, setIsWorkloadOpen] = useState(false);
   const [isDominioStagingOpen, setIsDominioStagingOpen] = useState(false);
+  const [isBackupOpen, setIsBackupOpen] = useState(false);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if ((e.ctrlKey || e.metaKey) && (e.key === 'k' || e.key === 'K')) {
-        e.preventDefault(); // Impede que o navegador foque a barra de URL/busca do navegador!
+      const targetTag = (e.target as HTMLElement)?.tagName?.toUpperCase();
+      const isInput = ['INPUT', 'TEXTAREA', 'SELECT'].includes(targetTag) || (e.target as HTMLElement)?.isContentEditable;
+
+      const isCtrlK = (e.ctrlKey || e.metaKey) && (e.key === 'k' || e.key === 'K');
+      const isCtrlSpace = (e.ctrlKey || e.metaKey) && (e.code === 'Space' || e.key === ' ');
+      const isCtrlB = (e.ctrlKey || e.metaKey) && (e.key === 'b' || e.key === 'B');
+      const isSlash = e.key === '/' && !isInput;
+
+      if (isCtrlK || isCtrlSpace || isCtrlB || isSlash) {
+        e.preventDefault();
         e.stopPropagation();
         setIsSpotlightOpen((prev) => !prev);
       }
@@ -65,6 +75,7 @@ function App() {
     const handleOpenSpotlight = () => setIsSpotlightOpen(true);
     const handleOpenWorkload = () => setIsWorkloadOpen(true);
     const handleOpenDominioStaging = () => setIsDominioStagingOpen(true);
+    const handleOpenBackup = () => setIsBackupOpen(true);
     const handleOpen360 = (e: any) => {
       if (e.detail?.companyId) {
         setSelected360CompanyId(e.detail.companyId);
@@ -75,6 +86,7 @@ function App() {
     window.addEventListener('open-spotlight', handleOpenSpotlight);
     window.addEventListener('open-workload-balancer', handleOpenWorkload);
     window.addEventListener('open-dominio-staging', handleOpenDominioStaging);
+    window.addEventListener('open-backup-modal', handleOpenBackup);
     window.addEventListener('open-company-360', handleOpen360);
 
     return () => {
@@ -82,6 +94,7 @@ function App() {
       window.removeEventListener('open-spotlight', handleOpenSpotlight);
       window.removeEventListener('open-workload-balancer', handleOpenWorkload);
       window.removeEventListener('open-dominio-staging', handleOpenDominioStaging);
+      window.removeEventListener('open-backup-modal', handleOpenBackup);
       window.removeEventListener('open-company-360', handleOpen360);
     };
   }, []);
@@ -399,6 +412,12 @@ function App() {
         <DominioStagingModal
           isOpen={isDominioStagingOpen}
           onClose={() => setIsDominioStagingOpen(false)}
+        />
+
+        {/* BACKUP E SNAPSHOT DO BANCO DE DADOS */}
+        <DatabaseBackupModal
+          isOpen={isBackupOpen}
+          onClose={() => setIsBackupOpen(false)}
         />
       </Suspense>
     );

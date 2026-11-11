@@ -353,3 +353,60 @@
 .factor-btn-whatsapp:hover {
   background: linear-gradient(135deg, #16a34a, #15803d);
 }
+
+@media print {
+  body * {
+    visibility: hidden;
+  }
+  .factor-modal-overlay {
+    position: static !important;
+    background: transparent !important;
+    padding: 0 !important;
+  }
+  .factor-modal-card,
+  .factor-modal-card * {
+    visibility: visible;
+  }
+  .factor-modal-card {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100% !important;
+    max-width: 100% !important;
+    border: none !important;
+    box-shadow: none !important;
+    background: #ffffff !important;
+    color: #0f172a !important;
+  }
+  .factor-modal-header {
+    border-bottom: 2px solid #0284c7 !important;
+    color: #0f172a !important;
+  }
+  .factor-modal-header h3 {
+    color: #0f172a !important;
+  }
+  .factor-btn-close,
+  .factor-footer-btns {
+    display: none !important;
+  }
+  .factor-input-group input {
+    background: #f8fafc !important;
+    color: #0f172a !important;
+    border: 1px solid #cbd5e1 !important;
+  }
+  .factor-card {
+    background: #f8fafc !important;
+    border: 1px solid #e2e8f0 !important;
+    color: #0f172a !important;
+  }
+  .factor-gauge-box {
+    background: #f1f5f9 !important;
+    border: 1px solid #cbd5e1 !important;
+    color: #0f172a !important;
+  }
+  .factor-gauge-desc {
+    color: #1e293b !important;
+  }
+}
+
+

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Calculator, X, Sparkles, TrendingUp, DollarSign, MessageCircle, Copy, Check, Info } from 'lucide-react';
+import { Calculator, X, Sparkles, TrendingUp, DollarSign, MessageCircle, Copy, Check, Info, Printer } from 'lucide-react';
 import './FactorRSimulatorModal.css';
 
 interface FactorRSimulatorModalProps {
@@ -77,6 +77,10 @@ export const FactorRSimulatorModal: React.FC<FactorRSimulatorModalProps> = ({
     navigator.clipboard.writeText(text);
     setCopied(true);
     setTimeout(() => setCopied(false), 3000);
+  };
+
+  const handlePrintReport = () => {
+    window.print();
   };
 
   const handleShareWhatsApp = () => {
@@ -235,6 +239,10 @@ export const FactorRSimulatorModal: React.FC<FactorRSimulatorModalProps> = ({
             <span>Fundamentação: Art. 18, § 5º-J da Lei Complementar nº 123/2006.</span>
           </div>
           <div className="factor-footer-btns">
+            <button type="button" className="factor-btn-secondary" onClick={handlePrintReport} title="Imprimir laudo técnico em PDF">
+              <Printer size={14} />
+              <span>Imprimir Laudo</span>
+            </button>
             <button type="button" className="factor-btn-secondary" onClick={handleCopyReport}>
               {copied ? <Check size={14} color="#10b981" /> : <Copy size={14} />}
               <span>{copied ? 'Copiado!' : 'Copiar Diagnóstico'}</span>
@@ -249,3 +257,4 @@ export const FactorRSimulatorModal: React.FC<FactorRSimulatorModalProps> = ({
     </div>
   );
 };
+

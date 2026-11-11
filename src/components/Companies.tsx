@@ -28,6 +28,8 @@ import {
   ArrowRight,
   Users,
   CheckSquare,
+  Award,
+  Calculator,
 } from 'lucide-react';
 import { Sidebar } from './Sidebar';
 import { TableSkeleton, ButtonSpinner } from './LoadingSkeleton';
@@ -464,6 +466,12 @@ export function Companies({ currentView, onNavigate, currentUser, onLogout }: Co
     if(!id||!companies.length)return;const company=companies.find(item=>item.id===id);
     if(company){sessionStorage.removeItem('fechamento_edit_company');openEditCompanyModal(company);}
   },[companies]);
+
+  useEffect(() => {
+    const handleOpenNewCompany = () => openNewCompanyModal();
+    window.addEventListener('open-new-company', handleOpenNewCompany);
+    return () => window.removeEventListener('open-new-company', handleOpenNewCompany);
+  }, []);
 
   const handleLookupCnpj = async () => {
     const clean = cnpj.replace(/\D/g, '');
@@ -1138,6 +1146,28 @@ export function Companies({ currentView, onNavigate, currentUser, onLogout }: Co
                                     <button
                                       type="button"
                                       className="comp-action-btn"
+                                      title="Emitir Dossiê Mensal de Conformidade (PDF)"
+                                      onClick={() => {
+                                        window.dispatchEvent(new CustomEvent('open-monthly-dossier', { detail: { company: comp } }));
+                                      }}
+                                      style={{ color: '#10b981' }}
+                                    >
+                                      <Award size={13} />
+                                    </button>
+                                    <button
+                                      type="button"
+                                      className="comp-action-btn"
+                                      title="Simular Fator R (Simples Nacional)"
+                                      onClick={() => {
+                                        window.dispatchEvent(new CustomEvent('open-factor-r', { detail: { companyName: comp.name } }));
+                                      }}
+                                      style={{ color: '#c084fc' }}
+                                    >
+                                      <Calculator size={13} />
+                                    </button>
+                                    <button
+                                      type="button"
+                                      className="comp-action-btn"
                                       disabled={!canEditThis}
                                       title={canEditThis ? "Editar Empresa" : "Somente visualização (você não é responsável por esta empresa)"}
                                       onClick={() => openEditCompanyModal(comp)}
@@ -1240,16 +1270,29 @@ export function Companies({ currentView, onNavigate, currentUser, onLogout }: Co
                           onChange={(e) => setCnpj(formatCnpjMask(e.target.value))}
                           required
                         />
-                        <button
-                          type="button"
-                          className="btn-cnpj-query"
-                          onClick={handleLookupCnpj}
-                          disabled={searchingCnpj}
-                        >
-                          {searchingCnpj ? <ButtonSpinner /> : <Sparkles size={12} />}
-                          <span>{searchingCnpj ? 'Buscando...' : 'Consultar'}</span>
-                        </button>
+                        {(() => {
+                          const digits = cnpj.replace(/\D/g, '');
+                          const isCpf = digits.length === 11;
+                          return (
+                            <button
+                              type="button"
+                              className="btn-cnpj-query"
+                              onClick={handleLookupCnpj}
+                              disabled={searchingCnpj || isCpf}
+                              title={isCpf ? 'A Receita Federal não disponibiliza consulta automática para CPF (Pessoa Física). Preencha o nome abaixo manualmente.' : 'Consultar dados na Receita Federal (CNPJ)'}
+                              style={{ opacity: isCpf ? 0.75 : 1 }}
+                            >
+                              {searchingCnpj ? <ButtonSpinner /> : <Sparkles size={12} />}
+                              <span>{searchingCnpj ? 'Buscando...' : isCpf ? 'Consulta só PJ' : 'Consultar'}</span>
+                            </button>
+                          );
+                        })()}
                       </div>
+                      {cnpj.replace(/\D/g, '').length === 11 && (
+                        <span style={{ fontSize: '11px', color: '#38bdf8', marginTop: '4px', display: 'block' }}>
+                          ✓ Identificado como <strong>CPF (Pessoa Física)</strong>. Preencha a Razão Social/Nome e dados cadastrais abaixo.
+                        </span>
+                      )}
                     </div>
                   </div>
 

@@ -263,8 +263,11 @@ export function Dashboard({ currentView, onNavigate, currentUser, onLogout }: Da
   const [isExtraServicesOpen, setIsExtraServicesOpen] = useState(false);
   const [isClientPortalOpen, setIsClientPortalOpen] = useState(false);
   const [isFactorROpen, setIsFactorROpen] = useState(false);
+  const [factorRCompanyName, setFactorRCompanyName] = useState<string>('');
   const [isDossierOpen, setIsDossierOpen] = useState(false);
+  const [dossierCompany, setDossierCompany] = useState<any>(null);
   const [isDteOpen, setIsDteOpen] = useState(false);
+  const [criticalDteCount, setCriticalDteCount] = useState(0);
   const [isSpedValidatorOpen, setIsSpedValidatorOpen] = useState(false);
   const [alertCount, setAlertCount] = useState(0);
   const isPrivileged = currentUser?.role === 'ADMIN' || currentUser?.role === 'SOCIO';
@@ -276,6 +279,49 @@ export function Dashboard({ currentView, onNavigate, currentUser, onLogout }: Da
         if (data?.totalCount !== undefined) setAlertCount(data.totalCount);
       })
       .catch(() => {});
+
+    fetch(`${API}/api/dte`)
+      .then((res) => (res.ok ? res.json() : []))
+      .then((items) => {
+        if (Array.isArray(items)) {
+          const now = Date.now();
+          const critical = items.filter((n: any) => {
+            if (n.status === 'RESOLVED') return false;
+            const diffDays = Math.ceil((new Date(n.dueDate).getTime() - now) / (1000 * 60 * 60 * 24));
+            return diffDays <= 5;
+          }).length;
+          setCriticalDteCount(critical);
+        }
+      })
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    const handleOpenFactorR = (e: any) => {
+      if (e.detail?.companyName) setFactorRCompanyName(e.detail.companyName);
+      setIsFactorROpen(true);
+    };
+    const handleOpenDossier = (e: any) => {
+      if (e.detail?.company) setDossierCompany(e.detail.company);
+      setIsDossierOpen(true);
+    };
+    const handleOpenDte = () => setIsDteOpen(true);
+    const handleOpenSped = () => setIsSpedValidatorOpen(true);
+    const handleOpenClientPortal = () => setIsClientPortalOpen(true);
+
+    window.addEventListener('open-factor-r', handleOpenFactorR);
+    window.addEventListener('open-monthly-dossier', handleOpenDossier);
+    window.addEventListener('open-dte-inbox', handleOpenDte);
+    window.addEventListener('open-sped-validator', handleOpenSped);
+    window.addEventListener('open-client-portal', handleOpenClientPortal);
+
+    return () => {
+      window.removeEventListener('open-factor-r', handleOpenFactorR);
+      window.removeEventListener('open-monthly-dossier', handleOpenDossier);
+      window.removeEventListener('open-dte-inbox', handleOpenDte);
+      window.removeEventListener('open-sped-validator', handleOpenSped);
+      window.removeEventListener('open-client-portal', handleOpenClientPortal);
+    };
   }, []);
   const [isMonthPickerOpen, setIsMonthPickerOpen] = useState(false);
   const [isManualModalOpen, setIsManualModalOpen] = useState(false);
@@ -675,12 +721,31 @@ export function Dashboard({ currentView, onNavigate, currentUser, onLogout }: Da
             <button
               type="button"
               className="btn-executive-report"
-              style={{ background: 'rgba(245, 158, 11, 0.15)', borderColor: 'rgba(245, 158, 11, 0.4)' }}
+              style={{ position: 'relative', background: 'rgba(245, 158, 11, 0.15)', borderColor: 'rgba(245, 158, 11, 0.4)' }}
               title="Guardião do DTE & Intimações Eletrônicas da Receita / SEFAZ"
               onClick={() => setIsDteOpen(true)}
             >
               <MailWarning size={16} color="#f59e0b" />
               <span>Guardião DTE</span>
+              {criticalDteCount > 0 && (
+                <span
+                  style={{
+                    position: 'absolute',
+                    top: '-6px',
+                    right: '-6px',
+                    background: '#ef4444',
+                    color: '#ffffff',
+                    borderRadius: '10px',
+                    fontSize: '10px',
+                    fontWeight: 700,
+                    padding: '1px 6px',
+                    boxShadow: '0 0 10px rgba(239, 68, 68, 0.7)',
+                  }}
+                  title={`${criticalDteCount} notificação(ões) com prazo crítico (≤ 5 dias)`}
+                >
+                  {criticalDteCount}
+                </span>
+              )}
             </button>
 
             <button
@@ -1172,7 +1237,11 @@ export function Dashboard({ currentView, onNavigate, currentUser, onLogout }: Da
         {/* Simulador de Fator R do Simples Nacional */}
         <FactorRSimulatorModal
           isOpen={isFactorROpen}
-          onClose={() => setIsFactorROpen(false)}
+          onClose={() => {
+            setIsFactorROpen(false);
+            setFactorRCompanyName('');
+          }}
+          initialCompanyName={factorRCompanyName}
         />
 
         {/* Guardião do DTE & Intimações e-CAC */}
@@ -1191,7 +1260,11 @@ export function Dashboard({ currentView, onNavigate, currentUser, onLogout }: Da
         {/* Dossiê Executivo de Regularidade Mensal */}
         <MonthlyComplianceDossierModal
           isOpen={isDossierOpen}
-          onClose={() => setIsDossierOpen(false)}
+          onClose={() => {
+            setIsDossierOpen(false);
+            setDossierCompany(null);
+          }}
+          company={dossierCompany}
           periodLabel={`${String(selectedMonth + 1).padStart(2, '0')}/${selectedYear}`}
         />
       </main>
