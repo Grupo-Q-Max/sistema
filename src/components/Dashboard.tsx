@@ -280,7 +280,7 @@ export function Dashboard({ currentView, onNavigate, currentUser, onLogout }: Da
       })
       .catch(() => {});
 
-    fetch(`${API}/api/dte`)
+    fetch(`${API}/api/dte-notifications`)
       .then((res) => (res.ok ? res.json() : []))
       .then((items) => {
         if (Array.isArray(items)) {

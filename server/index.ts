@@ -186,10 +186,13 @@ app.use((req, res, next) => {
     req.url = req.url.substring('/sistema'.length);
   }
 
-  for (const prefix of KNOWN_API_PREFIXES) {
-    if (req.url === prefix || req.url.startsWith(prefix + '/') || req.url.startsWith(prefix + '?')) {
-      req.url = '/api' + req.url;
-      break;
+  const isHtmlRequest = typeof req.headers.accept === 'string' && req.headers.accept.includes('text/html');
+  if (!isHtmlRequest) {
+    for (const prefix of KNOWN_API_PREFIXES) {
+      if (req.url === prefix || req.url.startsWith(prefix + '/') || req.url.startsWith(prefix + '?')) {
+        req.url = '/api' + req.url;
+        break;
+      }
     }
   }
 

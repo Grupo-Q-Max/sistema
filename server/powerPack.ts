@@ -1758,7 +1758,7 @@ export function registerPowerPack(app: any, prisma: any, pool?: any) {
   // GUARDIÃO DO DTE (DOMICÍLIO TRIBUTÁRIO ELETRÔNICO & INTIMAÇÕES E-CAC)
   // ========================
 
-  app.get('/api/dte-notifications', async (_req: any, res: any) => {
+  const handleGetDteNotifications = async (_req: any, res: any) => {
     try {
       const row = await prisma.appConfig.findUnique({ where: { id: 'DTE_NOTIFICATIONS' } }).catch(() => null);
       const notifications = (row?.value as any[]) || [];
@@ -1767,7 +1767,10 @@ export function registerPowerPack(app: any, prisma: any, pool?: any) {
       console.error('Erro ao buscar notificações do DTE:', err);
       res.status(500).json({ error: 'Erro ao carregar notificações do DTE' });
     }
-  });
+  };
+
+  app.get('/api/dte-notifications', handleGetDteNotifications);
+  app.get('/api/dte', handleGetDteNotifications);
 
   app.post('/api/dte-notifications', async (req: any, res: any) => {
     try {
