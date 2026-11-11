@@ -160,6 +160,7 @@ const KNOWN_API_PREFIXES = [
   '/presence',
   '/notifications',
   '/competence',
+  '/billing',
 ];
 
 // Normaliza requisições vindas com prefixo legado /sistema ou sem /api ou com /api duplicado
@@ -609,6 +610,126 @@ app.get('/api/competence/snapshots', async (_req, res) => {
   } catch (error) {
     console.error('Erro ao listar snapshots:', error);
     res.status(500).json({ error: 'Erro ao buscar histórico de competências congeladas' });
+  }
+});
+
+// ========================
+// 4. RADAR DE REAJUSTE DE HONORÁRIOS & DESVIO DE ESCOPO
+// ========================
+app.get('/api/billing/drift-radar', async (req, res) => {
+  try {
+    const actor = await resolveAuthenticatedUser(prisma, req);
+    if (!actor || !isPrivilegedUser(actor)) {
+      return res.status(403).json({ error: 'Acesso restrito a Sócios e Administradores.' });
+    }
+
+    const companies = await prisma.company.findMany({
+      where: { deletedAt: null, exitDate: null },
+      select: {
+        id: true,
+        code: true,
+        name: true,
+        tradeName: true,
+        cnpj: true,
+        taxRegime: true,
+        city: true,
+        contractDate: true,
+        closings: {
+          where: { type: 'DP' },
+          orderBy: { referencePeriod: 'desc' },
+          take: 1,
+          select: { dashboardMetrics: true, columnsData: true },
+        },
+        responsibles: {
+          include: { user: { select: { id: true, name: true, email: true } } },
+        },
+      },
+      orderBy: [{ code: 'asc' }, { name: 'asc' }],
+    });
+
+    const suggestions: Array<{
+      companyId: string;
+      code: string | null;
+      name: string;
+      cnpj: string;
+      taxRegime: string;
+      city: string | null;
+      employees: number;
+      reasons: string[];
+      suggestedAdjustmentMonthly: number;
+      priority: 'HIGH' | 'MEDIUM' | 'LOW';
+      responsibleDP?: string;
+    }> = [];
+
+    for (const c of companies) {
+      const latestDp = c.closings[0];
+      const metrics = (latestDp?.dashboardMetrics as any) || {};
+      const cols = (latestDp?.columnsData as any) || {};
+
+      let employees = 0;
+      if (typeof metrics.employees === 'number') {
+        employees = metrics.employees;
+      } else if (cols.dp_qtde_funcionarios) {
+        employees = parseInt(String(cols.dp_qtde_funcionarios).replace(/\D/g, ''), 10) || 0;
+      }
+
+      const reasons: string[] = [];
+      let adjustment = 0;
+
+      if (employees >= 50) {
+        reasons.push(`Operação robusta com ${employees} funcionários ativos no DP.`);
+        adjustment += Math.round((employees - 10) * 35);
+      } else if (employees >= 20) {
+        reasons.push(`Equipe expandida para ${employees} funcionários (esforço eSocial/FGTS elevado).`);
+        adjustment += Math.round((employees - 8) * 35);
+      } else if (employees >= 10) {
+        reasons.push(`Superou 10 funcionários (${employees} ativos).`);
+        adjustment += Math.round((employees - 5) * 30);
+      }
+
+      if (c.taxRegime === 'LUCRO_REAL') {
+        reasons.push('Lucro Real: apuração de alta complexidade contábil e fiscal.');
+        adjustment += 800;
+      } else if (c.taxRegime === 'LUCRO_PRESUMIDO' && employees >= 15) {
+        reasons.push('Lucro Presumido com folha volumosa (obrigações acessórias EFD/DCTFWeb dobradas).');
+        adjustment += 450;
+      }
+
+      if (reasons.length > 0 && adjustment > 0) {
+        adjustment = Math.ceil(adjustment / 50) * 50;
+        const priority = adjustment >= 800 || employees >= 30 ? 'HIGH' : adjustment >= 400 ? 'MEDIUM' : 'LOW';
+        const dpResp = c.responsibles.find((r: any) => r.sector === 'DP')?.user?.name;
+
+        suggestions.push({
+          companyId: c.id,
+          code: c.code,
+          name: c.name,
+          cnpj: c.cnpj,
+          taxRegime: c.taxRegime,
+          city: c.city,
+          employees,
+          reasons,
+          suggestedAdjustmentMonthly: adjustment,
+          priority,
+          responsibleDP: dpResp,
+        });
+      }
+    }
+
+    suggestions.sort((a, b) => b.suggestedAdjustmentMonthly - a.suggestedAdjustmentMonthly);
+
+    const totalOpportunityMonthly = suggestions.reduce((acc, s) => acc + s.suggestedAdjustmentMonthly, 0);
+
+    res.json({
+      timestamp: new Date().toISOString(),
+      totalOpportunityMonthly,
+      totalOpportunityAnnual: totalOpportunityMonthly * 12,
+      companiesAffected: suggestions.length,
+      suggestions,
+    });
+  } catch (error: any) {
+    console.error('Erro no radar de honorários:', error);
+    res.status(500).json({ error: 'Erro ao calcular oportunidades de reajuste de honorários' });
   }
 });
 

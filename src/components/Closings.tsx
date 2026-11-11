@@ -46,7 +46,7 @@ import { CellAuditModal } from './CellAuditModal';
 import { BulkActionModal } from './BulkActionModal';
 import { BulkAssignResponsibleModal } from './BulkAssignResponsibleModal';
 import { DeadlineTimelineWidget } from './DeadlineTimelineWidget';
-import { getColumnDeadlineDay, getDeadlineDate, getDeadlineUrgency } from '../config/legalDeadlines';
+import { getColumnDeadlineDay, getDeadlineDate, getDeadlineUrgency, getColumnPenaltyRisk } from '../config/legalDeadlines';
 import './FiscalPopup.css';
 import { visibilitySummary, isColumnComplete } from '../config/columnVisibility';
 import { FISCAL_POPUPS, effectivePopup, type PopupAction } from '../config/fiscalPopups';
@@ -1642,9 +1642,32 @@ export function Closings({ currentView, onNavigate, currentUser, onLogout }: Clo
                                   const urg = getDeadlineUrgency(dDate, !hasPending);
                                   const cls = urg.type === 'OVERDUE' ? 'overdue' : (urg.type === 'DUE_TODAY' || urg.type === 'DUE_SOON') ? 'urgent' : 'normal';
                                   return (
-                                    <span className={`th-deadline-badge ${cls}`} title={`Prazo legal: Dia ${day} (${urg.formattedDate}) • ${urg.label}`}>
-                                      Dia {day}
-                                    </span>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                      <span className={`th-deadline-badge ${cls}`} title={`Prazo legal: Dia ${day} (${urg.formattedDate}) • ${urg.label}`}>
+                                        Dia {day}
+                                      </span>
+                                      {(() => {
+                                        const penalty = getColumnPenaltyRisk(column);
+                                        if (penalty.level === 'LOW') return null;
+                                        return (
+                                          <span
+                                            className={`th-risk-badge ${penalty.level.toLowerCase()}`}
+                                            title={penalty.penaltyDescription}
+                                            style={{
+                                              fontSize: '9px',
+                                              fontWeight: 700,
+                                              padding: '1px 4px',
+                                              borderRadius: '3px',
+                                              background: penalty.level === 'HIGH' ? 'rgba(239, 68, 68, 0.25)' : 'rgba(245, 158, 11, 0.25)',
+                                              color: penalty.level === 'HIGH' ? '#fca5a5' : '#fde68a',
+                                              border: `1px solid ${penalty.level === 'HIGH' ? 'rgba(239, 68, 68, 0.4)' : 'rgba(245, 158, 11, 0.4)'}`,
+                                            }}
+                                          >
+                                            {penalty.badgeLabel}
+                                          </span>
+                                        );
+                                      })()}
+                                    </div>
                                   );
                                 })()}
                               </div>

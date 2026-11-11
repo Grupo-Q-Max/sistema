@@ -20,6 +20,8 @@ import {
   Bell,
   FileSpreadsheet,
   Snowflake,
+  Tv,
+  DollarSign,
 } from 'lucide-react';
 import './Dashboard.css';
 import './Progress.css';
@@ -30,6 +32,8 @@ import { DashboardSkeleton, LoadingSpinner } from './LoadingSkeleton';
 import { SmartAlertDrawer } from './SmartAlertDrawer';
 import { ExecutiveReportModal } from './ExecutiveReportModal';
 import { CompetenceSnapshotModal } from './CompetenceSnapshotModal';
+import { WarRoomModal } from './WarRoomModal';
+import { FeeAdjustmentRadarModal } from './FeeAdjustmentRadarModal';
 import { RiskRadarWidget } from './RiskRadarWidget';
 import type { CurrentUser } from '../types/auth';
 import { API } from '../api';
@@ -202,6 +206,8 @@ export function Dashboard({ currentView, onNavigate, currentUser, onLogout }: Da
   const [isAlertDrawerOpen, setIsAlertDrawerOpen] = useState(false);
   const [isReportOpen, setIsReportOpen] = useState(false);
   const [isSnapshotModalOpen, setIsSnapshotModalOpen] = useState(false);
+  const [isWarRoomOpen, setIsWarRoomOpen] = useState(false);
+  const [isFeeRadarOpen, setIsFeeRadarOpen] = useState(false);
   const [alertCount, setAlertCount] = useState(0);
   const isPrivileged = currentUser?.role === 'ADMIN' || currentUser?.role === 'SOCIO';
 
@@ -383,7 +389,31 @@ export function Dashboard({ currentView, onNavigate, currentUser, onLogout }: Da
             </div>
           </div>
 
-          <div className="crm-header-right" style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+          <div className="crm-header-right" style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <button
+              type="button"
+              className="btn-executive-report"
+              style={{ background: 'rgba(239, 68, 68, 0.15)', borderColor: 'rgba(239, 68, 68, 0.4)' }}
+              title="Abrir Painel War Room para TV / Telão do Escritório"
+              onClick={() => setIsWarRoomOpen(true)}
+            >
+              <Tv size={16} color="#ef4444" />
+              <span>Painel TV War Room</span>
+            </button>
+
+            {isPrivileged && (
+              <button
+                type="button"
+                className="btn-executive-report"
+                style={{ background: 'rgba(16, 185, 129, 0.15)', borderColor: 'rgba(16, 185, 129, 0.4)' }}
+                title="Radar de Reajuste de Honorários por Desvio de Escopo"
+                onClick={() => setIsFeeRadarOpen(true)}
+              >
+                <DollarSign size={16} color="#10b981" />
+                <span>Radar Honorários</span>
+              </button>
+            )}
+
             {isPrivileged && (
               <button
                 type="button"
@@ -730,6 +760,20 @@ export function Dashboard({ currentView, onNavigate, currentUser, onLogout }: Da
           onClose={() => setIsSnapshotModalOpen(false)}
           referencePeriod={`${selectedYear}-${String(selectedMonth + 1).padStart(2, '0')}-01`}
           periodLabel={`${String(selectedMonth + 1).padStart(2, '0')}/${selectedYear}`}
+        />
+
+        {/* Painel Telão War Room para TV */}
+        <WarRoomModal
+          isOpen={isWarRoomOpen}
+          onClose={() => setIsWarRoomOpen(false)}
+          year={selectedYear}
+          month={selectedMonth}
+        />
+
+        {/* Radar de Reajuste de Honorários */}
+        <FeeAdjustmentRadarModal
+          isOpen={isFeeRadarOpen}
+          onClose={() => setIsFeeRadarOpen(false)}
         />
       </main>
     </div>

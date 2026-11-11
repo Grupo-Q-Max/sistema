@@ -9,7 +9,7 @@ import {
   Clock,
   ArrowRight
 } from 'lucide-react';
-import { computeDeadlinesSummary, type ColumnDeadlineSummary } from '../config/legalDeadlines';
+import { computeDeadlinesSummary, getColumnPenaltyRisk, type ColumnDeadlineSummary } from '../config/legalDeadlines';
 import './DeadlineTimelineWidget.css';
 
 export interface DeadlineTimelineWidgetProps {
@@ -125,7 +125,32 @@ export function DeadlineTimelineWidget({
                 title={`Clique para filtrar ${item.totalPending} empresa(s) pendente(s) em ${item.name}`}
               >
                 <div className="deadline-card-top">
-                  <span className="deadline-card-title">{item.name}</span>
+                  <span className="deadline-card-title">
+                    {item.name}
+                    {(() => {
+                      const risk = getColumnPenaltyRisk({ columnKey: item.columnKey, name: item.name });
+                      if (risk.level === 'LOW') return null;
+                      return (
+                        <span
+                          className={`penalty-risk-tag ${risk.level.toLowerCase()}`}
+                          title={risk.penaltyDescription}
+                          style={{
+                            fontSize: 9.5,
+                            padding: '1px 5px',
+                            borderRadius: 4,
+                            fontWeight: 700,
+                            background: risk.level === 'HIGH' ? 'rgba(239, 68, 68, 0.2)' : 'rgba(245, 158, 11, 0.2)',
+                            color: risk.level === 'HIGH' ? '#f87171' : '#fbbf24',
+                            border: `1px solid ${risk.level === 'HIGH' ? 'rgba(239, 68, 68, 0.4)' : 'rgba(245, 158, 11, 0.4)'}`,
+                            marginLeft: 6,
+                            display: 'inline-block',
+                          }}
+                        >
+                          {risk.badgeLabel}
+                        </span>
+                      );
+                    })()}
+                  </span>
                   <span className="deadline-card-date">Dia {item.day}</span>
                 </div>
 

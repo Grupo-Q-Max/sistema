@@ -1,0 +1,203 @@
+.fee-radar-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.75);
+  backdrop-filter: blur(4px);
+  z-index: 9998;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+}
+
+.fee-radar-dialog {
+  background: #0f172a;
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  border-radius: 12px;
+  width: 950px;
+  max-width: 96vw;
+  max-height: 90vh;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.7);
+  overflow: hidden;
+}
+
+.fee-radar-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px;
+  background: rgba(30, 41, 59, 0.6);
+  border-bottom: 1px solid rgba(148, 163, 184, 0.15);
+}
+
+.fee-radar-header h3 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: #f8fafc;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.fee-radar-controls {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.fee-radar-btn-export {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(16, 185, 129, 0.15);
+  border: 1px solid rgba(16, 185, 129, 0.4);
+  color: #34d399;
+  padding: 6px 12px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.fee-radar-btn-export:hover {
+  background: rgba(16, 185, 129, 0.25);
+  color: #ffffff;
+}
+
+.fee-radar-body {
+  padding: 20px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+/* Banner de Oportunidade Financeira */
+.fee-radar-opportunity-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 18px 24px;
+  border-radius: 10px;
+  background: linear-gradient(135deg, rgba(16, 185, 129, 0.15) 0%, rgba(5, 150, 105, 0.25) 100%);
+  border: 1px solid rgba(16, 185, 129, 0.35);
+  box-shadow: 0 4px 15px rgba(16, 185, 129, 0.1);
+}
+
+.opportunity-title {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.opportunity-title span {
+  font-size: 12px;
+  color: #a7f3d0;
+  text-transform: uppercase;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+}
+
+.opportunity-title h2 {
+  margin: 0;
+  font-size: 26px;
+  font-weight: 800;
+  color: #ffffff;
+  letter-spacing: -0.02em;
+}
+
+.opportunity-meta {
+  display: flex;
+  gap: 20px;
+  text-align: right;
+}
+
+.meta-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.meta-item span {
+  font-size: 11px;
+  color: #94a3b8;
+}
+
+.meta-item strong {
+  font-size: 16px;
+  color: #f1f5f9;
+}
+
+.fee-radar-tabs {
+  display: flex;
+  gap: 6px;
+}
+
+.fee-radar-tab-btn {
+  background: rgba(30, 41, 59, 0.6);
+  border: 1px solid rgba(148, 163, 184, 0.15);
+  color: #94a3b8;
+  padding: 6px 12px;
+  border-radius: 6px;
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.fee-radar-tab-btn.active {
+  background: rgba(59, 130, 246, 0.2);
+  border-color: rgba(59, 130, 246, 0.5);
+  color: #60a5fa;
+  font-weight: 600;
+}
+
+.fee-radar-table-container {
+  border: 1px solid rgba(148, 163, 184, 0.15);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.fee-radar-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.fee-radar-table th {
+  background: rgba(30, 41, 59, 0.8);
+  color: #94a3b8;
+  text-align: left;
+  padding: 10px 12px;
+  font-weight: 600;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.2);
+}
+
+.fee-radar-table td {
+  padding: 10px 12px;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.08);
+  color: #cbd5e1;
+}
+
+.fee-radar-table tr:hover {
+  background: rgba(30, 41, 59, 0.4);
+}
+
+.reason-tag {
+  display: inline-block;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 11px;
+  background: rgba(148, 163, 184, 0.12);
+  color: #cbd5e1;
+  margin-right: 4px;
+}
+
+.fee-value-badge {
+  font-size: 13px;
+  font-weight: 700;
+  color: #34d399;
+}

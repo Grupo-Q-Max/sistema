@@ -273,3 +273,62 @@ export function computeDeadlinesSummary(
   return result;
 }
 
+export type PenaltyRiskLevel = 'HIGH' | 'MEDIUM' | 'LOW';
+
+export interface PenaltyRiskInfo {
+  level: PenaltyRiskLevel;
+  badgeLabel: string;
+  penaltyDescription: string;
+  isAutomaticFine: boolean;
+}
+
+/**
+ * Semáforo de Risco de Multa Fiscal: classifica a obrigação pelo potencial de penalidade legal.
+ */
+export function getColumnPenaltyRisk(column: any): PenaltyRiskInfo {
+  const rawKey = column?.columnKey || column?.id || '';
+  const normKey = normalizeKey(rawKey);
+  const normName = normalizeKey(column?.name || '');
+
+  // Alto Risco: Multas automáticas na Receita Federal (MAED)
+  if (
+    normKey.includes('dctfweb') || normName.includes('dctfweb') ||
+    normKey.includes('pgdas') || normName.includes('pgdas') || normKey.includes('simples') ||
+    normKey.includes('reinf') || normName.includes('reinf') ||
+    normKey.includes('sped') || normName.includes('sped') ||
+    normKey.includes('efd') || normName.includes('efd') ||
+    normKey.includes('fgts') || normName.includes('fgts')
+  ) {
+    return {
+      level: 'HIGH',
+      badgeLabel: 'Multa RFB',
+      penaltyDescription: 'Risco Crítico: Gera multa automática por atraso (MAED/Receita Federal) e perda de certidão.',
+      isAutomaticFine: true,
+    };
+  }
+
+  // Médio Risco: Bloqueio de CND / Licenças
+  if (
+    normKey.includes('iss') || normName.includes('iss') ||
+    normKey.includes('gia') || normName.includes('gia') ||
+    normKey.includes('devec') || normName.includes('devec') ||
+    normKey.includes('darf') || normName.includes('darf') ||
+    normKey.includes('folha') || normName.includes('folha') ||
+    normKey.includes('esocial') || normName.includes('esocial')
+  ) {
+    return {
+      level: 'MEDIUM',
+      badgeLabel: 'Risco CND',
+      penaltyDescription: 'Risco Médio: Pode bloquear a Certidão Negativa de Débitos (CND) ou emissão de notas.',
+      isAutomaticFine: false,
+    };
+  }
+
+  return {
+    level: 'LOW',
+    badgeLabel: 'Rotina',
+    penaltyDescription: 'Risco Controlado: Rotina interna de fechamento ou conciliação.',
+    isAutomaticFine: false,
+  };
+}
+
