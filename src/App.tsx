@@ -25,6 +25,7 @@ const SpotlightSearch = lazy(() => import('./components/SpotlightSearch').then(m
 const Company360Modal = lazy(() => import('./components/Company360Modal').then(m => ({ default: m.Company360Modal })));
 const WorkloadBalancerModal = lazy(() => import('./components/WorkloadBalancerModal').then(m => ({ default: m.WorkloadBalancerModal })));
 const DominioStagingModal = lazy(() => import('./components/DominioStagingModal').then(m => ({ default: m.DominioStagingModal })));
+const ClientPortalView = lazy(() => import('./components/ClientPortalView').then(m => ({ default: m.ClientPortalView })));
 
 const ViewLoading = () => (
   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', width: '100%', background: '#090d16', color: '#94a3b8' }}>
@@ -36,6 +37,9 @@ const ViewLoading = () => (
 );
 
 function App() {
+  const urlParams = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null;
+  const portalToken = urlParams?.get('portal') || (typeof window !== 'undefined' && window.location.pathname.startsWith('/portal/') ? window.location.pathname.split('/portal/')[1] : null);
+
   const [currentUser, setCurrentUser] = useState<CurrentUser | null>(null);
   const [currentView, setCurrentView] = useState<string>('login');
   const [email, setEmail] = useState('');
@@ -346,6 +350,14 @@ function App() {
 
     return null;
   };
+
+  if (portalToken) {
+    return (
+      <Suspense fallback={<ViewLoading />}>
+        <ClientPortalView token={portalToken} />
+      </Suspense>
+    );
+  }
 
   if (currentView !== 'login' && currentUser) {
     return (

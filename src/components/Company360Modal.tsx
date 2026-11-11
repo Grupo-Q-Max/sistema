@@ -13,6 +13,7 @@ import {
   Award,
   Calculator,
   DollarSign,
+  Share2,
 } from 'lucide-react';
 import { API } from '../api';
 import type { CurrentUser } from '../types/auth';
@@ -20,6 +21,7 @@ import { formatFlexibleDateBr } from '../config/dateUtils';
 import { CompanyDeliveryReportModal } from './CompanyDeliveryReportModal';
 import { TaxSimulatorModal } from './TaxSimulatorModal';
 import { PricingCalculatorModal } from './PricingCalculatorModal';
+import { ClientPortalShareModal } from './ClientPortalShareModal';
 import './Company360Modal.css';
 
 export interface Company360ModalProps {
@@ -45,6 +47,7 @@ export function Company360Modal({
   const [isDeliveryModalOpen, setIsDeliveryModalOpen] = useState(false);
   const [isTaxSimOpen, setIsTaxSimOpen] = useState(false);
   const [isPricingOpen, setIsPricingOpen] = useState(false);
+  const [isPortalModalOpen, setIsPortalModalOpen] = useState(false);
 
   useEffect(() => {
     if (!companyId) return;
@@ -144,6 +147,28 @@ export function Company360Modal({
             >
               <DollarSign size={15} />
               <span>Precificação</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setIsPortalModalOpen(true)}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '6px',
+                padding: '6px 12px',
+                borderRadius: '8px',
+                background: 'rgba(56, 189, 248, 0.15)',
+                border: '1px solid rgba(56, 189, 248, 0.4)',
+                color: '#38bdf8',
+                fontWeight: 600,
+                fontSize: '13px',
+                cursor: 'pointer',
+              }}
+              title="Gerar e Compartilhar Link Seguro do Portal do Cliente"
+            >
+              <Share2 size={15} />
+              <span>Portal do Cliente</span>
             </button>
 
             <button
@@ -376,6 +401,15 @@ export function Company360Modal({
         <PricingCalculatorModal
           isOpen={isPricingOpen}
           onClose={() => setIsPricingOpen(false)}
+          companyName={company?.name}
+        />
+      )}
+
+      {isPortalModalOpen && (
+        <ClientPortalShareModal
+          isOpen={isPortalModalOpen}
+          onClose={() => setIsPortalModalOpen(false)}
+          companyId={companyId}
           companyName={company?.name}
         />
       )}

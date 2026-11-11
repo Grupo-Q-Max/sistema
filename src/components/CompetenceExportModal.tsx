@@ -202,3 +202,4 @@ export function CompetenceExportModal({ isOpen, onClose }: CompetenceExportModal
     </div>
   );
 }
+

@@ -30,6 +30,11 @@ import {
   Timer,
   FileCheck,
   Download,
+  Sparkles,
+  KeyRound,
+  Landmark,
+  Tag,
+  Share2,
 } from 'lucide-react';
 import './Dashboard.css';
 import './Progress.css';
@@ -53,6 +58,12 @@ import { SlaMatrixModal } from './SlaMatrixModal';
 import { DocumentReceptionModal } from './DocumentReceptionModal';
 import { PricingCalculatorModal } from './PricingCalculatorModal';
 import { CompetenceExportModal } from './CompetenceExportModal';
+import { TaxOpportunityRadarModal } from './TaxOpportunityRadarModal';
+import { TeamWorkloadThermometerModal } from './TeamWorkloadThermometerModal';
+import { PowerOfAttorneyMonitorModal } from './PowerOfAttorneyMonitorModal';
+import { TaxReformSimulatorModal } from './TaxReformSimulatorModal';
+import { ExtraServicesBillingModal } from './ExtraServicesBillingModal';
+import { ClientPortalShareModal } from './ClientPortalShareModal';
 import { RiskRadarWidget } from './RiskRadarWidget';
 import type { CurrentUser } from '../types/auth';
 import { API } from '../api';
@@ -238,6 +249,12 @@ export function Dashboard({ currentView, onNavigate, currentUser, onLogout }: Da
   const [isDocRecOpen, setIsDocRecOpen] = useState(false);
   const [isPricingOpen, setIsPricingOpen] = useState(false);
   const [isExportOpen, setIsExportOpen] = useState(false);
+  const [isTaxOppOpen, setIsTaxOppOpen] = useState(false);
+  const [isWorkloadThermOpen, setIsWorkloadThermOpen] = useState(false);
+  const [isPoaOpen, setIsPoaOpen] = useState(false);
+  const [isTaxReformOpen, setIsTaxReformOpen] = useState(false);
+  const [isExtraServicesOpen, setIsExtraServicesOpen] = useState(false);
+  const [isClientPortalOpen, setIsClientPortalOpen] = useState(false);
   const [alertCount, setAlertCount] = useState(0);
   const isPrivileged = currentUser?.role === 'ADMIN' || currentUser?.role === 'SOCIO';
 
@@ -565,6 +582,72 @@ export function Dashboard({ currentView, onNavigate, currentUser, onLogout }: Da
             >
               <Download size={16} color="#38bdf8" />
               <span>Exportar Excel</span>
+            </button>
+
+            <button
+              type="button"
+              className="btn-executive-report"
+              style={{ background: 'rgba(16, 185, 129, 0.15)', borderColor: 'rgba(16, 185, 129, 0.4)' }}
+              title="Radar de Oportunidades Tributárias e Produtos Monofásicos"
+              onClick={() => setIsTaxOppOpen(true)}
+            >
+              <Sparkles size={16} color="#10b981" />
+              <span>Radar Monofásicos</span>
+            </button>
+
+            <button
+              type="button"
+              className="btn-executive-report"
+              style={{ background: 'rgba(245, 158, 11, 0.15)', borderColor: 'rgba(245, 158, 11, 0.4)' }}
+              title="Termômetro de Carga e Risco de Burnout da Equipe"
+              onClick={() => setIsWorkloadThermOpen(true)}
+            >
+              <Users size={16} color="#f59e0b" />
+              <span>Termômetro Carga</span>
+            </button>
+
+            <button
+              type="button"
+              className="btn-executive-report"
+              style={{ background: 'rgba(56, 189, 248, 0.15)', borderColor: 'rgba(56, 189, 248, 0.4)' }}
+              title="Monitor de Validade de Procurações Eletrônicas (e-CAC, Caixa, DTE)"
+              onClick={() => setIsPoaOpen(true)}
+            >
+              <KeyRound size={16} color="#38bdf8" />
+              <span>Procurações</span>
+            </button>
+
+            <button
+              type="button"
+              className="btn-executive-report"
+              style={{ background: 'rgba(168, 85, 247, 0.15)', borderColor: 'rgba(168, 85, 247, 0.4)' }}
+              title="Simulador da Nova Reforma Tributária (IBS/CBS/IVA Dual)"
+              onClick={() => setIsTaxReformOpen(true)}
+            >
+              <Landmark size={16} color="#a855f7" />
+              <span>Reforma Tributária</span>
+            </button>
+
+            <button
+              type="button"
+              className="btn-executive-report"
+              style={{ background: 'rgba(16, 185, 129, 0.15)', borderColor: 'rgba(16, 185, 129, 0.4)' }}
+              title="Central de Serviços Extraordinários e Honorários Adicionais"
+              onClick={() => setIsExtraServicesOpen(true)}
+            >
+              <Tag size={16} color="#10b981" />
+              <span>Serviços Extras</span>
+            </button>
+
+            <button
+              type="button"
+              className="btn-executive-report"
+              style={{ background: 'rgba(56, 189, 248, 0.2)', borderColor: '#38bdf8', color: '#38bdf8' }}
+              title="Compartilhar Link Seguro do Portal do Cliente (Sem Senha)"
+              onClick={() => setIsClientPortalOpen(true)}
+            >
+              <Share2 size={16} color="#38bdf8" />
+              <span>Portal do Cliente</span>
             </button>
 
             {isPrivileged && (
@@ -993,6 +1076,42 @@ export function Dashboard({ currentView, onNavigate, currentUser, onLogout }: Da
         <CompetenceExportModal
           isOpen={isExportOpen}
           onClose={() => setIsExportOpen(false)}
+        />
+
+        {/* Radar de Oportunidades Tributárias (Monofásicos) */}
+        <TaxOpportunityRadarModal
+          isOpen={isTaxOppOpen}
+          onClose={() => setIsTaxOppOpen(false)}
+        />
+
+        {/* Termômetro de Carga e Burnout da Equipe */}
+        <TeamWorkloadThermometerModal
+          isOpen={isWorkloadThermOpen}
+          onClose={() => setIsWorkloadThermOpen(false)}
+        />
+
+        {/* Monitor de Validade de Procurações Eletrônicas */}
+        <PowerOfAttorneyMonitorModal
+          isOpen={isPoaOpen}
+          onClose={() => setIsPoaOpen(false)}
+        />
+
+        {/* Simulador da Reforma Tributária */}
+        <TaxReformSimulatorModal
+          isOpen={isTaxReformOpen}
+          onClose={() => setIsTaxReformOpen(false)}
+        />
+
+        {/* Central de Serviços Extraordinários e Cobrança */}
+        <ExtraServicesBillingModal
+          isOpen={isExtraServicesOpen}
+          onClose={() => setIsExtraServicesOpen(false)}
+        />
+
+        {/* Gerador e Compartilhamento do Portal do Cliente */}
+        <ClientPortalShareModal
+          isOpen={isClientPortalOpen}
+          onClose={() => setIsClientPortalOpen(false)}
         />
       </main>
     </div>

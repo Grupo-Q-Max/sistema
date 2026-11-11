@@ -197,3 +197,4 @@ export function CustomerHealthRadarModal({ isOpen, onClose }: CustomerHealthRada
     </div>
   );
 }
+

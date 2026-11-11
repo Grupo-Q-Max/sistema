@@ -243,3 +243,4 @@ export function DocumentReceptionModal({ isOpen, onClose }: DocumentReceptionMod
     </div>
   );
 }
+

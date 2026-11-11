@@ -169,6 +169,11 @@ const KNOWN_API_PREFIXES = [
   '/sla-matrix',
   '/document-reception',
   '/executive-report',
+  '/tax-opportunities',
+  '/workload',
+  '/power-of-attorneys',
+  '/extra-services',
+  '/client-portal',
 ];
 
 // Normaliza requisições vindas com prefixo legado /sistema ou sem /api ou com /api duplicado
