@@ -36,7 +36,9 @@ import {
   ListChecks,
   CalendarClock,
   Sparkles,
+  Database,
 } from 'lucide-react';
+import { DatabaseBackupModal } from './DatabaseBackupModal';
 import { Sidebar } from './Sidebar';
 import { ChangePasswordModal } from './ChangePasswordModal';
 import { UserOffboardModal } from './UserOffboardModal';
@@ -147,6 +149,7 @@ export function Settings({ currentView, onNavigate, currentUser, onLogout }: Set
   const [isPwdModalOpen, setIsPwdModalOpen] = useState(false);
   const [offboardingUser, setOffboardingUser] = useState<any | null>(null);
   const [isOffboardModalOpen, setIsOffboardModalOpen] = useState(false);
+  const [isBackupModalOpen, setIsBackupModalOpen] = useState(false);
 
   // Feedback Toast
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
@@ -806,6 +809,18 @@ export function Settings({ currentView, onNavigate, currentUser, onLogout }: Set
                 </button>
               );
             })}
+            {(currentUser?.role === 'ADMIN' || currentUser?.role === 'SOCIO') && (
+              <button
+                type="button"
+                className="settings-section-btn"
+                onClick={() => setIsBackupModalOpen(true)}
+                title="Central de Backups e Snapshots do Banco de Dados"
+                style={{ borderColor: 'rgba(56, 189, 248, 0.4)', color: '#38bdf8' }}
+              >
+                <Database size={15} />
+                <span>Backups do Banco</span>
+              </button>
+            )}
           </nav>
 
           {loading ? (
@@ -1766,6 +1781,12 @@ export function Settings({ currentView, onNavigate, currentUser, onLogout }: Set
           showToast('Colaborador e empresas atualizados com sucesso!', 'success');
           loadData();
         }}
+      />
+
+      <DatabaseBackupModal
+        isOpen={isBackupModalOpen}
+        onClose={() => setIsBackupModalOpen(false)}
+        currentUser={currentUser}
       />
     </div>
   );

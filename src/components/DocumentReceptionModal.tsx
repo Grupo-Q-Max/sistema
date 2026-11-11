@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { FileCheck, X, Search, ShieldAlert, Check } from 'lucide-react';
+import { FileCheck, X, Search, ShieldAlert, Check, MessageCircle } from 'lucide-react';
 import { API, authHeaders } from '../api';
 import './DocumentReceptionModal.css';
 
@@ -62,6 +62,25 @@ export function DocumentReceptionModal({ isOpen, onClose }: DocumentReceptionMod
     } finally {
       setSavingId(null);
     }
+  };
+
+  const handleCobrarWhatsapp = (comp: any) => {
+    const rec = comp.reception || {};
+    const pendencias: string[] = [];
+    if (rec.fiscal !== 'RECEIVED') pendencias.push('• Notas Fiscais (Entrada / Saída / Serviços)');
+    if (rec.bank !== 'RECEIVED') pendencias.push('• Extratos Bancários (OFX / PDF)');
+    if (rec.payroll !== 'RECEIVED') pendencias.push('• Cartão Ponto / Variáveis da Folha');
+
+    if (pendencias.length === 0) {
+      alert('Todos os documentos desta empresa já foram marcados como recebidos!');
+      return;
+    }
+
+    const compPeriod = `${String(month).padStart(2, '0')}/${year}`;
+    const text = encodeURIComponent(
+      `Olá, equipe *${comp.name}*!\n\nEsperamos que esteja tudo bem. Para realizarmos a apuração e fechamento contábil da competência *${compPeriod}*, ainda precisamos dos seguintes documentos pendentes:\n\n${pendencias.join('\n')}\n\nPoderiam nos enviar por gentileza para darmos prosseguimento aos cálculos e emissão das guias?\n\nMuito obrigado!\nEquipe Contábil`
+    );
+    window.open(`https://api.whatsapp.com/send?text=${text}`, '_blank');
   };
 
   const companies = (data?.companies || []).filter((c: any) =>
@@ -170,6 +189,7 @@ export function DocumentReceptionModal({ isOpen, onClose }: DocumentReceptionMod
                     <th style={{ padding: '0.75rem 1rem' }}>Extrato Bancário</th>
                     <th style={{ padding: '0.75rem 1rem' }}>Ponto / Folha</th>
                     <th style={{ padding: '0.75rem 1rem' }}>Blindagem</th>
+                    <th style={{ padding: '0.75rem 1rem', textAlign: 'center' }}>WhatsApp</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -229,6 +249,30 @@ export function DocumentReceptionModal({ isOpen, onClose }: DocumentReceptionMod
                           >
                             {rec.clientBlamed ? <ShieldAlert size={12} /> : <Check size={12} />}
                             {rec.clientBlamed ? 'Atraso do Cliente' : 'Normal'}
+                          </button>
+                        </td>
+                        <td style={{ padding: '0.75rem 1rem', textAlign: 'center' }}>
+                          <button
+                            type="button"
+                            onClick={() => handleCobrarWhatsapp(c)}
+                            style={{
+                              padding: '0.3rem 0.65rem',
+                              borderRadius: '6px',
+                              fontSize: '0.75rem',
+                              fontWeight: 700,
+                              cursor: 'pointer',
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '5px',
+                              background: 'rgba(37, 211, 102, 0.12)',
+                              color: '#25d366',
+                              border: '1px solid rgba(37, 211, 102, 0.35)',
+                              transition: 'all 0.15s',
+                            }}
+                            title="Gerar cobrança no WhatsApp com a lista exata dos documentos pendentes"
+                          >
+                            <MessageCircle size={13} />
+                            <span>Cobrar</span>
                           </button>
                         </td>
                       </tr>

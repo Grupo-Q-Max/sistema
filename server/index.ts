@@ -7,7 +7,9 @@ import {registerWorkloadAndHistory} from './workloadAndHistory';
 import {registerDeploy} from './deploy';
 import {registerAutomation} from './automation';
 import {registerDominioStaging} from './dominioStaging';
-import {registerPowerPack} from './powerPack';
+import { registerPowerPack } from './powerPack';
+import { initDailyBackupScheduler, listDatabaseBackups, createDatabaseBackup } from './backupService';
+import fs from 'node:fs';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {externalCompaniesExcluded} from '../src/config/installmentCompanies';
@@ -4211,6 +4213,51 @@ app.post('/api/columns/reorder', async (req, res) => {
   }
 });
 
+// ========================
+// CENTRAL DE BACKUPS DO BANCO DE DADOS
+// ========================
+
+app.get('/api/backups', async (req, res) => {
+  try {
+    const backups = listDatabaseBackups();
+    res.json(backups);
+  } catch (error) {
+    console.error('Erro ao listar backups:', error);
+    res.status(500).json({ error: 'Erro ao listar backups do banco de dados' });
+  }
+});
+
+app.post('/api/backups/generate', async (req, res) => {
+  try {
+    const actorName = req.body?.actorName || 'ADMINISTRADOR';
+    const metadata = await createDatabaseBackup(prisma, actorName);
+    res.json({ success: true, backup: metadata });
+  } catch (error) {
+    console.error('Erro ao gerar backup sob demanda:', error);
+    res.status(500).json({ error: 'Erro ao gerar backup do banco de dados' });
+  }
+});
+
+app.get('/api/backups/:filename/download', async (req, res) => {
+  try {
+    const filename = path.basename(req.params.filename);
+    if (!filename.startsWith('backup-') || !filename.endsWith('.json.gz')) {
+      return res.status(400).json({ error: 'Nome de arquivo de backup inválido' });
+    }
+    const filePath = path.resolve(process.cwd(), 'backups', filename);
+    if (!fs.existsSync(filePath)) {
+      return res.status(404).json({ error: 'Arquivo de backup não encontrado' });
+    }
+    res.setHeader('Content-Type', 'application/gzip');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    const stream = fs.createReadStream(filePath);
+    stream.pipe(res);
+  } catch (error) {
+    console.error('Erro ao baixar backup:', error);
+    res.status(500).json({ error: 'Erro ao realizar download do backup' });
+  }
+});
+
 async function runAutomaticRollover() {
   try {
     await syncLatestCompetenceFromDb();
@@ -4278,7 +4325,10 @@ app.use(['/api', '/sistema/api'], (req, res) => {
 const rawPort = process.env.WEBSITES_PORT || process.env.PORT || process.env.API_PORT;
 const apiPort = Number(rawPort && Number(rawPort) !== 33306 ? rawPort : 8080);
 app.listen(apiPort, '0.0.0.0', () => {
-  void warmServerCaches().then(() => runAutomaticRollover());
+  void warmServerCaches().then(() => {
+    runAutomaticRollover();
+    initDailyBackupScheduler(prisma);
+  });
   setInterval(() => { void runAutomaticRollover(); }, 10 * 60_000).unref();
   console.log(`API Server running on port ${apiPort}`);
 });
