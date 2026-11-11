@@ -2667,7 +2667,8 @@ app.post('/api/companies', async (req, res) => {
       where: { cnpj: cleanCnpj },
     });
     if (existing) {
-      return res.status(400).json({ error: `Já existe uma empresa cadastrada com o CNPJ ${cnpj}` });
+      const docLabel = cleanCnpj.length === 11 ? 'CPF' : 'CNPJ';
+      return res.status(400).json({ error: `Já existe um cliente cadastrado com o ${docLabel} ${cnpj}` });
     }
 
     const parsedContractDate = parseBrDate(contractDate);

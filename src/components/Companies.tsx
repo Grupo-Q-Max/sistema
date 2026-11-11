@@ -467,6 +467,10 @@ export function Companies({ currentView, onNavigate, currentUser, onLogout }: Co
 
   const handleLookupCnpj = async () => {
     const clean = cnpj.replace(/\D/g, '');
+    if (clean.length === 11) {
+      setModalError('A consulta automática da Receita Federal é disponível apenas para CNPJ (Pessoa Jurídica). Para clientes Pessoa Física (CPF), preencha o Nome e dados cadastrais manualmente.');
+      return;
+    }
     if (clean.length !== 14) {
       setModalError('Digite um CNPJ válido com 14 dígitos para consultar.');
       return;
@@ -609,8 +613,8 @@ export function Companies({ currentView, onNavigate, currentUser, onLogout }: Co
       return;
     }
     const cleanCnpj = cnpj.replace(/\D/g, '');
-    if (cleanCnpj.length !== 14 && !(editingCompany && cleanCnpj.length === 11)) {
-      setModalError('O CNPJ deve conter 14 dígitos.');
+    if (cleanCnpj.length !== 14 && cleanCnpj.length !== 11) {
+      setModalError('O documento deve ser um CNPJ válido (14 dígitos) ou CPF válido (11 dígitos).');
       return;
     }
 
@@ -951,7 +955,7 @@ export function Companies({ currentView, onNavigate, currentUser, onLogout }: Co
                           />
                         </th>
                         <th style={{ width: '70px' }}>Cód.</th>
-                        <th>Empresa & CNPJ</th>
+                        <th>Empresa & CNPJ/CPF</th>
                         <th>Grupo</th>
                         <th>Tributação</th>
                         <th>Tipo / Envio</th>
@@ -1009,7 +1013,7 @@ export function Companies({ currentView, onNavigate, currentUser, onLogout }: Co
                                     type="button"
                                     className="comp-btn-copy"
                                     onClick={() => copyToClipboard(comp.cnpj, comp.id)}
-                                    title="Copiar CNPJ"
+                                    title="Copiar CNPJ/CPF"
                                   >
                                     {copiedId === comp.id ? <Check size={11} color="#34d399" /> : <Copy size={11} />}
                                   </button>
@@ -1225,13 +1229,13 @@ export function Companies({ currentView, onNavigate, currentUser, onLogout }: Co
 
                     <div className="input-field" style={{ gridColumn: 'span 2' }}>
                       <label htmlFor="modal-cnpj">
-                        2. CNPJ <span className="req">*</span> <span className="hint">(com busca na Receita)</span>
+                        2. CNPJ / CPF <span className="req">*</span> <span className="hint">(com busca na Receita para CNPJ)</span>
                       </label>
                       <div className="cnpj-input-wrap">
                         <input
                           id="modal-cnpj"
                           type="text"
-                          placeholder="00.000.000/0000-00"
+                          placeholder="CNPJ (14 dígitos) ou CPF (11 dígitos)"
                           value={cnpj}
                           onChange={(e) => setCnpj(formatCnpjMask(e.target.value))}
                           required
