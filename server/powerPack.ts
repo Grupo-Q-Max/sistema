@@ -1653,5 +1653,220 @@ export function registerPowerPack(app: any, prisma: any, pool?: any) {
       res.status(500).json({ error: 'Erro ao carregar dados do portal' });
     }
   });
+
+  // Upload de arquivos pelo cliente no Portal Público
+  app.post('/api/client-portal/:token/upload', async (req: any, res: any) => {
+    try {
+      const clientIp = String(req.headers['x-forwarded-for'] || req.socket?.remoteAddress || '127.0.0.1');
+      if (!checkPortalRateLimit(clientIp)) {
+        return res.status(429).json({ error: 'Muitas requisições. Aguarde um minuto.' });
+      }
+
+      const { token } = req.params;
+      const companyId = verifyPortalToken(token);
+      if (!companyId) {
+        return res.status(400).json({ error: 'Link de consulta inválido ou expirado.' });
+      }
+
+      const { fileName, fileType, fileSize, periodKey, notes } = req.body;
+      if (!fileName || !fileType) {
+        return res.status(400).json({ error: 'Nome do arquivo e categoria são obrigatórios.' });
+      }
+
+      const company = await prisma.company.findUnique({ where: { id: companyId } });
+      if (!company) return res.status(404).json({ error: 'Empresa não encontrada' });
+
+      const leg = (company.legacyData as any) || {};
+      const portalUploads = Array.isArray(leg.portalUploads) ? leg.portalUploads : [];
+
+      const newUpload = {
+        id: `upl-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+        fileName,
+        fileType, // 'fiscal' | 'bank' | 'payroll' | 'other'
+        fileSize: fileSize || 'Desconhecido',
+        uploadedAt: new Date().toISOString(),
+        notes: notes || null,
+      };
+
+      portalUploads.unshift(newUpload);
+
+      // Auto-atualização no Checklist de Recepção de Documentos
+      const openPeriod = latestOpenPeriod();
+      const targetPeriodKey = periodKey || `${openPeriod.getUTCFullYear()}-${String(openPeriod.getUTCMonth() + 1).padStart(2, '0')}`;
+      const receptionStore = leg.documentReception || {};
+      const currentRec = receptionStore[targetPeriodKey] || {};
+
+      if (fileType === 'fiscal' || fileType === 'bank' || fileType === 'payroll') {
+        currentRec[fileType] = 'RECEIVED';
+        receptionStore[targetPeriodKey] = currentRec;
+      }
+
+      const updatedLeg = {
+        ...leg,
+        portalUploads: portalUploads.slice(0, 50),
+        documentReception: receptionStore,
+      };
+
+      await prisma.company.update({
+        where: { id: companyId },
+        data: { legacyData: updatedLeg },
+      });
+
+      try {
+        await prisma.systemLog.create({
+          data: {
+            action: 'PORTAL_FILE_UPLOADED',
+            details: `Cliente da empresa '${company.name}' enviou arquivo '${fileName}' (${fileType}) via Portal Seguro.`,
+            companyName: company.name,
+            closingType: 'FISCAL',
+          },
+        });
+      } catch (e) {
+        console.warn('Falha ao gravar systemLog do upload:', e);
+      }
+
+      res.json({ success: true, upload: newUpload });
+    } catch (err: any) {
+      console.error('Erro no upload do portal do cliente:', err);
+      res.status(500).json({ error: 'Erro ao registrar envio de arquivo' });
+    }
+  });
+
+  app.get('/api/client-portal/:token/uploads', async (req: any, res: any) => {
+    try {
+      const { token } = req.params;
+      const companyId = verifyPortalToken(token);
+      if (!companyId) {
+        return res.status(400).json({ error: 'Link de consulta inválido ou expirado.' });
+      }
+
+      const company = await prisma.company.findUnique({
+        where: { id: companyId },
+        select: { legacyData: true },
+      });
+      if (!company) return res.status(404).json({ error: 'Empresa não encontrada' });
+
+      const leg = (company.legacyData as any) || {};
+      res.json(leg.portalUploads || []);
+    } catch (err: any) {
+      console.error('Erro ao listar uploads do portal:', err);
+      res.status(500).json({ error: 'Erro ao carregar arquivos' });
+    }
+  });
+
+  // ========================
+  // GUARDIÃO DO DTE (DOMICÍLIO TRIBUTÁRIO ELETRÔNICO & INTIMAÇÕES E-CAC)
+  // ========================
+
+  app.get('/api/dte-notifications', async (_req: any, res: any) => {
+    try {
+      const row = await prisma.appConfig.findUnique({ where: { id: 'DTE_NOTIFICATIONS' } }).catch(() => null);
+      const notifications = (row?.value as any[]) || [];
+      res.json(notifications);
+    } catch (err: any) {
+      console.error('Erro ao buscar notificações do DTE:', err);
+      res.status(500).json({ error: 'Erro ao carregar notificações do DTE' });
+    }
+  });
+
+  app.post('/api/dte-notifications', async (req: any, res: any) => {
+    try {
+      requireAuthUser(req);
+      const { companyId, companyName, agency, subject, processNumber, notificationDate, deadlineDate, notes, priority } = req.body;
+      if (!companyName || !subject || !deadlineDate) {
+        return res.status(400).json({ error: 'Empresa, assunto e data limite de resposta são obrigatórios.' });
+      }
+
+      const row = await prisma.appConfig.findUnique({ where: { id: 'DTE_NOTIFICATIONS' } }).catch(() => null);
+      const list = (row?.value as any[]) || [];
+
+      const newNotif = {
+        id: `dte-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+        companyId: companyId || null,
+        companyName: companyName.trim(),
+        agency: agency || 'Receita Federal (e-CAC)',
+        subject: subject.trim(),
+        processNumber: processNumber ? processNumber.trim() : null,
+        notificationDate: notificationDate || new Date().toISOString().slice(0, 10),
+        deadlineDate,
+        notes: notes ? notes.trim() : null,
+        priority: priority || 'ALTA',
+        status: 'PENDENTE',
+        createdAt: new Date().toISOString(),
+      };
+
+      list.unshift(newNotif);
+
+      await prisma.appConfig.upsert({
+        where: { id: 'DTE_NOTIFICATIONS' },
+        create: { id: 'DTE_NOTIFICATIONS', value: list },
+        update: { value: list },
+      });
+
+      res.json({ success: true, notification: newNotif });
+    } catch (err: any) {
+      if (err.statusCode) return res.status(err.statusCode).json({ error: err.message });
+      console.error('Erro ao criar notificação do DTE:', err);
+      res.status(500).json({ error: 'Erro ao salvar notificação' });
+    }
+  });
+
+  app.put('/api/dte-notifications/:id', async (req: any, res: any) => {
+    try {
+      requireAuthUser(req);
+      const { id } = req.params;
+      const { status, notes, deadlineDate, priority } = req.body;
+
+      const row = await prisma.appConfig.findUnique({ where: { id: 'DTE_NOTIFICATIONS' } }).catch(() => null);
+      const list = (row?.value as any[]) || [];
+
+      const idx = list.findIndex((n: any) => n.id === id);
+      if (idx === -1) return res.status(404).json({ error: 'Notificação não encontrada' });
+
+      list[idx] = {
+        ...list[idx],
+        ...(status !== undefined && { status }),
+        ...(notes !== undefined && { notes: notes ? notes.trim() : null }),
+        ...(deadlineDate !== undefined && { deadlineDate }),
+        ...(priority !== undefined && { priority }),
+        updatedAt: new Date().toISOString(),
+      };
+
+      await prisma.appConfig.upsert({
+        where: { id: 'DTE_NOTIFICATIONS' },
+        create: { id: 'DTE_NOTIFICATIONS', value: list },
+        update: { value: list },
+      });
+
+      res.json({ success: true, notification: list[idx] });
+    } catch (err: any) {
+      if (err.statusCode) return res.status(err.statusCode).json({ error: err.message });
+      console.error('Erro ao atualizar notificação do DTE:', err);
+      res.status(500).json({ error: 'Erro ao atualizar notificação' });
+    }
+  });
+
+  app.delete('/api/dte-notifications/:id', async (req: any, res: any) => {
+    try {
+      requireAuthUser(req);
+      const { id } = req.params;
+
+      const row = await prisma.appConfig.findUnique({ where: { id: 'DTE_NOTIFICATIONS' } }).catch(() => null);
+      let list = (row?.value as any[]) || [];
+      list = list.filter((n: any) => n.id !== id);
+
+      await prisma.appConfig.upsert({
+        where: { id: 'DTE_NOTIFICATIONS' },
+        create: { id: 'DTE_NOTIFICATIONS', value: list },
+        update: { value: list },
+      });
+
+      res.json({ success: true });
+    } catch (err: any) {
+      if (err.statusCode) return res.status(err.statusCode).json({ error: err.message });
+      console.error('Erro ao excluir notificação do DTE:', err);
+      res.status(500).json({ error: 'Erro ao excluir notificação' });
+    }
+  });
 }
 

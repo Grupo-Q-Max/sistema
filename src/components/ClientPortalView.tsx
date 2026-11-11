@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { CheckCircle2, Clock, ShieldCheck, AlertCircle, FileText } from 'lucide-react';
+import { CheckCircle2, Clock, ShieldCheck, AlertCircle, FileText, Upload, FolderUp, Check, FileCheck } from 'lucide-react';
 import { API } from '../api';
 import './ClientPortalView.css';
 
@@ -11,23 +11,64 @@ export function ClientPortalView({ token }: ClientPortalViewProps) {
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [uploads, setUploads] = useState<any[]>([]);
+  const [uploadCategory, setUploadCategory] = useState<'bank' | 'fiscal' | 'payroll' | 'other'>('bank');
+  const [uploading, setUploading] = useState(false);
+  const [uploadSuccess, setUploadSuccess] = useState<string | null>(null);
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+
+  const fetchUploads = () => {
+    fetch(`${API}/api/client-portal/${token}/uploads`)
+      .then((res) => res.json())
+      .then((list) => {
+        if (Array.isArray(list)) setUploads(list);
+      })
+      .catch(() => {});
+  };
 
   useEffect(() => {
     setLoading(true);
     fetch(`${API}/api/client-portal/${token}`)
-      .then(res => {
+      .then((res) => {
         if (!res.ok) throw new Error('Link expirado ou token inválido');
         return res.json();
       })
-      .then(json => {
+      .then((json) => {
         setData(json);
         setLoading(false);
+        fetchUploads();
       })
-      .catch(err => {
+      .catch((err) => {
         setError(err.message || 'Erro ao carregar portal do cliente');
         setLoading(false);
       });
   }, [token]);
+
+  const handleSendFile = async () => {
+    if (!selectedFile) return;
+    setUploading(true);
+    setUploadSuccess(null);
+    try {
+      const res = await fetch(`${API}/api/client-portal/${token}/upload`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          fileName: selectedFile.name,
+          fileType: uploadCategory,
+          fileSize: `${(selectedFile.size / 1024).toFixed(1)} KB`,
+        }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || 'Falha ao enviar arquivo');
+      setUploadSuccess(`Arquivo '${selectedFile.name}' recebido com sucesso pela contabilidade!`);
+      setSelectedFile(null);
+      fetchUploads();
+    } catch (e: any) {
+      alert(e.message || 'Erro ao enviar arquivo');
+    } finally {
+      setUploading(false);
+    }
+  };
 
   if (loading) {
     return (
@@ -86,6 +127,94 @@ export function ClientPortalView({ token }: ClientPortalViewProps) {
               {closingStatus.fiscal === 'COMPLETED' ? 'Obrigações Concluídas' : 'Apuração em Andamento'}
             </div>
           </div>
+        </div>
+
+        {/* Envio de Documentos (Dropzone do Cliente) */}
+        <div className="client-portal-card">
+          <div style={{ fontSize: '1.1rem', fontWeight: 700, color: '#f8fafc', marginBottom: '0.5rem', display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <FolderUp size={20} color="#a855f7" />
+            <span>Envio de Documentos da Competência ({period.label})</span>
+          </div>
+          <p style={{ fontSize: '0.8125rem', color: '#94a3b8', margin: '0 0 1rem 0' }}>
+            Envie seus extratos, relatórios de vendas ou cartões de ponto diretamente para o escritório contábil.
+          </p>
+
+          {uploadSuccess && (
+            <div style={{ background: 'rgba(16, 185, 129, 0.15)', border: '1px solid rgba(16, 185, 129, 0.4)', borderRadius: '8px', padding: '10px 14px', color: '#6ee7b7', fontSize: '0.8125rem', marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <Check size={16} />
+              <span>{uploadSuccess}</span>
+            </div>
+          )}
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: '1rem', alignItems: 'center' }}>
+            <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
+              <select
+                value={uploadCategory}
+                onChange={e => setUploadCategory(e.target.value as any)}
+                style={{ background: '#1e293b', border: '1px solid #334155', color: '#fff', borderRadius: '8px', padding: '0.55rem 0.8rem', fontSize: '0.8125rem', outline: 'none' }}
+              >
+                <option value="bank">Extrato Bancário (OFX / PDF)</option>
+                <option value="fiscal">Notas Fiscais / XMLs / Vendas</option>
+                <option value="payroll">Cartão Ponto / Folha / Recibos</option>
+                <option value="other">Outros Comprovantes</option>
+              </select>
+
+              <label style={{ background: '#1e293b', border: '1px dashed #38bdf8', color: '#38bdf8', borderRadius: '8px', padding: '0.55rem 1rem', fontSize: '0.8125rem', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+                <Upload size={14} />
+                <span>{selectedFile ? selectedFile.name : 'Escolher Arquivo...'}</span>
+                <input
+                  type="file"
+                  style={{ display: 'none' }}
+                  onChange={e => { if (e.target.files && e.target.files[0]) setSelectedFile(e.target.files[0]); }}
+                />
+              </label>
+            </div>
+
+            <button
+              type="button"
+              disabled={!selectedFile || uploading}
+              onClick={handleSendFile}
+              style={{
+                background: selectedFile ? 'linear-gradient(135deg, #a855f7, #7e22ce)' : '#334155',
+                color: '#fff',
+                border: 'none',
+                borderRadius: '8px',
+                padding: '0.6rem 1.2rem',
+                fontSize: '0.8125rem',
+                fontWeight: 700,
+                cursor: selectedFile && !uploading ? 'pointer' : 'not-allowed',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '6px',
+              }}
+            >
+              <FileCheck size={16} />
+              <span>{uploading ? 'Enviando...' : 'Entregar à Contabilidade'}</span>
+            </button>
+          </div>
+
+          {/* Histórico de Arquivos Enviados */}
+          {uploads.length > 0 && (
+            <div style={{ marginTop: '1.25rem', borderTop: '1px solid #334155', paddingTop: '1rem' }}>
+              <span style={{ fontSize: '0.75rem', color: '#94a3b8', textTransform: 'uppercase', fontWeight: 600 }}>
+                Arquivos Entregues nesta Competência:
+              </span>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginTop: '6px' }}>
+                {uploads.map((u: any) => (
+                  <div key={u.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: '#1e293b', padding: '8px 12px', borderRadius: '6px', fontSize: '0.78rem' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <FileText size={14} color="#38bdf8" />
+                      <strong style={{ color: '#f8fafc' }}>{u.fileName}</strong>
+                      <span style={{ color: '#64748b' }}>({u.fileSize})</span>
+                    </div>
+                    <span style={{ color: '#10b981', display: 'flex', alignItems: 'center', gap: '4px', fontWeight: 600 }}>
+                      <CheckCircle2 size={13} /> Recebido em {new Date(u.uploadedAt).toLocaleDateString('pt-BR')} às {new Date(u.uploadedAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Guias de Pagamento e Tributos */}

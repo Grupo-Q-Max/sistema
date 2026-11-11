@@ -35,6 +35,9 @@ import {
   Landmark,
   Tag,
   Share2,
+  Award,
+  MailWarning,
+  FileCode,
 } from 'lucide-react';
 import './Dashboard.css';
 import './Progress.css';
@@ -64,6 +67,10 @@ import { PowerOfAttorneyMonitorModal } from './PowerOfAttorneyMonitorModal';
 import { TaxReformSimulatorModal } from './TaxReformSimulatorModal';
 import { ExtraServicesBillingModal } from './ExtraServicesBillingModal';
 import { ClientPortalShareModal } from './ClientPortalShareModal';
+import { FactorRSimulatorModal } from './FactorRSimulatorModal';
+import { MonthlyComplianceDossierModal } from './MonthlyComplianceDossierModal';
+import { DteInboxModal } from './DteInboxModal';
+import { SpedPreValidatorModal } from './SpedPreValidatorModal';
 import { RiskRadarWidget } from './RiskRadarWidget';
 import type { CurrentUser } from '../types/auth';
 import { API } from '../api';
@@ -255,6 +262,10 @@ export function Dashboard({ currentView, onNavigate, currentUser, onLogout }: Da
   const [isTaxReformOpen, setIsTaxReformOpen] = useState(false);
   const [isExtraServicesOpen, setIsExtraServicesOpen] = useState(false);
   const [isClientPortalOpen, setIsClientPortalOpen] = useState(false);
+  const [isFactorROpen, setIsFactorROpen] = useState(false);
+  const [isDossierOpen, setIsDossierOpen] = useState(false);
+  const [isDteOpen, setIsDteOpen] = useState(false);
+  const [isSpedValidatorOpen, setIsSpedValidatorOpen] = useState(false);
   const [alertCount, setAlertCount] = useState(0);
   const isPrivileged = currentUser?.role === 'ADMIN' || currentUser?.role === 'SOCIO';
 
@@ -648,6 +659,50 @@ export function Dashboard({ currentView, onNavigate, currentUser, onLogout }: Da
             >
               <Share2 size={16} color="#38bdf8" />
               <span>Portal do Cliente</span>
+            </button>
+
+            <button
+              type="button"
+              className="btn-executive-report"
+              style={{ background: 'rgba(168, 85, 247, 0.15)', borderColor: 'rgba(168, 85, 247, 0.4)' }}
+              title="Simulador do Fator R do Simples Nacional (Anexo III vs Anexo V)"
+              onClick={() => setIsFactorROpen(true)}
+            >
+              <Calculator size={16} color="#c084fc" />
+              <span>Fator R</span>
+            </button>
+
+            <button
+              type="button"
+              className="btn-executive-report"
+              style={{ background: 'rgba(245, 158, 11, 0.15)', borderColor: 'rgba(245, 158, 11, 0.4)' }}
+              title="Guardião do DTE & Intimações Eletrônicas da Receita / SEFAZ"
+              onClick={() => setIsDteOpen(true)}
+            >
+              <MailWarning size={16} color="#f59e0b" />
+              <span>Guardião DTE</span>
+            </button>
+
+            <button
+              type="button"
+              className="btn-executive-report"
+              style={{ background: 'rgba(56, 189, 248, 0.15)', borderColor: 'rgba(56, 189, 248, 0.4)' }}
+              title="Pré-Validador Express de Arquivos SPED (.txt)"
+              onClick={() => setIsSpedValidatorOpen(true)}
+            >
+              <FileCode size={16} color="#38bdf8" />
+              <span>Validador SPED</span>
+            </button>
+
+            <button
+              type="button"
+              className="btn-executive-report"
+              style={{ background: 'rgba(16, 185, 129, 0.15)', borderColor: 'rgba(16, 185, 129, 0.4)' }}
+              title="Dossiê Executivo de Regularidade e Conformidade Mensal"
+              onClick={() => setIsDossierOpen(true)}
+            >
+              <Award size={16} color="#10b981" />
+              <span>Dossiê Mensal</span>
             </button>
 
             {isPrivileged && (
@@ -1112,6 +1167,32 @@ export function Dashboard({ currentView, onNavigate, currentUser, onLogout }: Da
         <ClientPortalShareModal
           isOpen={isClientPortalOpen}
           onClose={() => setIsClientPortalOpen(false)}
+        />
+
+        {/* Simulador de Fator R do Simples Nacional */}
+        <FactorRSimulatorModal
+          isOpen={isFactorROpen}
+          onClose={() => setIsFactorROpen(false)}
+        />
+
+        {/* Guardião do DTE & Intimações e-CAC */}
+        <DteInboxModal
+          isOpen={isDteOpen}
+          onClose={() => setIsDteOpen(false)}
+          currentUser={currentUser}
+        />
+
+        {/* Pré-Validador Express de SPED (.txt) */}
+        <SpedPreValidatorModal
+          isOpen={isSpedValidatorOpen}
+          onClose={() => setIsSpedValidatorOpen(false)}
+        />
+
+        {/* Dossiê Executivo de Regularidade Mensal */}
+        <MonthlyComplianceDossierModal
+          isOpen={isDossierOpen}
+          onClose={() => setIsDossierOpen(false)}
+          periodLabel={`${String(selectedMonth + 1).padStart(2, '0')}/${selectedYear}`}
         />
       </main>
     </div>

@@ -1,0 +1,402 @@
+.dte-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background-color: rgba(15, 23, 42, 0.75);
+  backdrop-filter: blur(6px);
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+}
+
+.dte-modal-card {
+  background: #0f172a;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 16px;
+  width: 100%;
+  max-width: 900px;
+  max-height: 90vh;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.6);
+  color: #f8fafc;
+  overflow: hidden;
+  animation: dteModalIn 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes dteModalIn {
+  from {
+    opacity: 0;
+    transform: scale(0.96) translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+.dte-modal-header {
+  padding: 20px 24px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.dte-header-title {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.dte-icon-box {
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  background: rgba(245, 158, 11, 0.15);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.dte-header-title h3 {
+  margin: 0;
+  font-size: 1.15rem;
+  font-weight: 700;
+  color: #f8fafc;
+}
+
+.dte-header-title p {
+  margin: 4px 0 0 0;
+  font-size: 0.82rem;
+  color: #94a3b8;
+}
+
+.dte-btn-close {
+  background: transparent;
+  border: none;
+  color: #94a3b8;
+  cursor: pointer;
+  padding: 6px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s;
+}
+
+.dte-btn-close:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: #f8fafc;
+}
+
+.dte-stats-bar {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 14px;
+  padding: 16px 24px;
+  background: rgba(30, 41, 59, 0.4);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.dte-stat-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  background: rgba(15, 23, 42, 0.6);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 10px;
+}
+
+.dte-stat-card.critical {
+  background: rgba(239, 68, 68, 0.1);
+  border-color: rgba(239, 68, 68, 0.3);
+}
+
+.dte-stat-lbl {
+  display: block;
+  font-size: 0.72rem;
+  color: #94a3b8;
+  text-transform: uppercase;
+}
+
+.dte-stat-num {
+  font-size: 1.15rem;
+  font-weight: 700;
+  color: #f8fafc;
+}
+
+.dte-toolbar {
+  padding: 14px 24px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.dte-search-wrap {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(30, 41, 59, 0.6);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  padding: 6px 12px;
+}
+
+.dte-search-wrap input {
+  background: transparent;
+  border: none;
+  color: #fff;
+  font-size: 0.82rem;
+  outline: none;
+  width: 100%;
+}
+
+.dte-filter-group {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.dte-filter-group select {
+  background: #1e293b;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: #f8fafc;
+  padding: 7px 12px;
+  border-radius: 8px;
+  font-size: 0.8rem;
+  outline: none;
+}
+
+.dte-btn-add {
+  background: linear-gradient(135deg, #f59e0b, #d97706);
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  padding: 7px 14px;
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  transition: all 0.2s;
+}
+
+.dte-btn-add:hover {
+  background: linear-gradient(135deg, #d97706, #b45309);
+}
+
+.dte-create-form {
+  padding: 18px 24px;
+  background: rgba(30, 41, 59, 0.5);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.dte-form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 12px;
+}
+
+.dte-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.dte-field label {
+  font-size: 0.74rem;
+  color: #94a3b8;
+  font-weight: 600;
+}
+
+.dte-field input,
+.dte-field select {
+  background: #0f172a;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 6px;
+  padding: 7px 10px;
+  color: #fff;
+  font-size: 0.82rem;
+  outline: none;
+}
+
+.dte-form-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.dte-btn-cancel {
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: #94a3b8;
+  padding: 6px 14px;
+  border-radius: 6px;
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+
+.dte-btn-save {
+  background: #f59e0b;
+  color: #0f172a;
+  border: none;
+  padding: 6px 16px;
+  border-radius: 6px;
+  font-size: 0.8rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.dte-table-wrap {
+  flex: 1;
+  overflow-y: auto;
+  padding: 0 24px;
+  max-height: 420px;
+}
+
+.dte-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.82rem;
+}
+
+.dte-table th {
+  text-align: left;
+  padding: 10px 12px;
+  color: #94a3b8;
+  font-weight: 600;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  font-size: 0.74rem;
+  text-transform: uppercase;
+}
+
+.dte-table td {
+  padding: 12px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+  color: #e2e8f0;
+}
+
+.dte-table tr.row-done td {
+  opacity: 0.55;
+}
+
+.dte-comp-cell {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.dte-comp-cell strong {
+  font-size: 0.84rem;
+  color: #f8fafc;
+}
+
+.dte-subject-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.dte-agency-tag {
+  font-size: 0.7rem;
+  color: #38bdf8;
+  font-weight: 600;
+}
+
+.dte-subject-text {
+  font-size: 0.82rem;
+  color: #cbd5e1;
+}
+
+.dte-proc-num {
+  font-size: 0.72rem;
+  color: #64748b;
+  font-family: monospace;
+}
+
+.dte-date-cell {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.8rem;
+  color: #cbd5e1;
+}
+
+.dte-countdown-badge {
+  display: inline-block;
+  padding: 3px 8px;
+  border-radius: 12px;
+  font-size: 0.74rem;
+  font-weight: 700;
+}
+
+.dte-countdown-badge.normal {
+  background: rgba(56, 189, 248, 0.15);
+  color: #38bdf8;
+  border: 1px solid rgba(56, 189, 248, 0.3);
+}
+
+.dte-countdown-badge.critical {
+  background: rgba(239, 68, 68, 0.2);
+  color: #ef4444;
+  border: 1px solid rgba(239, 68, 68, 0.4);
+  animation: pulseCritical 1.5s infinite;
+}
+
+@keyframes pulseCritical {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.6; }
+}
+
+.dte-countdown-badge.expired {
+  background: #dc2626;
+  color: #fff;
+  font-weight: 800;
+}
+
+.dte-countdown-badge.done {
+  background: rgba(16, 185, 129, 0.15);
+  color: #34d399;
+}
+
+.dte-status-select {
+  background: #1e293b;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: #fff;
+  border-radius: 6px;
+  padding: 4px 8px;
+  font-size: 0.76rem;
+  outline: none;
+}
+
+.dte-btn-delete {
+  background: transparent;
+  border: none;
+  color: #64748b;
+  cursor: pointer;
+  padding: 5px;
+  border-radius: 6px;
+  transition: all 0.15s;
+}
+
+.dte-btn-delete:hover {
+  background: rgba(239, 68, 68, 0.15);
+  color: #ef4444;
+}
+
+.spin {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
