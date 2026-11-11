@@ -88,6 +88,31 @@ export function registerCushman(app:any,prisma:any,options:{sync:(period:Date)=>
    void options.sync(period);
   }
   const columns=cushmanApplicableColumns(storedColumns,period);const mapped=new Map<string,any>(closings.map((closing:any)=>[closing.companyId,closing]));
+  const missingCompanies=companies.filter((company:any)=>isCushmanCompany(company)&&!mapped.has(company.id)&&cushmanCompanyEligible(company,period));
+  if(missingCompanies.length>0){
+   const prevPeriod=new Date(Date.UTC(period.getUTCFullYear(),period.getUTCMonth()-1,1));
+   const prevClosings=await queryClosingsBySectorAndRange(options.pool,prisma,'CUSHMAN',prevPeriod,period,{companyIds:missingCompanies.map((c:any)=>c.id)});
+   const prevMap=new Map<string,any>(prevClosings.map((cl:any)=>[cl.companyId,cl]));
+   const toCreate=missingCompanies.map((c:any)=>{
+    const prev=prevMap.get(c.id);
+    const initialData:Record<string,any>={};
+    if(prev?.columnsData?.cush_observacao){
+     initialData.cush_observacao=prev.columnsData.cush_observacao;
+    }else if(c.notes&&(c.notesScope==='CUSHMAN'||c.notesScope==='GERAL'||!c.notesScope)){
+     initialData.cush_observacao=c.notes;
+    }
+    return {
+     companyId:c.id,
+     type:'CUSHMAN',
+     referencePeriod:period,
+     status:'PENDING',
+     columnsData:initialData,
+    };
+   });
+   await prisma.closing.createMany({data:toCreate,skipDuplicates:true});
+   const created=await queryClosingsBySectorAndRange(options.pool,prisma,'CUSHMAN',period,nextPeriod,{includeHasLegacy:true,companyIds:missingCompanies.map((c:any)=>c.id)});
+   for(const cl of created)mapped.set(cl.companyId,cl);
+  }
   const rows=companies.filter((company:any)=>{const cl=mapped.get(company.id);const hasLeg=Boolean(cl?.hasLegacy||cl?.columnsData?._legacy);const belongsToCushman=isCushmanCompany(company);if(!belongsToCushman)return false;return cushmanCompanyAllowed(user,company)&&companyExitAllowsPeriod(company,period)&&(mode==='ALL'||cushmanCompanyEligible(company,period)||hasLeg);}).map((company:any)=>{
    const closing=mapped.get(company.id);const hasLeg=Boolean(closing?.hasLegacy||closing?.columnsData?._legacy);const participates=cushmanCompanyEligible(company,period)||hasLeg;const data={...(closing?.columnsData||{})};delete data._legacy;
    for(const column of columns){const key=resolveCushmanKey(column)||column.id;if(column.inputType==='PASSWORD'&&data[key])data[key]=options.decrypt(data[key]);}
@@ -109,14 +134,31 @@ export function registerCushman(app:any,prisma:any,options:{sync:(period:Date)=>
   res.json({company:safeCompany(await prisma.company.findUnique({where:{id:company.id},omit:{legacyData:true},include:{responsibles:true}}))});
  }));
  app.put('/api/cushman-closings/:id/column',endpoint(async(req:any,res:any,user:any)=>{
-  if(!cushmanAccess(user,true))fail(403,'Permissão somente de leitura no Cushman.');const closing=await prisma.closing.findUnique({where:{id:req.params.id}});if(!closing||closing.type!=='CUSHMAN')fail(404,'Fechamento Cushman não encontrado.');
+  if(!cushmanAccess(user,true))fail(403,'Permissão somente de leitura no Cushman.');
+  let closing=await prisma.closing.findUnique({where:{id:req.params.id}});
+  if(!closing){
+    const comp=await prisma.company.findUnique({where:{id:req.params.id}});
+    if(comp){
+      const period=req.query.period?new Date(req.query.period):(req.body.referencePeriod?new Date(req.body.referencePeriod):null);
+      if(period){
+        closing=await prisma.closing.findFirst({where:{companyId:comp.id,type:'CUSHMAN',referencePeriod:period}});
+        if(!closing){
+          closing=await prisma.closing.create({data:{companyId:comp.id,type:'CUSHMAN',referencePeriod:period,status:'PENDING',columnsData:{}}});
+        }
+      }
+    }
+  }
+  if(!closing||closing.type!=='CUSHMAN')fail(404,'Fechamento Cushman não encontrado.');
   const company=await companyAllowed(user,closing.companyId);if(!cushmanCompanyEditable(user,company))fail(403,'Você só pode editar empresas sob sua responsabilidade.');const period=new Date(closing.referencePeriod);if(!periodIsOpen(period))fail(423,blockedPeriodMessage(period));if(!companyExitAllowsPeriod(company,period)||(!cushmanCompanyEligible(company,period)&&!closing.columnsData?._legacy))fail(403,'Esta empresa não tem obrigação Cushman nesta competência.');
   const {columnKey,columnValue,expectedUpdatedAt}=req.body;const columns=await prisma.departmentColumn.findMany({where:{department:'CUSHMAN'}});const column=columns.find((item:any)=>resolveCushmanKey(item)===columnKey);
   if(!column||!isColumnActive(column,period)||column.isEditable===false||column.inputType==='READONLY')fail(403,'Coluna indisponível para edição.');
-  if(!expectedUpdatedAt||new Date(expectedUpdatedAt).getTime()!==new Date(closing.updatedAt).getTime())fail(409,'O fechamento foi alterado. Atualize a tela antes de editar novamente.');
+  if(expectedUpdatedAt){
+    const diff=Math.abs(new Date(expectedUpdatedAt).getTime()-new Date(closing.updatedAt).getTime());
+    if(diff>5000)fail(409,'O fechamento foi alterado por outra pessoa. Atualize a tela antes de editar novamente.');
+  }
   const error=column.inputType==='POPUP'?validateCushmanPopup(column,columnValue,columnKey):validatePayrollValue(column,columnValue);if(error)fail(400,error);
   const data={...(closing.columnsData||{}),[columnKey]:column.inputType==='PASSWORD'?options.encrypt(columnValue):columnValue};const progress=calculateColumnProgress(columns.filter((item:any)=>item.countsProgress&&isColumnActive(item,period)),data,column=>resolveCushmanKey(column)||column.id);
-  const updated=await prisma.closing.updateMany({where:{id:closing.id,updatedAt:closing.updatedAt},data:{columnsData:data,status:progress.calculatedStatus}});if(!updated.count)fail(409,'O fechamento mudou durante a edição. Atualize a tela.');
+  const updated=await prisma.closing.updateMany({where:{id:closing.id},data:{columnsData:data,status:progress.calculatedStatus}});if(!updated.count)fail(409,'O fechamento mudou durante a edição. Atualize a tela.');
   options.onClosingUpdated?.();
   const fresh=await prisma.closing.findUnique({where:{id:closing.id}});const responseData={...(fresh.columnsData||{})};delete responseData._legacy;for(const item of columns)if(item.inputType==='PASSWORD'){const key=resolveCushmanKey(item)||item.id;if(responseData[key])responseData[key]=options.decrypt(responseData[key]);}
   res.json({closing:{...fresh,columnsData:responseData},...progress});
