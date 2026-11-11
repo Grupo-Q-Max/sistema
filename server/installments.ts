@@ -21,25 +21,23 @@ export function invalidateAuthUserCache() {
 export async function resolveAuthenticatedUser(prisma: any, req: any): Promise<any | null> {
   const secret = getSessionSecret();
   const bearer = String(req.headers.authorization || '').replace(/^Bearer\s+/i, '').trim();
-  let userId = sessionUser(bearer, secret);
-  if (!userId) {
-    const fallbackId = String(req.headers['x-user-id'] || req.query?.userId || req.body?.userId || req.body?.actorId || '').trim();
-    if (fallbackId) userId = fallbackId;
-  }
+  const userId = sessionUser(bearer, secret);
   if (!userId) return null;
 
   const now = Date.now();
   const cached = authUserCache.get(userId);
   if (cached && now - cached.ts < 30_000) {
+    if (cached.user && cached.user.active === false) return null;
     return cached.user;
   }
   const user = await prisma.user.findUnique({
     where: { id: userId },
     include: { sectorPermissions: true, screenPermissions: true, companyAccess: true, responsibleAssignments: true },
   });
-  if (user) {
-    authUserCache.set(userId, { ts: now, user });
+  if (!user || user.active === false) {
+    return null;
   }
+  authUserCache.set(userId, { ts: now, user });
   return user;
 }
 export function installmentCompanyScope(user:any):any {

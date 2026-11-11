@@ -24,6 +24,28 @@ if (typeof window !== 'undefined') {
     }
     return originalRemoveChild.call(this, child) as T;
   };
+
+  // Interceptor global de fetch: anexa automaticamente o Authorization Bearer
+  // com o token da sessão ativa armazenado no localStorage
+  const originalFetch = window.fetch;
+  window.fetch = function (input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
+    try {
+      const rawUser = localStorage.getItem('fechamento_user');
+      if (rawUser) {
+        const user = JSON.parse(rawUser);
+        if (user?.sessionToken) {
+          const reqHeaders = new Headers(init?.headers || {});
+          if (!reqHeaders.has('Authorization')) {
+            reqHeaders.set('Authorization', `Bearer ${user.sessionToken}`);
+          }
+          init = { ...init, headers: reqHeaders };
+        }
+      }
+    } catch {
+      // Ignora falhas de parse de localStorage
+    }
+    return originalFetch.call(this, input, init);
+  };
 }
 
 createRoot(document.getElementById('root')!).render(

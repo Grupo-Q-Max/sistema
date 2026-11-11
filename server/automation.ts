@@ -1,4 +1,5 @@
 import type express from 'express';
+import { resolveAuthenticatedUser } from './installments';
 
 export function registerAutomation(app: express.Express, prisma: any) {
 
@@ -14,6 +15,10 @@ export function registerAutomation(app: express.Express, prisma: any) {
   // 0. Enfileirar automações (Acionado pelo Frontend pelo analista)
   app.post('/api/automation/trigger', async (req, res) => {
     try {
+      const actor = await resolveAuthenticatedUser(prisma, req);
+      if (!actor || !actor.active) {
+        return res.status(401).json({ error: 'Sessão necessária para acionar automações.' });
+      }
       const { sector, year, month } = req.body;
       
       const companies = await prisma.company.findMany({

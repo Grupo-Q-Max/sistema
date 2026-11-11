@@ -102,7 +102,37 @@ export async function logAction(
 }
 
 app.use(cors());
+
+// Cabeçalhos de Proteção HTTP (Anti-Clickjacking, Anti-MIME-Sniffing e Referrer Policy)
+app.use((_req, res, next) => {
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('X-Frame-Options', 'SAMEORIGIN');
+  res.setHeader('X-XSS-Protection', '1; mode=block');
+  res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+  next();
+});
+
 app.use(express.json());
+
+// Controle de Força Bruta no Login (Sliding Window em Memória)
+const loginAttempts = new Map<string, { count: number; resetAt: number }>();
+function checkLoginRateLimit(ip: string): { allowed: boolean; waitSeconds?: number } {
+  const now = Date.now();
+  const entry = loginAttempts.get(ip);
+  if (!entry || now > entry.resetAt) {
+    loginAttempts.set(ip, { count: 1, resetAt: now + 15 * 60 * 1000 });
+    return { allowed: true };
+  }
+  if (entry.count >= 5) {
+    const waitSeconds = Math.ceil((entry.resetAt - now) / 1000);
+    return { allowed: false, waitSeconds };
+  }
+  entry.count++;
+  return { allowed: true };
+}
+function resetLoginRateLimit(ip: string) {
+  loginAttempts.delete(ip);
+}
 
 const KNOWN_API_PREFIXES = [
   '/closings',
@@ -273,6 +303,11 @@ const ALL_SCREENS = [
 app.post('/api/login', async (req, res) => {
   const clientIp = getClientIp(req);
   try {
+    const rateCheck = checkLoginRateLimit(clientIp);
+    if (!rateCheck.allowed) {
+      return res.status(429).json({ error: `Muitas tentativas de login incorretas. Tente novamente em ${rateCheck.waitSeconds} segundos.` });
+    }
+
     const { password } = req.body;
     const email = normalizeLoginEmail(req.body.email);
     if (!email) {
@@ -307,10 +342,10 @@ app.post('/api/login', async (req, res) => {
         'LOGIN_FALHA',
         'AUTENTICACAO',
         null,
-        { motivo: 'Usuário não encontrado' },
+        { motivo: 'Credenciais inválidas' },
         clientIp
       );
-      return res.status(401).json({ error: 'Usuário não encontrado' });
+      return res.status(401).json({ error: 'E-mail ou senha incorretos.' });
     }
 
     if (!user.active) {
@@ -327,7 +362,6 @@ app.post('/api/login', async (req, res) => {
       return res.status(403).json({ error: 'Usuário inativo. Contate o administrador.' });
     }
 
-    // A sessão de parcelamentos precisa de uma identidade validada pela senha.
     if(typeof password!=='string'||!password) {
       await logAction(
         user.id,
@@ -339,7 +373,7 @@ app.post('/api/login', async (req, res) => {
         { motivo: 'Senha não informada' },
         clientIp
       );
-      return res.status(401).json({error:'Informe sua senha.'});
+      return res.status(401).json({ error: 'Informe sua senha.' });
     }
 
     const valid=verifyLoginPassword(user.password,password);
@@ -351,13 +385,15 @@ app.post('/api/login', async (req, res) => {
         'LOGIN_FALHA',
         'AUTENTICACAO',
         user.id,
-        { motivo: 'Senha incorreta' },
+        { motivo: 'Credenciais inválidas' },
         clientIp
       );
-      return res.status(401).json({error:'Senha incorreta.'});
+      return res.status(401).json({ error: 'E-mail ou senha incorretos.' });
     }
 
-    // Sucesso no Login (grava log em background para não atrasar resposta)
+    // Sucesso no Login: zera contador de rate-limit
+    resetLoginRateLimit(clientIp);
+
     void logAction(
       user.id,
       user.email,
@@ -369,7 +405,6 @@ app.post('/api/login', async (req, res) => {
       clientIp
     );
 
-    // Formata retorno seguro com sessionToken sempre emitido
     const { password: _, ...userSafe } = user;
     res.json({ ...userSafe, sessionToken: issueSession(user.id, getSessionSecret()) });
   } catch (error) {
@@ -432,27 +467,28 @@ app.post('/api/logout', async (req, res) => {
   }
 });
 
-// Endpoint seguro para troca de senha pelo próprio usuário ou admin
+// Endpoint seguro para troca de senha pelo próprio usuário ou admin autenticado
 app.post('/api/user/change-password', async (req, res) => {
   const clientIp = getClientIp(req);
   try {
-    const { userId, currentPassword, newPassword, requesterId } = req.body;
-
-    if (!userId || !newPassword) {
-      return res.status(400).json({ error: 'ID do usuário e nova senha são obrigatórios.' });
+    const actor = await resolveAuthenticatedUser(prisma, req);
+    if (!actor) {
+      return res.status(401).json({ error: 'Sessão necessária para alterar a senha. Faça login novamente.' });
     }
 
-    if (typeof newPassword !== 'string' || newPassword.trim().length < 6) {
+    const { userId, currentPassword, newPassword } = req.body;
+    const targetUserId = userId || actor.id;
+
+    if (!newPassword || typeof newPassword !== 'string' || newPassword.trim().length < 6) {
       return res.status(400).json({ error: 'A nova senha deve ter no mínimo 6 caracteres.' });
     }
 
-    const targetUser = await prisma.user.findUnique({ where: { id: userId } });
+    const targetUser = await prisma.user.findUnique({ where: { id: targetUserId } });
     if (!targetUser) {
       return res.status(404).json({ error: 'Usuário não encontrado.' });
     }
 
-    // Se o solicitante for o próprio usuário (ou requesterId não informado ou igual ao target), exige validação da senha atual
-    const isSelf = !requesterId || requesterId === userId;
+    const isSelf = actor.id === targetUserId;
     if (isSelf) {
       if (!currentPassword) {
         return res.status(400).json({ error: 'Informe sua senha atual para continuar.' });
@@ -462,23 +498,19 @@ app.post('/api/user/change-password', async (req, res) => {
         return res.status(401).json({ error: 'A senha atual digitada está incorreta.' });
       }
     } else {
-      // Se for outro usuário alterando, verificar se quem está alterando é ADMIN ou SOCIO
-      const requester = await prisma.user.findUnique({ where: { id: requesterId } });
-      if (!requester || !['ADMIN', 'SOCIO'].includes(requester.role)) {
-        return res.status(403).json({ error: 'Permissão negada para alterar a senha deste usuário.' });
+      if (!isPrivilegedUser(actor)) {
+        return res.status(403).json({ error: 'Permissão negada. Apenas Administradores e Sócios podem alterar senhas de outros usuários.' });
       }
-      if (requester.role === 'SOCIO' && targetUser.role === 'ADMIN') {
+      if (actor.role === 'SOCIO' && targetUser.role === 'ADMIN') {
         return res.status(403).json({ error: 'Sócios não podem alterar a senha de administradores.' });
       }
     }
 
     const hashedPassword = bcrypt.hashSync(newPassword.trim(), 10);
     await prisma.user.update({
-      where: { id: userId },
+      where: { id: targetUserId },
       data: { password: hashedPassword },
     });
-
-    const actor = isSelf ? targetUser : ((await prisma.user.findUnique({ where: { id: requesterId } })) || targetUser);
 
     await logAction(
       actor.id,
@@ -1713,8 +1745,10 @@ app.get('/api/dashboard', async (req, res) => {
 // ========================
 import crypto from 'crypto';
 
-const ENCRYPTION_SECRET = process.env.ENCRYPTION_KEY || 'fechamento-target-super-secret-key-32b!';
-const ENC_KEY = crypto.createHash('sha256').update(ENCRYPTION_SECRET).digest();
+const PRIMARY_KEY = process.env.ENCRYPTION_KEY || 'fechamento-target-super-secret-key-32b!';
+const LEGACY_KEY = 'fechamento-target-super-secret-key-32b!';
+const ENC_KEY = crypto.createHash('sha256').update(PRIMARY_KEY).digest();
+const LEGACY_ENC_KEY = crypto.createHash('sha256').update(LEGACY_KEY).digest();
 
 function encryptPassword(text: string | null | undefined): string | null {
   if (!text || typeof text !== 'string' || text.trim() === '') return null;
@@ -1734,10 +1768,23 @@ function decryptPassword(cipherText: string | null | undefined): string | null {
     if (parts.length !== 3) return cipherText;
     const iv = Buffer.from(parts[1], 'hex');
     const encrypted = parts[2];
-    const decipher = crypto.createDecipheriv('aes-256-cbc', ENC_KEY, iv);
-    let decrypted = decipher.update(encrypted, 'hex', 'utf8');
-    decrypted += decipher.final('utf8');
-    return decrypted;
+    
+    // Tenta descriptografar primeiro com a chave primária
+    try {
+      const decipher = crypto.createDecipheriv('aes-256-cbc', ENC_KEY, iv);
+      let decrypted = decipher.update(encrypted, 'hex', 'utf8');
+      decrypted += decipher.final('utf8');
+      return decrypted;
+    } catch {
+      // Se a chave primária diferir da legada e falhar, recorre à chave legada (rotação de chave transparente)
+      if (PRIMARY_KEY !== LEGACY_KEY) {
+        const decipher = crypto.createDecipheriv('aes-256-cbc', LEGACY_ENC_KEY, iv);
+        let decrypted = decipher.update(encrypted, 'hex', 'utf8');
+        decrypted += decipher.final('utf8');
+        return decrypted;
+      }
+      throw new Error('Falha na descriptografia da chave');
+    }
   } catch (err) {
     console.error('Erro ao descriptografar senha:', err);
     return cipherText;
@@ -2243,12 +2290,34 @@ app.put('/api/companies/:id', async (req, res) => {
   }
 });
 
-// Excluir empresa
+// Excluir empresa (Restrito a Administradores e Sócios autenticados)
 app.delete('/api/companies/:id', async (req, res) => {
   try {
+    const actor = await resolveAuthenticatedUser(prisma, req);
+    if (!actor || !isPrivilegedUser(actor)) {
+      return res.status(403).json({ error: 'Apenas Administradores e Sócios podem excluir empresas.' });
+    }
+
     const { id } = req.params;
+    const company = await prisma.company.findUnique({ where: { id } });
+    if (!company) {
+      return res.status(404).json({ error: 'Empresa não encontrada.' });
+    }
+
     await prisma.company.delete({ where: { id } });
     invalidateAllDataCaches();
+
+    void logAction(
+      actor.id,
+      actor.email,
+      actor.name || actor.email,
+      'EXCLUIU_EMPRESA',
+      'EMPRESA',
+      id,
+      { code: company.code, name: company.name, cnpj: company.cnpj },
+      getClientIp(req)
+    );
+
     res.json({ success: true, message: 'Empresa excluída com sucesso' });
   } catch (error) {
     console.error('Erro ao excluir empresa:', error);
@@ -2732,6 +2801,11 @@ app.get('/api/users', async (req, res) => {
 // Criar Usuário (com regra de hierarquia: Sócio não pode criar Admin)
 app.post('/api/users', async (req, res) => {
   try {
+    const actor = await resolveAuthenticatedUser(prisma, req);
+    if (!actor || !isPrivilegedUser(actor)) {
+      return res.status(403).json({ error: 'Apenas Administradores e Sócios autenticados podem cadastrar usuários.' });
+    }
+
     const {
       name,
       email,
@@ -2743,7 +2817,6 @@ app.post('/api/users', async (req, res) => {
       sectorPermissions = [],
       screenPermissions = [],
       companyAccessIds = [],
-      actorRole = 'ADMIN',
     } = req.body;
 
     if (!email) {
@@ -2751,7 +2824,7 @@ app.post('/api/users', async (req, res) => {
     }
 
     // Validação de Hierarquia: Sócio não pode criar ADMIN
-    if (actorRole === 'SOCIO' && role === 'ADMIN') {
+    if (actor.role === 'SOCIO' && role === 'ADMIN') {
       return res.status(403).json({ error: 'Sócios não possuem permissão para criar administradores.' });
     }
 
@@ -2837,6 +2910,11 @@ app.post('/api/users', async (req, res) => {
 // Atualizar Usuário e suas Permissões (com regra de hierarquia)
 app.put('/api/users/:id', async (req, res) => {
   try {
+    const actor = await resolveAuthenticatedUser(prisma, req);
+    if (!actor || !isPrivilegedUser(actor)) {
+      return res.status(403).json({ error: 'Apenas Administradores e Sócios autenticados podem editar usuários.' });
+    }
+
     const { id } = req.params;
     const {
       name,
@@ -2850,7 +2928,6 @@ app.put('/api/users/:id', async (req, res) => {
       sectorPermissions,
       screenPermissions,
       companyAccessIds,
-      actorRole = 'ADMIN',
     } = req.body;
 
     const targetUser = await prisma.user.findUnique({ where: { id } });
@@ -2859,7 +2936,7 @@ app.put('/api/users/:id', async (req, res) => {
     }
 
     // Regras de Hierarquia para SÓCIO:
-    if (actorRole === 'SOCIO') {
+    if (actor.role === 'SOCIO') {
       if (targetUser.role === 'ADMIN') {
         return res.status(403).json({ error: 'Sócios não podem modificar administradores.' });
       }
@@ -3015,6 +3092,11 @@ app.get('/api/users/:id/assignments', async (req, res) => {
 app.post('/api/users/:id/offboard', async (req, res) => {
   const clientIp = getClientIp(req);
   try {
+    const actor = await resolveAuthenticatedUser(prisma, req);
+    if (!actor || !isPrivilegedUser(actor)) {
+      return res.status(403).json({ error: 'Apenas Administradores e Sócios autenticados podem desligar colaboradores.' });
+    }
+
     const { id } = req.params;
     const {
       leftAt,
@@ -3022,8 +3104,6 @@ app.post('/api/users/:id/offboard', async (req, res) => {
       transferMode = 'ALL',
       targetUserId,
       reassignments = [],
-      actorRole = 'ADMIN',
-      actorId,
     } = req.body;
 
     const targetUser = await prisma.user.findUnique({ where: { id } });
@@ -3031,11 +3111,11 @@ app.post('/api/users/:id/offboard', async (req, res) => {
       return res.status(404).json({ error: 'Usuário não encontrado' });
     }
 
-    if (actorId && actorId === id) {
+    if (actor.id === id) {
       return res.status(400).json({ error: 'Você não pode desligar sua própria conta.' });
     }
 
-    if (actorRole === 'SOCIO' && (targetUser.role === 'ADMIN' || targetUser.role === 'SOCIO')) {
+    if (actor.role === 'SOCIO' && (targetUser.role === 'ADMIN' || targetUser.role === 'SOCIO')) {
       return res.status(403).json({ error: 'Sócios não podem desligar administradores ou outros sócios.' });
     }
 
@@ -3168,11 +3248,18 @@ app.post('/api/users/:id/offboard', async (req, res) => {
 app.post('/api/users/:id/rehire', async (req, res) => {
   const clientIp = getClientIp(req);
   try {
-    const { id } = req.params;
-    const { actorId } = req.body;
+    const actor = await resolveAuthenticatedUser(prisma, req);
+    if (!actor || !isPrivilegedUser(actor)) {
+      return res.status(403).json({ error: 'Apenas Administradores e Sócios autenticados podem reativar colaboradores.' });
+    }
 
+    const { id } = req.params;
     const user = await prisma.user.findUnique({ where: { id } });
     if (!user) return res.status(404).json({ error: 'Usuário não encontrado' });
+
+    if (actor.role === 'SOCIO' && (user.role === 'ADMIN' || user.role === 'SOCIO')) {
+      return res.status(403).json({ error: 'Sócios não podem reativar administradores ou outros sócios.' });
+    }
 
     await prisma.user.update({
       where: { id },
@@ -3183,17 +3270,17 @@ app.post('/api/users/:id/rehire', async (req, res) => {
       },
     });
 
-    const actorUser = actorId ? await prisma.user.findUnique({ where: { id: actorId } }) : null;
     void logAction(
-      actorId || null,
-      actorUser?.email || '',
-      actorUser?.name || 'Administrador',
+      actor.id,
+      actor.email,
+      actor.name || 'Administrador',
       'REATIVOU_USUARIO',
       'USUARIO',
       user.id,
       {
         usuarioReativado: user.name || user.email,
         emailReativado: user.email,
+        reativadoPor: actor.email,
       },
       clientIp
     );
@@ -3206,23 +3293,42 @@ app.post('/api/users/:id/rehire', async (req, res) => {
   }
 });
 
-// Deletar Usuário (com validação de hierarquia)
+// Deletar Usuário (Restrito a Administradores e Sócios autenticados com validação de hierarquia)
 app.delete('/api/users/:id', async (req, res) => {
   try {
-    const { id } = req.params;
-    const actorRole = (req.query.actorRole as string) || 'ADMIN';
+    const actor = await resolveAuthenticatedUser(prisma, req);
+    if (!actor || !isPrivilegedUser(actor)) {
+      return res.status(403).json({ error: 'Apenas Administradores e Sócios autenticados podem excluir usuários.' });
+    }
 
+    const { id } = req.params;
     const targetUser = await prisma.user.findUnique({ where: { id } });
     if (!targetUser) {
       return res.status(404).json({ error: 'Usuário não encontrado' });
     }
 
-    if (actorRole === 'SOCIO' && (targetUser.role === 'ADMIN' || targetUser.role === 'SOCIO')) {
+    if (actor.id === id) {
+      return res.status(400).json({ error: 'Você não pode excluir sua própria conta.' });
+    }
+
+    if (actor.role === 'SOCIO' && (targetUser.role === 'ADMIN' || targetUser.role === 'SOCIO')) {
       return res.status(403).json({ error: 'Sócios não podem excluir administradores ou outros sócios.' });
     }
 
     await prisma.user.delete({ where: { id } });
     invalidateAllDataCaches();
+
+    void logAction(
+      actor.id,
+      actor.email,
+      actor.name || actor.email,
+      'EXCLUIU_USUARIO',
+      'USUARIO',
+      id,
+      { email: targetUser.email, name: targetUser.name, role: targetUser.role },
+      getClientIp(req)
+    );
+
     res.json({ success: true, message: 'Usuário excluído com sucesso' });
   } catch (error) {
     console.error('Erro ao excluir usuário:', error);
