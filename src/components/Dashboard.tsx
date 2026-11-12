@@ -1,6 +1,6 @@
 import { latestOpenPeriod } from '../config/competenceCalendar';
 import { useCompetenceCalendar } from './useCompetenceCalendar';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import { 
   Building2, 
   Users, 
@@ -38,6 +38,8 @@ import {
   Award,
   MailWarning,
   FileCode,
+  LayoutGrid,
+  BarChart3,
 } from 'lucide-react';
 import './Dashboard.css';
 import './Progress.css';
@@ -229,6 +231,20 @@ interface DashboardProps {
   onLogout?: () => void;
 }
 
+interface DashboardToolItem {
+  id: string;
+  title: string;
+  subtitle: string;
+  category: 'FISCAL' | 'EQUIPE' | 'CLIENTES';
+  icon: any;
+  iconColor: string;
+  badge?: string;
+  badgeBg?: string;
+  badgeColor?: string;
+  action: () => void;
+  privilegedOnly?: boolean;
+}
+
 export function Dashboard({ currentView, onNavigate, currentUser, onLogout }: DashboardProps) {
   const latestPeriod = useCompetenceCalendar();
   const defaultComp = getDefaultCompetence();
@@ -270,7 +286,246 @@ export function Dashboard({ currentView, onNavigate, currentUser, onLogout }: Da
   const [criticalDteCount, setCriticalDteCount] = useState(0);
   const [isSpedValidatorOpen, setIsSpedValidatorOpen] = useState(false);
   const [alertCount, setAlertCount] = useState(0);
+  const [isToolsHubOpen, setIsToolsHubOpen] = useState(false);
+  const [toolsSearchFilter, setToolsSearchFilter] = useState('');
   const isPrivileged = currentUser?.role === 'ADMIN' || currentUser?.role === 'SOCIO';
+
+  const ALL_TOOLS: DashboardToolItem[] = useMemo(() => [
+    // FISCAL & TRIBUTÁRIO
+    {
+      id: 'factor-r',
+      title: 'Simulador do Fator R',
+      subtitle: 'Anexo III (6%) vs Anexo V (15,5%) no Simples Nacional',
+      category: 'FISCAL' as const,
+      icon: Calculator,
+      iconColor: '#c084fc',
+      badge: 'Economia',
+      badgeBg: 'rgba(168, 85, 247, 0.15)',
+      badgeColor: '#c084fc',
+      action: () => { setIsToolsHubOpen(false); setIsFactorROpen(true); },
+    },
+    {
+      id: 'sped-validator',
+      title: 'Pré-Validador SPED (.txt)',
+      subtitle: 'Auditoria de integridade SPED Fiscal & Contribuições',
+      category: 'FISCAL' as const,
+      icon: FileCode,
+      iconColor: '#38bdf8',
+      badge: 'PVA',
+      badgeBg: 'rgba(56, 189, 248, 0.15)',
+      badgeColor: '#7dd3fc',
+      action: () => { setIsToolsHubOpen(false); setIsSpedValidatorOpen(true); },
+    },
+    {
+      id: 'cnd-monitor',
+      title: 'Monitor de Certidões (CNDs)',
+      subtitle: 'Acompanhamento unificado Federal, Estadual, FGTS e Municipal',
+      category: 'FISCAL' as const,
+      icon: ShieldCheck,
+      iconColor: '#10b981',
+      badge: 'Validade',
+      badgeBg: 'rgba(16, 185, 129, 0.15)',
+      badgeColor: '#34d399',
+      action: () => { setIsToolsHubOpen(false); setIsCndOpen(true); },
+    },
+    {
+      id: 'tax-opp',
+      title: 'Radar de Monofásicos',
+      subtitle: 'Recuperação tributária de produtos com tributação monofásica',
+      category: 'FISCAL' as const,
+      icon: Sparkles,
+      iconColor: '#10b981',
+      action: () => { setIsToolsHubOpen(false); setIsTaxOppOpen(true); },
+    },
+    {
+      id: 'tax-sim',
+      title: 'Comparador Tributário',
+      subtitle: 'Simulação comparativa Simples vs Presumido vs Lucro Real',
+      category: 'FISCAL' as const,
+      icon: Calculator,
+      iconColor: '#38bdf8',
+      action: () => { setIsToolsHubOpen(false); setIsTaxSimOpen(true); },
+    },
+    {
+      id: 'tax-reform',
+      title: 'Reforma Tributária (IBS/CBS)',
+      subtitle: 'Simulador de impacto do novo IVA Dual da EC 132/2023',
+      category: 'FISCAL' as const,
+      icon: Landmark,
+      iconColor: '#a855f7',
+      action: () => { setIsToolsHubOpen(false); setIsTaxReformOpen(true); },
+    },
+    {
+      id: 'special-obligations',
+      title: 'Obrigações Especiais e Anuais',
+      subtitle: 'Calendário de DEFIS, ECD, ECF, DIRF e IBGE',
+      category: 'FISCAL' as const,
+      icon: Calendar,
+      iconColor: '#a855f7',
+      action: () => { setIsToolsHubOpen(false); setIsSpecialOpen(true); },
+    },
+    {
+      id: 'poa-monitor',
+      title: 'Procurações Eletrônicas',
+      subtitle: 'Monitor de validade de procurações e-CAC, Caixa e DTE',
+      category: 'FISCAL' as const,
+      icon: KeyRound,
+      iconColor: '#38bdf8',
+      action: () => { setIsToolsHubOpen(false); setIsPoaOpen(true); },
+    },
+
+    // EQUIPE & PRODUTIVIDADE
+    {
+      id: 'workload-therm',
+      title: 'Termômetro de Carga & Burnout',
+      subtitle: 'Equilíbrio da carteira de empresas por analista da equipe',
+      category: 'EQUIPE' as const,
+      icon: Users,
+      iconColor: '#f59e0b',
+      badge: 'Carga',
+      badgeBg: 'rgba(245, 158, 11, 0.15)',
+      badgeColor: '#fbbf24',
+      action: () => { setIsToolsHubOpen(false); setIsWorkloadThermOpen(true); },
+    },
+    {
+      id: 'war-room',
+      title: 'Painel TV War Room',
+      subtitle: 'Modo telão para acompanhamento em tempo real no escritório',
+      category: 'EQUIPE' as const,
+      icon: Tv,
+      iconColor: '#ef4444',
+      action: () => { setIsToolsHubOpen(false); setIsWarRoomOpen(true); },
+    },
+    {
+      id: 'user-activity',
+      title: 'Presença & Horas da Equipe',
+      subtitle: 'Auditoria de horas ativas e produtividade por pessoa',
+      category: 'EQUIPE' as const,
+      icon: Users,
+      iconColor: '#10b981',
+      privilegedOnly: true,
+      action: () => { setIsToolsHubOpen(false); setIsUserActivityOpen(true); },
+    },
+    {
+      id: 'gamification',
+      title: 'Ranking & Gamificação',
+      subtitle: 'Pontuação de agilidade e entrega pontual dos analistas',
+      category: 'EQUIPE' as const,
+      icon: Trophy,
+      iconColor: '#f59e0b',
+      action: () => { setIsToolsHubOpen(false); setIsGamifyOpen(true); },
+    },
+    {
+      id: 'sla-matrix',
+      title: 'Matriz de SLA & Lead Time',
+      subtitle: 'Tempo médio de execução das rotas operacionais',
+      category: 'EQUIPE' as const,
+      icon: Timer,
+      iconColor: '#38bdf8',
+      action: () => { setIsToolsHubOpen(false); setIsSlaOpen(true); },
+    },
+    {
+      id: 'bottlenecks',
+      title: 'Previsor de Gargalos (Dia 20)',
+      subtitle: 'Predição de atrasos críticos para a data limite de fechamento',
+      category: 'EQUIPE' as const,
+      icon: Activity,
+      iconColor: '#38bdf8',
+      action: () => { setIsToolsHubOpen(false); setIsBottleneckOpen(true); },
+    },
+
+    // CLIENTES & GESTÃO
+    {
+      id: 'client-portal',
+      title: 'Portal do Cliente (Uploads)',
+      subtitle: 'Link externo seguro sem senha para envio de documentos',
+      category: 'CLIENTES' as const,
+      icon: Share2,
+      iconColor: '#38bdf8',
+      badge: 'Link Externo',
+      badgeBg: 'rgba(56, 189, 248, 0.15)',
+      badgeColor: '#38bdf8',
+      action: () => { setIsToolsHubOpen(false); setIsClientPortalOpen(true); },
+    },
+    {
+      id: 'doc-rec',
+      title: 'Recepção de Documentos',
+      subtitle: 'Checklist de entrada de extratos e cobrança via WhatsApp',
+      category: 'CLIENTES' as const,
+      icon: FileCheck,
+      iconColor: '#10b981',
+      action: () => { setIsToolsHubOpen(false); setIsDocRecOpen(true); },
+    },
+    {
+      id: 'churn-radar',
+      title: 'Radar de Saúde & Churn',
+      subtitle: 'Indicador de risco de cancelamento e insatisfação de clientes',
+      category: 'CLIENTES' as const,
+      icon: HeartPulse,
+      iconColor: '#ef4444',
+      action: () => { setIsToolsHubOpen(false); setIsChurnOpen(true); },
+    },
+    {
+      id: 'fee-radar',
+      title: 'Radar de Honorários',
+      subtitle: 'Identificação de desvios de escopo e reajuste justo',
+      category: 'CLIENTES' as const,
+      icon: DollarSign,
+      iconColor: '#10b981',
+      privilegedOnly: true,
+      action: () => { setIsToolsHubOpen(false); setIsFeeRadarOpen(true); },
+    },
+    {
+      id: 'pricing',
+      title: 'Calculadora de Precificação',
+      subtitle: 'Rentabilidade real e preço sugerido por contrato',
+      category: 'CLIENTES' as const,
+      icon: DollarSign,
+      iconColor: '#f59e0b',
+      action: () => { setIsToolsHubOpen(false); setIsPricingOpen(true); },
+    },
+    {
+      id: 'extra-services',
+      title: 'Serviços Extras & Avulsos',
+      subtitle: 'Cobrança avulsa de alterações, certidões e retrabalho',
+      category: 'CLIENTES' as const,
+      icon: Tag,
+      iconColor: '#10b981',
+      action: () => { setIsToolsHubOpen(false); setIsExtraServicesOpen(true); },
+    },
+    {
+      id: 'export-excel',
+      title: 'Exportar Competência (Excel)',
+      subtitle: 'Download consolidado de auditoria e relatórios em planilha',
+      category: 'CLIENTES' as const,
+      icon: Download,
+      iconColor: '#38bdf8',
+      action: () => { setIsToolsHubOpen(false); setIsExportOpen(true); },
+    },
+    {
+      id: 'snapshot-freeze',
+      title: 'Congelar Competência',
+      subtitle: 'Snapshot imutável e homologação da competência fechada',
+      category: 'CLIENTES' as const,
+      icon: Snowflake,
+      iconColor: '#60a5fa',
+      privilegedOnly: true,
+      action: () => { setIsToolsHubOpen(false); setIsSnapshotModalOpen(true); },
+    },
+  ], [isPrivileged]);
+
+  const filteredTools: DashboardToolItem[] = useMemo(() => {
+    const q = toolsSearchFilter.trim().toLowerCase();
+    const visible: DashboardToolItem[] = ALL_TOOLS.filter((t: DashboardToolItem) => !t.privilegedOnly || isPrivileged);
+    if (!q) return visible;
+    return visible.filter((t: DashboardToolItem) => t.title.toLowerCase().includes(q) || t.subtitle.toLowerCase().includes(q));
+  }, [ALL_TOOLS, toolsSearchFilter, isPrivileged]);
+
+  const averageCompletionPercent = useMemo(() => {
+    if (!stats?.progress || stats.progress.length === 0) return 0;
+    const sum = stats.progress.reduce((acc, p) => acc + (p.percent || 0), 0);
+    return Math.round(sum / stats.progress.length);
+  }, [stats]);
 
   useEffect(() => {
     fetch(`${API}/api/alerts/summary`)
@@ -493,306 +748,211 @@ export function Dashboard({ currentView, onNavigate, currentUser, onLogout }: Da
             </div>
           </div>
 
-          <div className="crm-header-right" style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+          <div className="crm-header-right" style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'nowrap' }}>
+            {/* Dossiê Mensal & Relatório */}
             <button
               type="button"
-              className="btn-executive-report"
-              style={{ background: 'rgba(239, 68, 68, 0.15)', borderColor: 'rgba(239, 68, 68, 0.4)' }}
-              title="Abrir Painel War Room para TV / Telão do Escritório"
-              onClick={() => setIsWarRoomOpen(true)}
+              className="btn-header-action primary"
+              title="Emitir Dossiê Executivo de Regularidade Mensal (A4)"
+              onClick={() => setIsDossierOpen(true)}
             >
-              <Tv size={16} color="#ef4444" />
-              <span>Painel TV War Room</span>
-            </button>
-
-            {isPrivileged && (
-              <button
-                type="button"
-                className="btn-executive-report"
-                style={{ background: 'rgba(16, 185, 129, 0.15)', borderColor: 'rgba(16, 185, 129, 0.4)' }}
-                title="Radar de Reajuste de Honorários por Desvio de Escopo"
-                onClick={() => setIsFeeRadarOpen(true)}
-              >
-                <DollarSign size={16} color="#10b981" />
-                <span>Radar Honorários</span>
-              </button>
-            )}
-
-            <button
-              type="button"
-              className="btn-executive-report"
-              style={{ background: 'rgba(56, 189, 248, 0.15)', borderColor: 'rgba(56, 189, 248, 0.4)' }}
-              title="Previsão de Gargalos e SLA de Entrega para o Dia 20"
-              onClick={() => setIsBottleneckOpen(true)}
-            >
-              <Activity size={16} color="#38bdf8" />
-              <span>Previsor Gargalos</span>
-            </button>
-
-            {isPrivileged && (
-              <button
-                type="button"
-                className="btn-executive-report"
-                style={{ background: 'rgba(16, 185, 129, 0.15)', borderColor: 'rgba(16, 185, 129, 0.4)' }}
-                title="Painel de Presença, Horas Ativas e Produtividade por Pessoa"
-                onClick={() => setIsUserActivityOpen(true)}
-              >
-                <Users size={16} color="#10b981" />
-                <span>Presença Equipe</span>
-              </button>
-            )}
-
-            <button
-              type="button"
-              className="btn-executive-report"
-              style={{ background: 'rgba(245, 158, 11, 0.15)', borderColor: 'rgba(245, 158, 11, 0.4)' }}
-              title="Ranking e Gamificação de Produtividade da Equipe"
-              onClick={() => setIsGamifyOpen(true)}
-            >
-              <Trophy size={16} color="#f59e0b" />
-              <span>Ranking Equipe</span>
+              <Award size={15} />
+              <span>Dossiê Mensal</span>
             </button>
 
             <button
               type="button"
-              className="btn-executive-report"
-              style={{ background: 'rgba(56, 189, 248, 0.15)', borderColor: 'rgba(56, 189, 248, 0.4)' }}
-              title="Comparador Tributário: Simples vs Presumido vs Real"
-              onClick={() => setIsTaxSimOpen(true)}
+              className="btn-header-action"
+              title="Gerar Relatório Executivo Analítico da Competência"
+              onClick={() => setIsReportOpen(true)}
             >
-              <Calculator size={16} color="#38bdf8" />
-              <span>Simulador Tributário</span>
+              <FileSpreadsheet size={15} />
+              <span>Relatório</span>
             </button>
 
+            {/* Guardião DTE com Badge de Prazos Críticos */}
             <button
               type="button"
-              className="btn-executive-report"
-              style={{ background: 'rgba(16, 185, 129, 0.15)', borderColor: 'rgba(16, 185, 129, 0.4)' }}
-              title="Monitor Unificado de Certidões Negativas (CNDs)"
-              onClick={() => setIsCndOpen(true)}
-            >
-              <ShieldCheck size={16} color="#10b981" />
-              <span>Monitor CNDs</span>
-            </button>
-
-            <button
-              type="button"
-              className="btn-executive-report"
-              style={{ background: 'rgba(168, 85, 247, 0.15)', borderColor: 'rgba(168, 85, 247, 0.4)' }}
-              title="Calendário de Obrigações Especiais e Anuais (DEFIS, ECD, ECF, etc.)"
-              onClick={() => setIsSpecialOpen(true)}
-            >
-              <Calendar size={16} color="#a855f7" />
-              <span>Obrigações Anuais</span>
-            </button>
-
-            <button
-              type="button"
-              className="btn-executive-report"
-              style={{ background: 'rgba(239, 68, 68, 0.15)', borderColor: 'rgba(239, 68, 68, 0.4)' }}
-              title="Radar de Saúde do Cliente & Risco de Churn"
-              onClick={() => setIsChurnOpen(true)}
-            >
-              <HeartPulse size={16} color="#ef4444" />
-              <span>Radar Churn</span>
-            </button>
-
-            <button
-              type="button"
-              className="btn-executive-report"
-              style={{ background: 'rgba(56, 189, 248, 0.15)', borderColor: 'rgba(56, 189, 248, 0.4)' }}
-              title="Matriz de SLA e Lead Time Operacional"
-              onClick={() => setIsSlaOpen(true)}
-            >
-              <Timer size={16} color="#38bdf8" />
-              <span>Matriz SLA</span>
-            </button>
-
-            <button
-              type="button"
-              className="btn-executive-report"
-              style={{ background: 'rgba(16, 185, 129, 0.15)', borderColor: 'rgba(16, 185, 129, 0.4)' }}
-              title="Checklist de Entrada e Recepção de Documentos"
-              onClick={() => setIsDocRecOpen(true)}
-            >
-              <FileCheck size={16} color="#10b981" />
-              <span>Recepção Docs</span>
-            </button>
-
-            <button
-              type="button"
-              className="btn-executive-report"
-              style={{ background: 'rgba(245, 158, 11, 0.15)', borderColor: 'rgba(245, 158, 11, 0.4)' }}
-              title="Calculadora de Precificação Justa & Rentabilidade de Contratos"
-              onClick={() => setIsPricingOpen(true)}
-            >
-              <DollarSign size={16} color="#f59e0b" />
-              <span>Precificação</span>
-            </button>
-
-            <button
-              type="button"
-              className="btn-executive-report"
-              style={{ background: 'rgba(56, 189, 248, 0.15)', borderColor: 'rgba(56, 189, 248, 0.4)' }}
-              title="Exportação Consolidada da Competência (Auditoria & Excel)"
-              onClick={() => setIsExportOpen(true)}
-            >
-              <Download size={16} color="#38bdf8" />
-              <span>Exportar Excel</span>
-            </button>
-
-            <button
-              type="button"
-              className="btn-executive-report"
-              style={{ background: 'rgba(16, 185, 129, 0.15)', borderColor: 'rgba(16, 185, 129, 0.4)' }}
-              title="Radar de Oportunidades Tributárias e Produtos Monofásicos"
-              onClick={() => setIsTaxOppOpen(true)}
-            >
-              <Sparkles size={16} color="#10b981" />
-              <span>Radar Monofásicos</span>
-            </button>
-
-            <button
-              type="button"
-              className="btn-executive-report"
-              style={{ background: 'rgba(245, 158, 11, 0.15)', borderColor: 'rgba(245, 158, 11, 0.4)' }}
-              title="Termômetro de Carga e Risco de Burnout da Equipe"
-              onClick={() => setIsWorkloadThermOpen(true)}
-            >
-              <Users size={16} color="#f59e0b" />
-              <span>Termômetro Carga</span>
-            </button>
-
-            <button
-              type="button"
-              className="btn-executive-report"
-              style={{ background: 'rgba(56, 189, 248, 0.15)', borderColor: 'rgba(56, 189, 248, 0.4)' }}
-              title="Monitor de Validade de Procurações Eletrônicas (e-CAC, Caixa, DTE)"
-              onClick={() => setIsPoaOpen(true)}
-            >
-              <KeyRound size={16} color="#38bdf8" />
-              <span>Procurações</span>
-            </button>
-
-            <button
-              type="button"
-              className="btn-executive-report"
-              style={{ background: 'rgba(168, 85, 247, 0.15)', borderColor: 'rgba(168, 85, 247, 0.4)' }}
-              title="Simulador da Nova Reforma Tributária (IBS/CBS/IVA Dual)"
-              onClick={() => setIsTaxReformOpen(true)}
-            >
-              <Landmark size={16} color="#a855f7" />
-              <span>Reforma Tributária</span>
-            </button>
-
-            <button
-              type="button"
-              className="btn-executive-report"
-              style={{ background: 'rgba(16, 185, 129, 0.15)', borderColor: 'rgba(16, 185, 129, 0.4)' }}
-              title="Central de Serviços Extraordinários e Honorários Adicionais"
-              onClick={() => setIsExtraServicesOpen(true)}
-            >
-              <Tag size={16} color="#10b981" />
-              <span>Serviços Extras</span>
-            </button>
-
-            <button
-              type="button"
-              className="btn-executive-report"
-              style={{ background: 'rgba(56, 189, 248, 0.2)', borderColor: '#38bdf8', color: '#38bdf8' }}
-              title="Compartilhar Link Seguro do Portal do Cliente (Sem Senha)"
-              onClick={() => setIsClientPortalOpen(true)}
-            >
-              <Share2 size={16} color="#38bdf8" />
-              <span>Portal do Cliente</span>
-            </button>
-
-            <button
-              type="button"
-              className="btn-executive-report"
-              style={{ background: 'rgba(168, 85, 247, 0.15)', borderColor: 'rgba(168, 85, 247, 0.4)' }}
-              title="Simulador do Fator R do Simples Nacional (Anexo III vs Anexo V)"
-              onClick={() => setIsFactorROpen(true)}
-            >
-              <Calculator size={16} color="#c084fc" />
-              <span>Fator R</span>
-            </button>
-
-            <button
-              type="button"
-              className="btn-executive-report"
-              style={{ position: 'relative', background: 'rgba(245, 158, 11, 0.15)', borderColor: 'rgba(245, 158, 11, 0.4)' }}
+              className="btn-header-action warning"
+              style={{ position: 'relative' }}
               title="Guardião do DTE & Intimações Eletrônicas da Receita / SEFAZ"
               onClick={() => setIsDteOpen(true)}
             >
-              <MailWarning size={16} color="#f59e0b" />
+              <MailWarning size={15} color="#f59e0b" />
               <span>Guardião DTE</span>
               {criticalDteCount > 0 && (
-                <span
-                  style={{
-                    position: 'absolute',
-                    top: '-6px',
-                    right: '-6px',
-                    background: '#ef4444',
-                    color: '#ffffff',
-                    borderRadius: '10px',
-                    fontSize: '10px',
-                    fontWeight: 700,
-                    padding: '1px 6px',
-                    boxShadow: '0 0 10px rgba(239, 68, 68, 0.7)',
-                  }}
-                  title={`${criticalDteCount} notificação(ões) com prazo crítico (≤ 5 dias)`}
-                >
+                <span className="header-counter-badge" title={`${criticalDteCount} notificação(ões) com prazo crítico (≤ 5 dias)`}>
                   {criticalDteCount}
                 </span>
               )}
             </button>
 
-            <button
-              type="button"
-              className="btn-executive-report"
-              style={{ background: 'rgba(56, 189, 248, 0.15)', borderColor: 'rgba(56, 189, 248, 0.4)' }}
-              title="Pré-Validador Express de Arquivos SPED (.txt)"
-              onClick={() => setIsSpedValidatorOpen(true)}
-            >
-              <FileCode size={16} color="#38bdf8" />
-              <span>Validador SPED</span>
-            </button>
-
-            <button
-              type="button"
-              className="btn-executive-report"
-              style={{ background: 'rgba(16, 185, 129, 0.15)', borderColor: 'rgba(16, 185, 129, 0.4)' }}
-              title="Dossiê Executivo de Regularidade e Conformidade Mensal"
-              onClick={() => setIsDossierOpen(true)}
-            >
-              <Award size={16} color="#10b981" />
-              <span>Dossiê Mensal</span>
-            </button>
-
-            {isPrivileged && (
+            {/* Central de Ferramentas / Tools Hub Popover */}
+            <div className="tools-hub-container">
               <button
                 type="button"
-                className="btn-executive-report"
-                style={{ background: 'rgba(59, 130, 246, 0.15)', borderColor: 'rgba(59, 130, 246, 0.4)' }}
-                title="Congelar e Homologar Snapshot Imutável da Competência"
-                onClick={() => setIsSnapshotModalOpen(true)}
+                className={`btn-header-action tools-hub-btn ${isToolsHubOpen ? 'active' : ''}`}
+                onClick={() => setIsToolsHubOpen((prev) => !prev)}
+                title="Abrir Central com todas as ferramentas e simuladores do Fechamento Pro"
               >
-                <Snowflake size={16} color="#60a5fa" />
-                <span>Congelar Competência</span>
+                <LayoutGrid size={15} color="#38bdf8" />
+                <span>Ferramentas</span>
+                <span className="tools-count-pill">{filteredTools.length}</span>
+                <ChevronDown size={14} className={`tools-arrow ${isToolsHubOpen ? 'open' : ''}`} />
               </button>
-            )}
 
-            <button
-              type="button"
-              className="btn-executive-report"
-              title="Gerar Relatório Executivo da Competência"
-              onClick={() => setIsReportOpen(true)}
-            >
-              <FileSpreadsheet size={16} />
-              <span>Relatório Executivo</span>
-            </button>
+              {isToolsHubOpen && (
+                <>
+                  <div className="tools-hub-backdrop" onClick={() => setIsToolsHubOpen(false)} />
+                  <div className="tools-hub-popover">
+                    <div className="tools-hub-header">
+                      <div className="tools-hub-title">
+                        <Sparkles size={16} color="#38bdf8" />
+                        <strong>Central de Ferramentas & Módulos</strong>
+                        <span className="tools-hint">{filteredTools.length} utilitários</span>
+                      </div>
+                      <div className="tools-hub-search">
+                        <Search size={14} />
+                        <input
+                          type="text"
+                          placeholder="Buscar ferramenta (ex: Fator R, SPED, War Room, CND)..."
+                          value={toolsSearchFilter}
+                          onChange={(e) => setToolsSearchFilter(e.target.value)}
+                          autoFocus
+                        />
+                        {toolsSearchFilter && (
+                          <button type="button" onClick={() => setToolsSearchFilter('')}>
+                            <X size={13} />
+                          </button>
+                        )}
+                      </div>
+                    </div>
 
+                    <div className="tools-hub-grid">
+                      {/* Coluna 1: Fiscal & Tributário */}
+                      <div className="tools-category-col">
+                        <div className="tools-category-header">
+                          <Calculator size={13} color="#a855f7" />
+                          <span>Fiscal & Tributário</span>
+                        </div>
+                        <div className="tools-list">
+                          {filteredTools
+                            .filter((t: DashboardToolItem) => t.category === 'FISCAL')
+                            .map((t: DashboardToolItem) => {
+                              const IconComponent = t.icon;
+                              return (
+                                <button
+                                  key={t.id}
+                                  type="button"
+                                  className="tool-item-card"
+                                  onClick={t.action}
+                                >
+                                  <div className="tool-icon-wrapper" style={{ color: t.iconColor }}>
+                                    <IconComponent size={16} />
+                                  </div>
+                                  <div className="tool-item-content">
+                                    <div className="tool-title-row">
+                                      <span className="tool-title">{t.title}</span>
+                                      {t.badge && (
+                                        <span className="tool-badge" style={{ background: t.badgeBg, color: t.badgeColor }}>
+                                          {t.badge}
+                                        </span>
+                                      )}
+                                    </div>
+                                    <span className="tool-desc">{t.subtitle}</span>
+                                  </div>
+                                </button>
+                              );
+                            })}
+                        </div>
+                      </div>
+
+                      {/* Coluna 2: Equipe & Produtividade */}
+                      <div className="tools-category-col">
+                        <div className="tools-category-header">
+                          <Users size={13} color="#38bdf8" />
+                          <span>Equipe & Produtividade</span>
+                        </div>
+                        <div className="tools-list">
+                          {filteredTools
+                            .filter((t: DashboardToolItem) => t.category === 'EQUIPE')
+                            .map((t: DashboardToolItem) => {
+                              const IconComponent = t.icon;
+                              return (
+                                <button
+                                  key={t.id}
+                                  type="button"
+                                  className="tool-item-card"
+                                  onClick={t.action}
+                                >
+                                  <div className="tool-icon-wrapper" style={{ color: t.iconColor }}>
+                                    <IconComponent size={16} />
+                                  </div>
+                                  <div className="tool-item-content">
+                                    <div className="tool-title-row">
+                                      <span className="tool-title">{t.title}</span>
+                                      {t.badge && (
+                                        <span className="tool-badge" style={{ background: t.badgeBg, color: t.badgeColor }}>
+                                          {t.badge}
+                                        </span>
+                                      )}
+                                    </div>
+                                    <span className="tool-desc">{t.subtitle}</span>
+                                  </div>
+                                </button>
+                              );
+                            })}
+                        </div>
+                      </div>
+
+                      {/* Coluna 3: Clientes & Gestão */}
+                      <div className="tools-category-col">
+                        <div className="tools-category-header">
+                          <DollarSign size={13} color="#10b981" />
+                          <span>Clientes & Gestão</span>
+                        </div>
+                        <div className="tools-list">
+                          {filteredTools
+                            .filter((t: DashboardToolItem) => t.category === 'CLIENTES')
+                            .map((t: DashboardToolItem) => {
+                              const IconComponent = t.icon;
+                              return (
+                                <button
+                                  key={t.id}
+                                  type="button"
+                                  className="tool-item-card"
+                                  onClick={t.action}
+                                >
+                                  <div className="tool-icon-wrapper" style={{ color: t.iconColor }}>
+                                    <IconComponent size={16} />
+                                  </div>
+                                  <div className="tool-item-content">
+                                    <div className="tool-title-row">
+                                      <span className="tool-title">{t.title}</span>
+                                      {t.badge && (
+                                        <span className="tool-badge" style={{ background: t.badgeBg, color: t.badgeColor }}>
+                                          {t.badge}
+                                        </span>
+                                      )}
+                                    </div>
+                                    <span className="tool-desc">{t.subtitle}</span>
+                                  </div>
+                                </button>
+                              );
+                            })}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="tools-hub-footer">
+                      <span>💡 Dica: Você também pode abrir qualquer ferramenta via teclado com <strong>Ctrl + Espaço</strong> ou <strong>/</strong>.</span>
+                    </div>
+                  </div>
+                </>
+              )}
+            </div>
+
+            {/* Central de Alertas Inteligentes */}
             <button
               type="button"
               className="smart-alert-bell-btn"
@@ -803,6 +963,7 @@ export function Dashboard({ currentView, onNavigate, currentUser, onLogout }: Da
               {alertCount > 0 && <span className="bell-badge-count">{alertCount}</span>}
             </button>
 
+            {/* Usuário logado */}
             {currentUser && (
               <div className="crm-user">
                 <div className="avatar">{(currentUser.name || currentUser.email)[0].toUpperCase()}</div>
@@ -824,11 +985,115 @@ export function Dashboard({ currentView, onNavigate, currentUser, onLogout }: Da
             <LoadingSpinner text="Carregando dados da competência..." />
           ) : (
             <>
-              {/* Regime Cards Grid */}
+              {/* 1. HERO KPI BAR: Indicadores Macro do Escritório */}
+              <div className="hero-kpis-grid">
+                <div className="hero-kpi-card">
+                  <div className="hero-kpi-icon blue">
+                    <Building2 size={22} />
+                  </div>
+                  <div className="hero-kpi-data">
+                    <span>Empresas Ativas</span>
+                    <strong>{stats.totalActive}</strong>
+                    <small>Clientes na competência {monthCode}</small>
+                  </div>
+                </div>
+
+                <div className="hero-kpi-card">
+                  <div className="hero-kpi-icon purple">
+                    <Users size={22} />
+                  </div>
+                  <div className="hero-kpi-data">
+                    <span>Vidas / Empregados</span>
+                    <strong>{stats.totalEmployees}</strong>
+                    <small>Processados na folha de pagamento</small>
+                  </div>
+                </div>
+
+                <div className="hero-kpi-card">
+                  <div className="hero-kpi-icon green">
+                    <BarChart3 size={22} />
+                  </div>
+                  <div className="hero-kpi-data">
+                    <span>Conclusão Global</span>
+                    <strong>{averageCompletionPercent}%</strong>
+                    <div className="hero-kpi-mini-bar">
+                      <div className="hero-kpi-mini-fill" style={{ width: `${averageCompletionPercent}%` }} />
+                    </div>
+                  </div>
+                </div>
+
+                <div className="hero-kpi-card" onClick={() => setIsAlertDrawerOpen(true)} style={{ cursor: 'pointer' }} title="Clique para abrir Central de Alertas">
+                  <div className="hero-kpi-icon amber">
+                    <AlertCircle size={22} />
+                  </div>
+                  <div className="hero-kpi-data">
+                    <span>Alertas Operacionais</span>
+                    <strong>{alertCount}</strong>
+                    <small>Pendências na competência</small>
+                  </div>
+                </div>
+              </div>
+
+              {/* 2. ANDAMENTO DO FECHAMENTO POR SETOR (EM PRIMEIRO PLANO) */}
+              <div className="progress-container">
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <h2 className="section-title">Andamento do Fechamento ({monthCode})</h2>
+                  <button 
+                    className="btn btn-outline" 
+                    style={{ fontSize: '0.875rem', padding: '0.25rem 0.75rem' }}
+                    onClick={() => setProgressMode(p => p === 'FIELDS' ? 'COMPANIES' : 'FIELDS')}
+                  >
+                    Alternar Tipo de Progresso
+                  </button>
+                </div>
+                <div className="progress-grid">
+                  {(stats.progress || []).map(sector => {
+                    const cfg = SECTOR_CONFIG[sector.type] || { label: sector.type, color: '#94a3b8' };
+                    const isFields = progressMode === 'FIELDS' && sector.totalFields !== undefined;
+                    const percent = isFields ? (sector.totalFields ? Math.round(((sector.completedFields || 0) / sector.totalFields) * 100) : 0) : sector.percent;
+                    
+                    return (
+                      <div key={sector.type} className="progress-card">
+                        <div className="progress-header">
+                          <h3>{cfg.label}</h3>
+                          <span>{percent}%</span>
+                        </div>
+                        <div className="progress-bar-bg">
+                          <div
+                            className="progress-bar-fill"
+                            style={{ width: `${percent}%`, backgroundColor: cfg.color }}
+                          ></div>
+                        </div>
+                        <div className="progress-meta">
+                          {isFields ? (
+                            <>{sector.completedFields} de {sector.totalFields} {sector.type === 'PARCELAMENTO' ? 'parcelas' : 'campos'}</>
+                          ) : (
+                            <>{sector.completed}/{sector.total} concluídos · {sector.inProgress} em andamento</>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* 3. TERMÔMETRO DE RISCO & PREDIÇÃO DE ATRASO */}
+              <RiskRadarWidget
+                year={selectedYear}
+                month={selectedMonth}
+                currentUserId={currentUser?.id}
+                onNavigateToCompany={() => onNavigate('companies')}
+                onNavigateToSector={(sector) => onNavigate(sector.toLowerCase())}
+              />
+
+              {/* 4. CARTEIRA POR REGIME TRIBUTÁRIO */}
               <div className="regimes-section-header">
-                <span className="section-subtitle">
-                  Competência <strong>{monthCode}</strong> · Clique em um regime tributário para visualizar empresas
-                </span>
+                <div>
+                  <h2 className="section-title">Carteira por Regime Tributário</h2>
+                  <span className="section-subtitle">
+                    Competência <strong>{monthCode}</strong> · Clique em um regime para visualizar as empresas
+                  </span>
+                </div>
               </div>
 
               <div className="tax-regimes-grid">
@@ -977,70 +1242,6 @@ export function Dashboard({ currentView, onNavigate, currentUser, onLogout }: Da
               </div>
             </div>
           )}
-
-              {/* Dashboard Total Summary */}
-              <div className="dashboard-summary">
-                <div className="summary-item">
-                  <Building2 size={20} />
-                  <span>Total Empresas <strong>{stats.totalActive}</strong></span>
-                </div>
-                <div className="summary-item">
-                  <Users size={20} />
-                  <span>Funcionários <strong>{stats.totalEmployees}</strong></span>
-                </div>
-              </div>
-
-              {/* Progresso dos Setores */}
-              <div className="progress-container">
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <h2 className="section-title">Andamento do Fechamento ({monthCode})</h2>
-                  <button 
-                    className="btn btn-outline" 
-                    style={{ fontSize: '0.875rem', padding: '0.25rem 0.75rem' }}
-                    onClick={() => setProgressMode(p => p === 'FIELDS' ? 'COMPANIES' : 'FIELDS')}
-                  >
-                    Alternar Tipo de Progresso
-                  </button>
-                </div>
-                <div className="progress-grid">
-                  {(stats.progress || []).map(sector => {
-                    const cfg = SECTOR_CONFIG[sector.type] || { label: sector.type, color: '#94a3b8' };
-                    const isFields = progressMode === 'FIELDS' && sector.totalFields !== undefined;
-                    const percent = isFields ? (sector.totalFields ? Math.round(((sector.completedFields || 0) / sector.totalFields) * 100) : 0) : sector.percent;
-                    
-                    return (
-                      <div key={sector.type} className="progress-card">
-                        <div className="progress-header">
-                          <h3>{cfg.label}</h3>
-                          <span>{percent}%</span>
-                        </div>
-                        <div className="progress-bar-bg">
-                          <div
-                            className="progress-bar-fill"
-                            style={{ width: `${percent}%`, backgroundColor: cfg.color }}
-                          ></div>
-                        </div>
-                        <div className="progress-meta">
-                          {isFields ? (
-                            <>{sector.completedFields} de {sector.totalFields} {sector.type === 'PARCELAMENTO' ? 'parcelas' : 'campos'}</>
-                          ) : (
-                            <>{sector.completed}/{sector.total} concluídos · {sector.inProgress} em andamento</>
-                          )}
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-
-              {/* Termômetro de Risco & Predição de Atraso */}
-              <RiskRadarWidget
-                year={selectedYear}
-                month={selectedMonth}
-                currentUserId={currentUser?.id}
-                onNavigateToCompany={() => onNavigate('companies')}
-                onNavigateToSector={(sector) => onNavigate(sector.toLowerCase())}
-              />
 
               {/* Movimentações Expansíveis */}
               <div className="movements-container">
