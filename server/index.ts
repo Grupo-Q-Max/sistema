@@ -2602,6 +2602,42 @@ app.get('/api/companies', async (req, res) => {
   }
 });
 
+// Busca individual de empresa por ID com campos descriptografados
+app.get('/api/companies/:id', async (req, res) => {
+  try {
+    const company = await prisma.company.findUnique({
+      where: { id: String(req.params.id) },
+      omit: { legacyData: true },
+      include: {
+        responsibles: {
+          select: {
+            id: true,
+            sector: true,
+            userId: true,
+            user: { select: { id: true, name: true, email: true, role: true } },
+          },
+        },
+      },
+    });
+    if (!company) {
+      return res.status(404).json({ error: 'Empresa não encontrada' });
+    }
+    const formatted = {
+      ...company,
+      code: formatCompanyCode(company.code) || null,
+      certificatePasswordDecrypted: decryptPassword(company.certificatePassword),
+      ginfessPasswordDecrypted: decryptPassword(company.ginfessPassword),
+      gissOnlinePasswordDecrypted: decryptPassword(company.gissOnlinePassword),
+      sdPasswordDecrypted: decryptPassword(company.sdPassword),
+      nfPasswordDecrypted: decryptPassword(company.nfPassword),
+    };
+    res.json(formatted);
+  } catch (error) {
+    console.error('Erro ao buscar empresa por id:', error);
+    res.status(500).json({ error: 'Erro ao buscar empresa' });
+  }
+});
+
 // Criar nova empresa com todos os 22 campos e criptografia
 app.post('/api/companies', async (req, res) => {
   try {

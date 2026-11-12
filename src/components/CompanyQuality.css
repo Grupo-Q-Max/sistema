@@ -1,4 +1,137 @@
 .quality-page{display:flex;flex-direction:column;gap:18px}.quality-page .closings-header{margin-bottom:0}.quality-page button{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:42px}.quality-stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px}.quality-stats>div,.quality-card{background:var(--card-bg);border:1px solid var(--border-color);border-radius:14px;padding:18px;min-width:0}.quality-stats span{display:block;color:var(--text-muted);font-size:.8rem}.quality-stats strong{font-size:1.7rem}.quality-help{color:var(--text-muted);font-size:.82rem;line-height:1.7}.quality-toolbar{display:flex;flex-wrap:wrap;gap:10px}.quality-toolbar label{display:flex;align-items:center;gap:10px;flex:1 1 260px;min-width:0;background:var(--input-bg);border:1px solid var(--border-color);border-radius:9px;padding:0 12px}.quality-toolbar input{width:100%;min-width:0;background:transparent;color:var(--text-main);border:0;padding:12px 0}.quality-toolbar select{padding:10px;border-radius:9px}.quality-list{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,420px),1fr));gap:14px}.quality-company h2{font-size:1rem;overflow-wrap:anywhere}.quality-company p{font-size:.77rem;color:var(--text-muted);margin-top:7px;overflow-wrap:anywhere}.quality-card ul{display:flex;flex-wrap:wrap;gap:8px;list-style:none;margin:16px 0}.quality-card li{display:flex;align-items:center;gap:6px;padding:7px 9px;border-radius:8px;font-size:.76rem;max-width:100%;overflow-wrap:anywhere}.quality-card li svg{flex-shrink:0}.quality-error{color:#fecdd3;background:#411d29;padding:12px;border-radius:9px}.quality-warning{color:#fde68a;background:#3b301a}.quality-actions{display:flex;flex-wrap:wrap;gap:10px}.quality-empty{padding:28px;text-align:center;color:var(--text-muted)}.quality-record{border:1px solid var(--border-color);border-radius:9px;padding:12px;min-width:0}.quality-record summary{cursor:pointer;color:#c4b5fd;font-weight:600}.quality-record dl{margin-top:12px}.quality-record dl>div{display:grid;grid-template-columns:minmax(140px,1fr) 2fr;gap:10px;padding:8px 0;border-bottom:1px solid var(--border-color);overflow-wrap:anywhere}.quality-record dt{color:var(--text-muted);font-size:.8rem}.quality-record dd{font-size:.85rem}.quality-nav-count{margin-left:auto;background:#92400e;color:#fef3c7;border-radius:8px;padding:2px 7px;font-size:.72rem}.quality-sidebar-alert{display:block;margin:0 16px 12px;padding:10px;border:1px solid #8a6736;border-radius:9px;background:#352a17;color:#fde68a;font-size:.76rem;text-decoration:none}.quality-sidebar-alert strong{display:block}.quality-sidebar-alert span{font-size:.7rem}
-@media(max-width:767px){.quality-stats{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.quality-stats>div,.quality-card{padding:14px}.quality-toolbar{display:grid;grid-template-columns:1fr}.quality-toolbar label{min-width:0}.quality-toolbar select{width:100%;min-width:0}.quality-actions>button{flex:1 1 180px}.quality-record dl>div{grid-template-columns:1fr;gap:4px}}
+
+@media(max-width:767px){
+  .quality-stats{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.quality-stats>div,.quality-card{padding:14px}.quality-toolbar{display:grid;grid-template-columns:1fr}.quality-toolbar label{min-width:0}.quality-toolbar select{width:100%;min-width:0}.quality-actions>button{flex:1 1 180px}.quality-record dl>div{grid-template-columns:1fr;gap:4px}
+}
 
 .quality-page h1{display:flex;align-items:center;gap:10px}.quality-actions .btn-primary-gradient{background:#6d28d9;border:1px solid #8b5cf6;color:#fff;padding:10px 13px;border-radius:9px}.quality-actions .btn-primary-gradient:hover{background:#7c3aed}
+
+/* Estilos de Impressão e Geração de PDF (Evita páginas em branco) */
+@media print {
+  body, html {
+    background: #ffffff !important;
+    color: #111827 !important;
+    height: auto !important;
+    overflow: visible !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  .crm-sidebar,
+  .quality-toolbar,
+  .quality-actions,
+  .quality-header-actions,
+  .closing-modal-backdrop,
+  .quality-sidebar-alert {
+    display: none !important;
+  }
+
+  .crm-dashboard,
+  .crm-main,
+  .closings-container,
+  .quality-page {
+    display: block !important;
+    background: #ffffff !important;
+    color: #111827 !important;
+    height: auto !important;
+    min-height: auto !important;
+    overflow: visible !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    position: static !important;
+  }
+
+  .closings-header {
+    border-bottom: 2px solid #e5e7eb !important;
+    padding-bottom: 12px !important;
+    margin-bottom: 16px !important;
+  }
+
+  .closings-header h1 {
+    color: #111827 !important;
+    font-size: 1.4rem !important;
+  }
+
+  .quality-help {
+    color: #4b5563 !important;
+    font-size: 0.85rem !important;
+    margin-bottom: 12px !important;
+  }
+
+  .quality-stats {
+    display: grid !important;
+    grid-template-columns: repeat(4, 1fr) !important;
+    gap: 10px !important;
+    margin-bottom: 16px !important;
+  }
+
+  .quality-stats > div {
+    background: #f3f4f6 !important;
+    border: 1px solid #d1d5db !important;
+    color: #111827 !important;
+    padding: 10px !important;
+    border-radius: 6px !important;
+  }
+
+  .quality-stats span {
+    color: #4b5563 !important;
+    font-size: 0.75rem !important;
+  }
+
+  .quality-stats strong {
+    color: #111827 !important;
+    font-size: 1.3rem !important;
+  }
+
+  .quality-list {
+    display: block !important;
+  }
+
+  .quality-card {
+    background: #ffffff !important;
+    border: 1px solid #d1d5db !important;
+    color: #111827 !important;
+    padding: 12px 14px !important;
+    margin-bottom: 12px !important;
+    border-radius: 6px !important;
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+  }
+
+  .quality-company h2 {
+    color: #111827 !important;
+    font-size: 1rem !important;
+    font-weight: 700 !important;
+  }
+
+  .quality-company p {
+    color: #4b5563 !important;
+    font-size: 0.8rem !important;
+  }
+
+  .quality-card ul {
+    margin: 8px 0 0 0 !important;
+    display: flex !important;
+    flex-wrap: wrap !important;
+    gap: 6px !important;
+  }
+
+  .quality-card li {
+    font-size: 0.76rem !important;
+    border: 1px solid #d1d5db !important;
+    padding: 4px 8px !important;
+    border-radius: 4px !important;
+  }
+
+  .quality-error {
+    background: #fee2e2 !important;
+    color: #991b1b !important;
+    border-color: #fca5a5 !important;
+  }
+
+  .quality-warning {
+    background: #fef3c7 !important;
+    color: #92400e !important;
+    border-color: #fcd34d !important;
+  }
+}

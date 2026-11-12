@@ -140,8 +140,9 @@ const SECTOR_OPTIONS = [
   { key: 'CUSHMAN', label: 'Cushman' },
 ];
 
-function formatCnpjMask(value: string): string {
-  const digits = value.replace(/\D/g, '').slice(0, 14);
+function formatCnpjMask(value: string | null | undefined): string {
+  if (!value) return '';
+  const digits = String(value).replace(/\D/g, '').slice(0, 14);
   if (digits.length === 11) {
     return digits.replace(/^(\d{3})(\d{3})(\d{3})(\d{2})$/, '$1.$2.$3-$4');
   }
@@ -181,7 +182,7 @@ export function Companies({ currentView, onNavigate, currentUser, onLogout }: Co
   const [filterRegime, setFilterRegime] = useState('ALL');
   const [filterType, setFilterType] = useState('ALL');
   const [filterCert, setFilterCert] = useState('ALL');
-  const [filterSituation, setFilterSituation] = useState<'ACTIVE' | 'INACTIVE' | 'ALL'>('ACTIVE');
+  const [filterSituation, setFilterSituation] = useState<'ACTIVE' | 'INACTIVE' | 'EXTERNAL' | 'ALL'>('ACTIVE');
 
   // Modal State
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -291,7 +292,7 @@ export function Companies({ currentView, onNavigate, currentUser, onLogout }: Co
       ]);
       if (compsRes.ok) {
         const data = await compsRes.json();
-        setCompanies(Array.isArray(data)?data.filter(company=>!isExternalInstallmentCompany(company)):[]);
+        setCompanies(Array.isArray(data) ? data : []);
       }
       if (cfgRes && cfgRes.ok) {
         const cfgData = await cfgRes.json();
@@ -461,11 +462,35 @@ export function Companies({ currentView, onNavigate, currentUser, onLogout }: Co
     setIsModalOpen(true);
   };
 
-  useEffect(()=>{
-    const id=sessionStorage.getItem('fechamento_edit_company');
-    if(!id||!companies.length)return;const company=companies.find(item=>item.id===id);
-    if(company){sessionStorage.removeItem('fechamento_edit_company');openEditCompanyModal(company);}
-  },[companies]);
+  useEffect(() => {
+    const id = sessionStorage.getItem('fechamento_edit_company');
+    if (!id) return;
+    if (companies.length) {
+      const company = companies.find((item) => item.id === id);
+      if (company) {
+        sessionStorage.removeItem('fechamento_edit_company');
+        if (isExternalInstallmentCompany(company)) {
+          setFilterSituation('ALL');
+        }
+        openEditCompanyModal(company);
+        return;
+      }
+    }
+    if (!loading && companies.length > 0) {
+      sessionStorage.removeItem('fechamento_edit_company');
+      fetch(`${API}/api/companies/${id}`, {
+        headers: currentUser ? installmentHeaders(currentUser) : {},
+      })
+        .then((res) => (res.ok ? res.json() : null))
+        .then((comp) => {
+          if (comp) {
+            setFilterSituation('ALL');
+            openEditCompanyModal(comp);
+          }
+        })
+        .catch((err) => console.error('Erro ao abrir empresa para edição:', err));
+    }
+  }, [companies, loading]);
 
   useEffect(() => {
     const handleOpenNewCompany = () => openNewCompanyModal();
@@ -724,8 +749,9 @@ export function Companies({ currentView, onNavigate, currentUser, onLogout }: Co
     return companies.filter((c) => {
       if (onlyMyCompanies && !isUserResponsibleForCompany(currentUser, c, null)) return false;
       if (!isPrivileged && !canUserViewCompany(currentUser, c, null)) return false;
-      const search = searchTerm.toLowerCase();
+      const search = searchTerm.toLowerCase().trim();
       const matchSearch =
+        !search ||
         (c.name && c.name.toLowerCase().includes(search)) ||
         (c.tradeName && c.tradeName.toLowerCase().includes(search)) ||
         (c.cnpj && c.cnpj.includes(search)) ||
@@ -733,13 +759,16 @@ export function Companies({ currentView, onNavigate, currentUser, onLogout }: Co
         (c.groupName && c.groupName.toLowerCase().includes(search)) ||
         (c.city && c.city.toLowerCase().includes(search));
 
-      const isCompanyActive = !c.exitDate;
+      const isExternal = isExternalInstallmentCompany(c);
+      const isCompanyActive = !c.exitDate && !isExternal;
       const matchSituation =
-        filterSituation === 'ALL'
+        search.length > 0 || filterSituation === 'ALL'
           ? true
           : filterSituation === 'ACTIVE'
             ? isCompanyActive
-            : !isCompanyActive;
+            : filterSituation === 'INACTIVE'
+              ? !isCompanyActive && !isExternal
+              : isExternal;
 
       const matchRegime = filterRegime === 'ALL' || c.taxRegime === filterRegime;
       const matchType = filterType === 'ALL' || c.companyType === filterType;
@@ -750,14 +779,15 @@ export function Companies({ currentView, onNavigate, currentUser, onLogout }: Co
 
       return matchSearch && matchSituation && matchRegime && matchType && matchCert;
     }).sort((a, b) => compareCodes(a.code, b.code, true));
-  }, [companies, searchTerm, filterRegime, filterType, filterCert, onlyMyCompanies, currentUser, isPrivileged]);
+  }, [companies, searchTerm, filterRegime, filterType, filterCert, filterSituation, onlyMyCompanies, currentUser, isPrivileged]);
 
   const stats = useMemo(() => {
     const total = companies.length;
-    const active = companies.filter((c) => !c.exitDate).length;
+    const active = companies.filter((c) => !c.exitDate && !isExternalInstallmentCompany(c)).length;
+    const external = companies.filter((c) => isExternalInstallmentCompany(c)).length;
     const withCert = companies.filter((c) => c.hasClientCertificate).length;
     const simples = companies.filter((c) => c.taxRegime === 'SIMPLES_NACIONAL').length;
-    return { total, active, withCert, simples };
+    return { total, active, external, withCert, simples };
   }, [companies]);
 
   const getRegimeLabel = (val: string) => {
@@ -884,11 +914,12 @@ export function Companies({ currentView, onNavigate, currentUser, onLogout }: Co
                   onChange={(e) => setFilterSituation(e.target.value as any)}
                   style={{
                     fontWeight: 600,
-                    color: filterSituation === 'ACTIVE' ? '#34d399' : filterSituation === 'INACTIVE' ? '#f87171' : undefined
+                    color: filterSituation === 'ACTIVE' ? '#34d399' : filterSituation === 'INACTIVE' ? '#f87171' : filterSituation === 'EXTERNAL' ? '#c084fc' : undefined
                   }}
                 >
                   <option value="ACTIVE">Situação: Apenas Ativas</option>
                   <option value="INACTIVE">Situação: Inativas (Saíram)</option>
+                  <option value="EXTERNAL">Situação: Externas (Parcelamento)</option>
                   <option value="ALL">Situação: Todas as Empresas</option>
                 </select>
 
@@ -1012,6 +1043,11 @@ export function Companies({ currentView, onNavigate, currentUser, onLogout }: Co
                                   {comp.exitDate && (
                                     <span style={{ fontSize: '10px', padding: '1px 5px', borderRadius: '4px', background: 'rgba(239,68,68,0.2)', color: '#f87171' }}>
                                       Inativa
+                                    </span>
+                                  )}
+                                  {isExternalInstallmentCompany(comp) && (
+                                    <span style={{ fontSize: '10px', padding: '1px 6px', borderRadius: '4px', background: 'rgba(168,85,247,0.2)', color: '#c084fc', border: '1px solid rgba(168,85,247,0.3)' }} title="Empresa cadastrada apenas para controle de parcelamentos (sem obrigações contábeis mensais)">
+                                      Externa · Parcelamento
                                     </span>
                                   )}
                                 </span>
