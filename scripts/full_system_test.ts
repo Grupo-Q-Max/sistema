@@ -367,7 +367,7 @@ async function testSuiteProductionApi() {
     const res = await fetchHttp(`${PROD_URL}/api/backups/generate`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-    }, { actorName: 'TESTE_AUTOMATIZADO_AUDITORIA' }, 45000); // 45s para dump completo de todas as tabelas
+    }, { actorName: 'TESTE_AUTOMATIZADO_AUDITORIA' }, 90000); // 90s para dump e compressão completa do banco de dados em produção
 
     if (res.status === 200 && res.data?.success && res.data?.backup?.filename) {
       record('Produção Live', 'Geração de Snapshot Real de Backup Sob Demanda', 'PASS', res.durationMs, `Arquivo criado: ${res.data.backup.filename}, Tamanho: ${res.data.backup.sizeKb} KB`);
