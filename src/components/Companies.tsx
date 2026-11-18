@@ -30,6 +30,10 @@ import {
   CheckSquare,
   Award,
   Calculator,
+  FileSpreadsheet,
+  Download,
+  ArrowUpDown,
+  SlidersHorizontal,
 } from 'lucide-react';
 import { Sidebar } from './Sidebar';
 import { TableSkeleton, ButtonSpinner } from './LoadingSkeleton';
@@ -42,6 +46,7 @@ import { canUserEditCompany, canUserViewCompany, isUserResponsibleForCompany } f
 import { installmentHeaders } from '../config/installments';
 import { formatFlexibleDateBr } from '../config/dateUtils';
 import { DEFAULT_COMPANY_CATALOG, normalizeCompanyCatalog, mergeOptionsWithCurrent, type CompanyCatalogConfig } from '../config/systemCatalogs';
+import { exportToCsv } from '../utils/exportCsv';
 
 interface Company {
   id: string;
@@ -204,6 +209,14 @@ export function Companies({ currentView, onNavigate, currentUser, onLogout }: Co
   const [isTaxTransitionModalOpen, setIsTaxTransitionModalOpen] = useState(false);
   const [selectedTaxStrategy, setSelectedTaxStrategy] = useState<'NEXT_MONTH' | 'CURRENT_MONTH' | 'SPLIT'>('NEXT_MONTH');
 
+  // Modal de Exportação Excel com Ordenação
+  const [isExportModalOpen, setIsExportModalOpen] = useState(false);
+  const [exportSortBy, setExportSortBy] = useState<'CODE' | 'NAME' | 'TAX_REGIME' | 'CITY' | 'GROUP' | 'SITUATION' | 'CONTRACT_DATE'>('CODE');
+  const [exportSortDirection, setExportSortDirection] = useState<'ASC' | 'DESC'>('ASC');
+  const [exportScope, setExportScope] = useState<'FILTERED' | 'ALL'>('FILTERED');
+  const [exportIncludeCredentials, setExportIncludeCredentials] = useState(false);
+  const [exporting, setExporting] = useState(false);
+
   // Form Fields State
   const [code, setCode] = useState('');
   const [cnpj, setCnpj] = useState('');
@@ -335,14 +348,15 @@ export function Companies({ currentView, onNavigate, currentUser, onLogout }: Co
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
-        if (isTaxTransitionModalOpen) setIsTaxTransitionModalOpen(false);
+        if (isExportModalOpen) setIsExportModalOpen(false);
+        else if (isTaxTransitionModalOpen) setIsTaxTransitionModalOpen(false);
         else if (isExitModalOpen) setIsExitModalOpen(false);
         else if (isModalOpen) setIsModalOpen(false);
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isModalOpen, isExitModalOpen, isTaxTransitionModalOpen]);
+  }, [isModalOpen, isExitModalOpen, isTaxTransitionModalOpen, isExportModalOpen]);
 
   const openNewCompanyModal = () => {
     setEditingCompany(null);
@@ -803,6 +817,190 @@ export function Companies({ currentView, onNavigate, currentUser, onLogout }: Co
     return 'badge-regime--outros';
   };
 
+  const getSortLabel = (sortBy: string) => {
+    switch (sortBy) {
+      case 'CODE': return 'Código';
+      case 'NAME': return 'Ordem Alfabética (Razão Social)';
+      case 'TAX_REGIME': return 'Regime Tributário';
+      case 'CITY': return 'Município / Praça';
+      case 'GROUP': return 'Grupo Empresarial';
+      case 'SITUATION': return 'Situação Cadastral';
+      case 'CONTRACT_DATE': return 'Data de Contrato';
+      default: return sortBy;
+    }
+  };
+
+  const handleExecuteExportExcel = () => {
+    setExporting(true);
+    try {
+      const sourceCompanies = exportScope === 'FILTERED' ? [...filteredCompanies] : [...companies];
+
+      // Ordenação conforme selecionado
+      sourceCompanies.sort((a, b) => {
+        let comparison = 0;
+        switch (exportSortBy) {
+          case 'CODE':
+            comparison = compareCodes(a.code, b.code, true);
+            break;
+          case 'NAME':
+            comparison = (a.name || '').localeCompare(b.name || '', 'pt-BR', { sensitivity: 'base' });
+            break;
+          case 'TAX_REGIME': {
+            const regA = getRegimeLabel(a.taxRegime) || '';
+            const regB = getRegimeLabel(b.taxRegime) || '';
+            comparison = regA.localeCompare(regB, 'pt-BR');
+            if (comparison === 0) comparison = (a.name || '').localeCompare(b.name || '', 'pt-BR');
+            break;
+          }
+          case 'CITY': {
+            const cityA = (a.city || '').trim();
+            const cityB = (b.city || '').trim();
+            comparison = cityA.localeCompare(cityB, 'pt-BR');
+            if (comparison === 0) comparison = compareCodes(a.code, b.code, true);
+            break;
+          }
+          case 'GROUP': {
+            const groupA = (a.groupName || '').trim();
+            const groupB = (b.groupName || '').trim();
+            comparison = groupA.localeCompare(groupB, 'pt-BR');
+            if (comparison === 0) comparison = (a.name || '').localeCompare(b.name || '', 'pt-BR');
+            break;
+          }
+          case 'SITUATION': {
+            const getSitRank = (c: Company) => (c.exitDate ? 2 : isExternalInstallmentCompany(c) ? 3 : 1);
+            comparison = getSitRank(a) - getSitRank(b);
+            if (comparison === 0) comparison = compareCodes(a.code, b.code, true);
+            break;
+          }
+          case 'CONTRACT_DATE': {
+            const dateA = a.contractDate ? new Date(a.contractDate).getTime() : 0;
+            const dateB = b.contractDate ? new Date(b.contractDate).getTime() : 0;
+            comparison = dateA - dateB;
+            if (comparison === 0) comparison = compareCodes(a.code, b.code, true);
+            break;
+          }
+          default:
+            comparison = compareCodes(a.code, b.code, true);
+        }
+
+        return exportSortDirection === 'DESC' ? -comparison : comparison;
+      });
+
+      // Mapeamento dos dados
+      const exportData = sourceCompanies.map((c) => {
+        const isExternal = isExternalInstallmentCompany(c);
+        const situation = c.exitDate
+          ? `Inativa (Saída: ${formatDateToBr(c.exitDate)})`
+          : isExternal
+          ? 'Externa (Parcelamento)'
+          : 'Ativa';
+
+        // Responsáveis atribuídos
+        const responsiblesBySector = (c.responsibles || []).reduce((acc: Record<string, string>, r) => {
+          const sec = (r.sector || 'Geral').toUpperCase();
+          const uName = r.user?.name || r.user?.email || 'Atribuído';
+          acc[sec] = acc[sec] ? `${acc[sec]}, ${uName}` : uName;
+          return acc;
+        }, {});
+
+        const row: Record<string, any> = {
+          code: c.code ? formatCompanyCode(c.code) : 'Sem código',
+          name: c.name || '',
+          tradeName: c.tradeName || '',
+          cnpj: c.cnpj ? formatCnpjMask(c.cnpj) : '',
+          groupName: c.groupName || '',
+          taxRegime: getRegimeLabel(c.taxRegime),
+          companyType: c.companyType || '',
+          deliveryMethod: c.deliveryMethod || '',
+          activeSectors: c.activeSectors === 'TODOS' ? 'Todos' : (c.activeSectors || 'Todos'),
+          city: c.city || '',
+          stateRegistration: c.stateRegistration || '',
+          municipalRegistration: c.municipalRegistration || '',
+          situation,
+          contractDate: formatDateToBr(c.contractDate),
+          obligationStartDate: formatDateToBr(c.obligationStartDate),
+          exitDate: formatDateToBr(c.exitDate),
+          hasClientCertificate: c.hasClientCertificate ? 'Sim' : 'Não',
+          certificateType: c.hasClientCertificate ? (c.certificateType || 'A1') : '',
+          certificateExpiration: formatDateToBr(c.certificateExpiration),
+          targetProxyDate: formatDateToBr(c.targetProxyDate),
+          fgtsProxyDate: formatDateToBr(c.fgtsProxyDate),
+          decProxyDate: formatDateToBr(c.decProxyDate),
+          empregadorProxyDate: formatDateToBr(c.empregadorProxyDate),
+          dissidioMonthYear: c.dissidioMonthYear || '',
+          respFiscal: responsiblesBySector['FISCAL'] || '',
+          respDp: responsiblesBySector['DP'] || '',
+          respContabil: responsiblesBySector['CONTABIL'] || '',
+          respCushman: responsiblesBySector['CUSHMAN'] || '',
+          notes: c.notes || '',
+        };
+
+        if (exportIncludeCredentials) {
+          row.cityHallLink = c.cityHallLink || '';
+          row.cityHallLogin = c.cityHallLogin || '';
+          row.nfAccessType = c.nfAccessType || '';
+          row.nfLogin = c.nfLogin || '';
+        }
+
+        return row;
+      });
+
+      const columns = [
+        { header: 'Código', key: 'code' },
+        { header: 'Razão Social', key: 'name' },
+        { header: 'Nome Fantasia', key: 'tradeName' },
+        { header: 'CNPJ / CPF', key: 'cnpj' },
+        { header: 'Grupo Empresarial', key: 'groupName' },
+        { header: 'Regime Tributário', key: 'taxRegime' },
+        { header: 'Tipo de Empresa', key: 'companyType' },
+        { header: 'Método de Envio', key: 'deliveryMethod' },
+        { header: 'Setores Ativos', key: 'activeSectors' },
+        { header: 'Município', key: 'city' },
+        { header: 'Inscrição Estadual', key: 'stateRegistration' },
+        { header: 'Inscrição Municipal', key: 'municipalRegistration' },
+        { header: 'Situação', key: 'situation' },
+        { header: 'Data de Contrato', key: 'contractDate' },
+        { header: 'Início Obrigação', key: 'obligationStartDate' },
+        { header: 'Data Saída', key: 'exitDate' },
+        { header: 'Certificado Próprio', key: 'hasClientCertificate' },
+        { header: 'Tipo Certificado', key: 'certificateType' },
+        { header: 'Vencimento Certificado', key: 'certificateExpiration' },
+        { header: 'Proc. Receita Federal (Vencimento)', key: 'targetProxyDate' },
+        { header: 'Proc. FGTS Digital (Vencimento)', key: 'fgtsProxyDate' },
+        { header: 'Proc. DEC (Vencimento)', key: 'decProxyDate' },
+        { header: 'Proc. Empregador Web (Vencimento)', key: 'empregadorProxyDate' },
+        { header: 'Mês/Ano Dissídio', key: 'dissidioMonthYear' },
+        { header: 'Responsável Fiscal', key: 'respFiscal' },
+        { header: 'Responsável DP', key: 'respDp' },
+        { header: 'Responsável Contábil', key: 'respContabil' },
+        { header: 'Responsável Cushman', key: 'respCushman' },
+        { header: 'Observações Cadastrais', key: 'notes' },
+      ];
+
+      if (exportIncludeCredentials) {
+        columns.push(
+          { header: 'Link Prefeitura', key: 'cityHallLink' },
+          { header: 'Usuário Prefeitura', key: 'cityHallLogin' },
+          { header: 'Tipo Acesso NF', key: 'nfAccessType' },
+          { header: 'Usuário NF', key: 'nfLogin' }
+        );
+      }
+
+      const today = new Date().toISOString().slice(0, 10);
+      const sortSuffix = exportSortBy.toLowerCase();
+      const filename = `relatorio_empresas_qmax_${sortSuffix}_${today}`;
+
+      exportToCsv(filename, columns, exportData);
+      setIsExportModalOpen(false);
+      showToast(`Planilha gerada com sucesso! (${exportData.length} empresas ordenadas por ${getSortLabel(exportSortBy)})`, 'success');
+    } catch (err: any) {
+      console.error('Erro ao exportar empresas para Excel:', err);
+      showToast('Erro ao exportar dados para Excel.', 'error');
+    } finally {
+      setExporting(false);
+    }
+  };
+
   return (
     <div className="crm-dashboard">
       <Sidebar
@@ -826,7 +1024,17 @@ export function Companies({ currentView, onNavigate, currentUser, onLogout }: Co
             </p>
           </div>
 
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+            <button
+              type="button"
+              className="btn-export-excel"
+              onClick={() => setIsExportModalOpen(true)}
+              title="Exportar catálogo de empresas para planilha Excel"
+            >
+              <FileSpreadsheet size={18} />
+              <span>Exportar Excel</span>
+            </button>
+
             <button
               type="button"
               className="btn-primary"
@@ -2192,6 +2400,193 @@ export function Companies({ currentView, onNavigate, currentUser, onLogout }: Co
             showToast(`Responsável do setor ${sectorLabel} atualizado para ${respName} em ${count} empresa(s)!`, 'success');
           }}
         />
+
+        {/* Modal: Configuração de Exportação para Excel com Ordenação */}
+        {isExportModalOpen && (
+          <div className="modal-overlay" onClick={() => !exporting && setIsExportModalOpen(false)}>
+            <div className="modal-card export-modal-card" onClick={(e) => e.stopPropagation()}>
+              <div className="modal-header">
+                <div className="modal-header-left">
+                  <div className="modal-header-icon" style={{ background: 'rgba(16, 185, 129, 0.15)', border: '1px solid rgba(16, 185, 129, 0.4)', color: '#34d399' }}>
+                    <FileSpreadsheet size={20} />
+                  </div>
+                  <div>
+                    <h2>Exportar Empresas para Excel</h2>
+                    <p style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
+                      Escolha a ordenação dos registros e os dados a incluir no relatório
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setIsExportModalOpen(false)}
+                  disabled={exporting}
+                  style={{ background: 'transparent', border: 'none', color: 'var(--text-muted)', cursor: 'pointer' }}
+                  title="Fechar"
+                >
+                  <X size={20} />
+                </button>
+              </div>
+
+              <div className="modal-body export-modal-body">
+                {/* 1. SELEÇÃO DE ORDENAÇÃO */}
+                <div className="export-section">
+                  <div className="export-section-header">
+                    <ArrowUpDown size={16} color="#34d399" />
+                    <strong>Qual ordenação deseja aplicar na planilha?</strong>
+                  </div>
+                  <div className="export-sort-grid">
+                    {[
+                      { key: 'CODE', title: 'Código da Empresa', desc: 'Ordenação numérica natural (00001, 00002... e sem código ao final)', badge: 'Padrão' },
+                      { key: 'NAME', title: 'Ordem Alfabética (A-Z)', desc: 'Ordenação pela Razão Social em ordem alfabética', badge: 'Alfabética' },
+                      { key: 'TAX_REGIME', title: 'Regime Tributário', desc: 'Agrupado por Simples Nacional, Lucro Presumido, Real, MEI...', badge: 'Tributação' },
+                      { key: 'CITY', title: 'Município / Praça', desc: 'Agrupado alfabeticamente pela cidade onde a empresa está sediada', badge: 'Localização' },
+                      { key: 'GROUP', title: 'Grupo Empresarial', desc: 'Agrupado pelo nome do grupo econômico cadastrado', badge: 'Grupo' },
+                      { key: 'SITUATION', title: 'Situação Cadastral', desc: 'Empresas ativas primeiro, seguidas de inativas e externas', badge: 'Status' },
+                      { key: 'CONTRACT_DATE', title: 'Data de Contrato', desc: 'Ordenado pela data de contrato / início de obrigação', badge: 'Cronológica' },
+                    ].map((opt) => (
+                      <div
+                        key={opt.key}
+                        className={`export-sort-card ${exportSortBy === opt.key ? 'active' : ''}`}
+                        onClick={() => setExportSortBy(opt.key as any)}
+                      >
+                        <div className="export-radio-circle" />
+                        <div className="export-card-content">
+                          <div className="export-card-title-row">
+                            <span className="export-card-title">{opt.title}</span>
+                            <span className={`export-card-badge ${exportSortBy === opt.key ? 'active' : ''}`}>{opt.badge}</span>
+                          </div>
+                          <span className="export-card-desc">{opt.desc}</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* 2. DIREÇÃO DA ORDENAÇÃO */}
+                <div className="export-section">
+                  <div className="export-section-header">
+                    <SlidersHorizontal size={16} color="#38bdf8" />
+                    <strong>Sentido da Ordenação:</strong>
+                  </div>
+                  <div className="export-direction-row">
+                    <button
+                      type="button"
+                      className={`export-dir-btn ${exportSortDirection === 'ASC' ? 'active' : ''}`}
+                      onClick={() => setExportSortDirection('ASC')}
+                    >
+                      <span className="dir-indicator">↑</span>
+                      <span>Crescente (A → Z / 0 → 9 / Mais antigas)</span>
+                    </button>
+                    <button
+                      type="button"
+                      className={`export-dir-btn ${exportSortDirection === 'DESC' ? 'active' : ''}`}
+                      onClick={() => setExportSortDirection('DESC')}
+                    >
+                      <span className="dir-indicator">↓</span>
+                      <span>Decrescente (Z → A / 9 → 0 / Mais recentes)</span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* 3. ESCOPO DOS DADOS */}
+                <div className="export-section">
+                  <div className="export-section-header">
+                    <Layers size={16} color="#a855f7" />
+                    <strong>Empresas a incluir na exportação:</strong>
+                  </div>
+                  <div className="export-scope-row">
+                    <div
+                      className={`export-scope-card ${exportScope === 'FILTERED' ? 'active' : ''}`}
+                      onClick={() => setExportScope('FILTERED')}
+                    >
+                      <div className="export-radio-circle" />
+                      <div className="export-card-content">
+                        <div className="export-card-title-row">
+                          <span className="export-card-title">Visualização Atual (Filtradas)</span>
+                          <span className="export-scope-count">{filteredCompanies.length} empresas</span>
+                        </div>
+                        <span className="export-card-desc">
+                          Exporta apenas as empresas que atendem aos filtros ativos na tela (pesquisa, situação, tributação).
+                        </span>
+                      </div>
+                    </div>
+
+                    <div
+                      className={`export-scope-card ${exportScope === 'ALL' ? 'active' : ''}`}
+                      onClick={() => setExportScope('ALL')}
+                    >
+                      <div className="export-radio-circle" />
+                      <div className="export-card-content">
+                        <div className="export-card-title-row">
+                          <span className="export-card-title">Todas as Empresas</span>
+                          <span className="export-scope-count all">{companies.length} empresas</span>
+                        </div>
+                        <span className="export-card-desc">
+                          Exporta todo o catálogo cadastrado no sistema (ativas, inativas e parcelamento externo).
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* 4. OPÇÕES ADICIONAIS */}
+                <div className="export-section">
+                  <label className="export-checkbox-label">
+                    <input
+                      type="checkbox"
+                      checked={exportIncludeCredentials}
+                      onChange={(e) => setExportIncludeCredentials(e.target.checked)}
+                    />
+                    <div>
+                      <strong>Incluir acessos municipais e da Nota Fiscal</strong>
+                      <span>Adiciona colunas com links de portais e usuários da prefeitura / emissor NF (senhas permanecem protegidas por segurança).</span>
+                    </div>
+                  </label>
+                </div>
+              </div>
+
+              <div className="modal-footer" style={{ padding: '16px 24px', justifyContent: 'space-between', borderTop: '1px solid rgba(255, 255, 255, 0.08)' }}>
+                <div style={{ fontSize: '13px', color: 'var(--text-muted)' }}>
+                  Total a exportar: <strong style={{ color: '#fff' }}>{exportScope === 'FILTERED' ? filteredCompanies.length : companies.length} empresas</strong> · Ordenadas por <strong style={{ color: '#34d399' }}>{getSortLabel(exportSortBy)} ({exportSortDirection === 'ASC' ? 'Crescente' : 'Decrescente'})</strong>
+                </div>
+
+                <div style={{ display: 'flex', gap: '10px' }}>
+                  <button
+                    type="button"
+                    className="btn-secondary"
+                    onClick={() => setIsExportModalOpen(false)}
+                    disabled={exporting}
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    type="button"
+                    className="btn-primary"
+                    onClick={handleExecuteExportExcel}
+                    disabled={exporting || (exportScope === 'FILTERED' ? filteredCompanies.length === 0 : companies.length === 0)}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '8px',
+                      padding: '10px 22px',
+                      background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
+                      color: '#fff',
+                      border: 'none',
+                      borderRadius: '8px',
+                      fontWeight: 600,
+                      cursor: 'pointer',
+                      boxShadow: '0 4px 14px rgba(16, 185, 129, 0.3)'
+                    }}
+                  >
+                    {exporting ? <ButtonSpinner /> : <Download size={17} />}
+                    <span>{exporting ? 'Gerando planilha...' : 'Baixar Planilha Excel'}</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Toast Notification */}
         {toastMsg && (
