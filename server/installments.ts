@@ -170,6 +170,22 @@ export function registerInstallments(app:any,prisma:any,options?:{onChanged?:()=
     notifyChanged();
     res.json({payment});
   }));
+  app.post('/api/installments/plans/:id/batch-settle',endpoint(async(req:any,res:any,user:any)=>{
+    requireEdit(user);const plan=await prisma.installmentPlan.findUnique({where:{id:req.params.id}});if(!plan)failure(404,'Parcelamento não encontrado.');await requireCompanyEdit(user,plan.companyId,[plan]);
+    const upToYear=Number(req.body.upToYear);const upToMonth=Number(req.body.upToMonth);if(!Number.isInteger(upToYear)||upToYear<2000||!Number.isInteger(upToMonth)||upToMonth<1||upToMonth>12)failure(400,'Ano ou mês limite inválido.');
+    const cutoffDate=new Date(Date.UTC(upToYear,upToMonth,0,23,59,59));const currentRules=await rules();const settledNumbers:number[]=[];
+    await prisma.$transaction(async(tx:any)=>{
+      for(let num=1;num<=plan.installmentCount;num++){
+        const item=scheduleItem(plan,num,currentRules);const due=new Date(item.dueDate);
+        if(due<=cutoffDate){
+          settledNumbers.push(num);const data={status:'PAID',paidOn:due,paidAmount:item.amount,note:'Baixa em lote de parcelas anteriores',updatedById:user.id};
+          await tx.installmentPayment.upsert({where:{planId_installmentNumber:{planId:plan.id,installmentNumber:num}},create:{planId:plan.id,installmentNumber:num,...data},update:data});
+        }
+      }
+      if(settledNumbers.length){await tx.installmentEvent.create({data:{planId:plan.id,action:'BATCH_SETTLE',actorId:user.id,data:{settledCount:settledNumbers.length,upTo:`${upToYear}-${String(upToMonth).padStart(2,'0')}`,numbers:settledNumbers}}});}
+    });
+    notifyChanged();res.json({success:true,settledCount:settledNumbers.length});
+  }));
   app.get('/api/installments/plans/:id/events',endpoint(async(req:any,res:any,user:any)=>{const plan=await prisma.installmentPlan.findUnique({where:{id:req.params.id}});if(!plan)failure(404,'Parcelamento não encontrado.');await companyAllowed(user,plan.companyId);const events=await prisma.installmentEvent.findMany({where:{planId:plan.id},orderBy:{createdAt:'desc'},take:100});const ids=Array.from(new Set(events.map((event:any)=>event.actorId)));const users=await prisma.user.findMany({where:{id:{in:ids}},select:{id:true,name:true,email:true}});res.json({events:events.map((event:any)=>({...event,actor:users.find((person:any)=>person.id===event.actorId)||null}))});}));
   app.get('/api/installments/settings',endpoint(async(_req:any,res:any,user:any)=>{
     requireConfiguration(user);
