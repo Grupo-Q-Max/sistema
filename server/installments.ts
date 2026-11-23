@@ -80,7 +80,7 @@ export function registerInstallments(app:any,prisma:any,options?:{onChanged?:()=
   async function formatted(plans:any[],configuration:any){
     const ids=Array.from(new Set(plans.flatMap(plan=>[plan.responsibleId,...plan.payments.map((payment:any)=>payment.updatedById)].filter(Boolean))));
     const people=ids.length?await prisma.user.findMany({where:{id:{in:ids}},select:{id:true,name:true,email:true}}):[];
-    return plans.map(plan=>({...plan,totalAmount:String(plan.totalAmount),responsible:people.find((person:any)=>person.id===plan.responsibleId)||null,payments:undefined,...planOverview(plan,plan.payments.map((payment:any)=>({...payment,updatedBy:people.find((person:any)=>person.id===payment.updatedById)||null})),configuration)}));
+    return plans.map(plan=>({...plan,notes:plan.notes||'',totalAmount:String(plan.totalAmount),responsible:people.find((person:any)=>person.id===plan.responsibleId)||null,payments:undefined,...planOverview(plan,plan.payments.map((payment:any)=>({...payment,updatedBy:people.find((person:any)=>person.id===payment.updatedById)||null})),configuration)}));
   }
   // Cadastro completo: não filtra por competência, saída ou setor Fiscal.
   app.get('/api/installments/companies',endpoint(async(req:any,res:any,user:any)=>{
@@ -124,7 +124,7 @@ export function registerInstallments(app:any,prisma:any,options?:{onChanged?:()=
     const plans=await formatted(stored,configuration);const [types,candidates]=await Promise.all([prisma.installmentType.findMany({orderBy:{name:'asc'}}),prisma.user.findMany({where:{active:true},include:{sectorPermissions:true}})]);
     const people=candidates.filter((person:any)=>installmentAccess(person,true)).map((person:any)=>({id:person.id,name:person.name,email:person.email}));
     const canEditThis=canEditCompanyInstallment(user,company,stored);
-    res.json({plans,types,people,rules:configuration,period,access:{edit:canEditThis,create:canCreateInstallment(user)&&canEditThis},situation:companySituation(plans,period)});
+    res.json({plans,types,people,rules:configuration,period,access:{edit:canEditThis,create:canCreateInstallment(user)&&canEditThis},situation:companySituation(plans,period,configuration)});
   }));
   app.post('/api/installments/summary',endpoint(async(req:any,res:any,user:any)=>{
     const period=reference(req);if(!Array.isArray(req.body.companyIds)||req.body.companyIds.length>5000)failure(400,'Lista de empresas inválida.');const ids=Array.from(new Set(req.body.companyIds.filter((id:any)=>typeof id==='string')));
@@ -134,7 +134,7 @@ export function registerInstallments(app:any,prisma:any,options?:{onChanged?:()=
     const [rawPlans,currentRules]=await Promise.all([prisma.installmentPlan.findMany({where:{companyId:{in:allowed}},include:{payments:true}}),rules()]);
     const plans=await formatted(rawPlans,currentRules);
     const byCompany=new Map<string,any[]>();for(const p of plans){const list=byCompany.get(p.companyId);if(list)list.push(p);else byCompany.set(p.companyId,[p]);}
-    const summaries=Object.fromEntries(allowed.map(id=>[id,companySituation(byCompany.get(id)||[],period)]));res.json({summaries});
+    const summaries=Object.fromEntries(allowed.map(id=>[id,companySituation(byCompany.get(id)||[],period,currentRules)]));res.json({summaries});
   }));
   async function validatePlan(body:any,user:any,existing?:any){
     if(typeof body.typeName!=='string'||!body.typeName.trim()||body.typeName.trim().length>120)failure(400,'Informe o tipo do parcelamento (até 120 caracteres).');
@@ -144,7 +144,9 @@ export function registerInstallments(app:any,prisma:any,options?:{onChanged?:()=
     const policy={...DEFAULT_INSTALLMENT_RULES,...(await rules()),...Object.fromEntries(['lateMode','lateMonthOffset','dueDay','dueMonthOffset'].filter(key=>body[key]!==null&&body[key]!==undefined&&body[key]!=='').map(key=>[key,['lateMonthOffset','dueDay','dueMonthOffset'].includes(key)?Number(body[key]):body[key]]))};const error=validateRules(policy);if(error)failure(400,error);
     if(body.responsibleId){const responsible=await prisma.user.findUnique({where:{id:body.responsibleId},include:{sectorPermissions:true}});if(!responsible?.active||!installmentAccess(responsible,true))failure(400,'Selecione um responsável ativo com permissão de editar parcelamentos.');}
     if(existing){const payments=await prisma.installmentPayment.findMany({where:{planId:existing.id}});if(payments.length&&(normalizePeriod(start).getTime()!==normalizePeriod(new Date(existing.startsAt)).getTime()||count!==existing.installmentCount||Number(existing.totalAmount)!==cents!/100))failure(409,'Há confirmações neste parcelamento. Início, quantidade e valor ficam protegidos para preservar o histórico.');}
-    return {companyId:existing?.companyId||body.companyId,typeName:body.typeName.trim().replace(/\s+/g,' '),totalAmount:decimalMoney(cents!),installmentCount:count,startsAt:start,endsAt:end,status:body.status,responsibleId:body.responsibleId||null,lateMode:body.lateMode||null,lateMonthOffset:body.lateMonthOffset===null||body.lateMonthOffset===undefined||body.lateMonthOffset===''?null:Number(body.lateMonthOffset),dueDay:body.dueDay===null||body.dueDay===undefined||body.dueDay===''?null:Number(body.dueDay),dueMonthOffset:body.dueMonthOffset===null||body.dueMonthOffset===undefined||body.dueMonthOffset===''?null:Number(body.dueMonthOffset)};
+    const rawNotes=typeof body.notes==='string'?body.notes:typeof body.observation==='string'?body.observation:existing?.notes||null;
+    const notes=rawNotes?rawNotes.trim().slice(0,4000):null;
+    return {companyId:existing?.companyId||body.companyId,typeName:body.typeName.trim().replace(/\s+/g,' '),totalAmount:decimalMoney(cents!),installmentCount:count,startsAt:start,endsAt:end,status:body.status,notes,responsibleId:body.responsibleId||null,lateMode:body.lateMode||null,lateMonthOffset:body.lateMonthOffset===null||body.lateMonthOffset===undefined||body.lateMonthOffset===''?null:Number(body.lateMonthOffset),dueDay:body.dueDay===null||body.dueDay===undefined||body.dueDay===''?null:Number(body.dueDay),dueMonthOffset:body.dueMonthOffset===null||body.dueMonthOffset===undefined||body.dueMonthOffset===''?null:Number(body.dueMonthOffset)};
   }
   app.post('/api/installments/plans',endpoint(async(req:any,res:any,user:any)=>{
     if(!canCreateInstallment(user))failure(403,'Sem autorização para criar parcelamentos.');await requireCompanyEdit(user,String(req.body.companyId||''));const data=await validatePlan(req.body,user);
@@ -184,8 +186,8 @@ export function registerInstallments(app:any,prisma:any,options?:{onChanged?:()=
   }));
   app.put('/api/installments/settings',endpoint(async(req:any,res:any,user:any)=>{
     requireConfiguration(user);const error=validateRules(req.body);if(error)failure(400,error);
-    const {lateMode,lateMonthOffset,dueDay,dueMonthOffset}=req.body;
-    const configuration=await prisma.installmentSetting.upsert({where:{id:'global'},create:{id:'global',lateMode,lateMonthOffset,dueDay,dueMonthOffset},update:{lateMode,lateMonthOffset,dueDay,dueMonthOffset}});
+    const {lateMode,lateMonthOffset,dueDay,dueMonthOffset,closingLinkMode}=req.body;
+    const configuration=await prisma.installmentSetting.upsert({where:{id:'global'},create:{id:'global',lateMode,lateMonthOffset,dueDay,dueMonthOffset,closingLinkMode:closingLinkMode||'DUE_NEXT_MONTH'},update:{lateMode,lateMonthOffset,dueDay,dueMonthOffset,closingLinkMode:closingLinkMode||'DUE_NEXT_MONTH'}});
     notifyChanged();
     res.json({rules:configuration});
   }));

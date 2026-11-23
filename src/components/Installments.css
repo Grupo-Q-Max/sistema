@@ -58,6 +58,10 @@
 .installment-company-search { display:flex; align-items:center; gap:10px; margin:18px 0; padding:0 14px; border:1px solid #cbd5e1; border-radius:10px; color:#64748b; background:white; }
 .installment-company-search input { width:100%; padding:14px 0; border:0; background:transparent; color:#1e293b; font:inherit; outline:none; }
 .installment-company-search:focus-within { border-color:#8b5cf6; box-shadow:0 0 0 3px #ede9fe; }
+.installment-notes-inline { display:flex; align-items:flex-start; gap:4px; margin-top:6px; padding:4px 8px; background:#f8fafc; border:1px solid #e2e8f0; border-radius:6px; font-size:.72rem; color:#475569; max-width:260px; white-space:normal; line-height:1.4; word-break:break-word; }
+.installment-row-note { display:flex; align-items:flex-start; gap:4px; margin-top:4px; color:#64748b; font-size:.7rem; max-width:240px; white-space:normal; line-height:1.3; }
+.installment-history-notes { margin-bottom:14px; padding:10px 14px; background:#f8fafc; border:1px solid #e2e8f0; border-left:4px solid #7c3aed; border-radius:8px; font-size:.82rem; color:#334155; line-height:1.5; }
+.installment-regime-tag { color:#7c3aed; font-weight:500; font-size:.78rem; }
 .installment-company-results { display:flex; flex-direction:column; gap:8px; max-height:48vh; overflow:auto; }
 .installment-company-option { display:flex; align-items:center; gap:14px; width:100%; padding:14px; border:1px solid #e2e8f0; border-radius:10px; background:#fff; color:#334155; text-align:left; cursor:pointer; font:inherit; }
 .installment-company-option:hover,.installment-company-option:focus-visible { background:#f5f3ff; border-color:#a78bfa; }

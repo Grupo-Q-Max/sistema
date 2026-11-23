@@ -244,6 +244,29 @@ export function InstallmentSettingsPanel({ currentUser }: { currentUser?: Curren
             ))}
           </select>
         </label>
+        <label className="full-width">
+          Vínculo com o Fechamento Mensal (Regime)
+          <select
+            disabled={saving}
+            value={rules.closingLinkMode || 'DUE_NEXT_MONTH'}
+            onChange={(event) =>
+              setRules({ ...rules, closingLinkMode: event.target.value as any })
+            }
+          >
+            <option value="DUE_NEXT_MONTH">
+              Regime de Caixa (Recomendado) — Parcela que vence no mês seguinte (ex: Fechamento de Outubro monitora a parcela que vence em Novembro)
+            </option>
+            <option value="COMPETENCE">
+              Regime de Competência — Parcela da mesma competência contábil
+            </option>
+            <option value="DUE_SAME_MONTH">
+              Vencimento no próprio mês — Parcela cujo vencimento é no mesmo mês da competência
+            </option>
+          </select>
+          <small>
+            No fechamento contábil e fiscal de Outubro (executado em Novembro), o regime de caixa indica que a equipe deve emitir e enviar a parcela que o cliente deve pagar em Novembro. Assim, a parcela do mês 11 aparece pendente e pronta para confirmação, sem indicar atraso indevido.
+          </small>
+        </label>
       </div>
 
       <div className="installment-example">

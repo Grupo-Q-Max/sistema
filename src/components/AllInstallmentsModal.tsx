@@ -1,6 +1,6 @@
 import {useEffect,useState} from 'react';
 import {Search,FileText,X,ChevronLeft,ChevronRight,RefreshCw,Edit2,Eye} from 'lucide-react';
-import {installmentHeaders,formatMoney} from '../config/installments';
+import {installmentHeaders,formatMoney,filterInstallmentsForClosing,DEFAULT_INSTALLMENT_RULES} from '../config/installments';
 import {isExternalInstallmentCompany} from '../config/installmentCompanies';
 import {exportToCsv} from '../utils/exportCsv';
 import {formatCnpj} from './CompanyDetailsModal';
@@ -19,6 +19,19 @@ export function AllInstallmentsModal({year,month,currentUser,onClose,onSelect,ac
   const [openHeaderFilter, setOpenHeaderFilter] = useState<string | null>(null);
 
   const periodLabel=new Date(Date.UTC(year,month-1,1)).toLocaleDateString('pt-BR',{month:'long',year:'numeric',timeZone:'UTC'});
+  const periodDate = new Date(Date.UTC(year, month - 1, 1));
+  const activeRules = result?.rules || DEFAULT_INSTALLMENT_RULES;
+  const getItem = (plan: any) => filterInstallmentsForClosing(plan.schedule || [], periodDate, activeRules)[0] || null;
+  const getPrior = (plan: any) => {
+    const mode = activeRules.closingLinkMode || 'DUE_NEXT_MONTH';
+    const cutoffDate = mode === 'DUE_NEXT_MONTH'
+      ? new Date(Date.UTC(year, month, 1))
+      : new Date(Date.UTC(year, month - 1, 1));
+    return plan.schedule?.filter((entry: any) => {
+      const d = mode === 'COMPETENCE' ? new Date(entry.period) : new Date(entry.dueDate);
+      return d < cutoffDate && entry.status === 'OVERDUE';
+    }).length || 0;
+  };
   useEffect(()=>{if(!active)return;const close=(event:KeyboardEvent)=>{if(event.key==='Escape')onClose();};window.addEventListener('keydown',close);return()=>window.removeEventListener('keydown',close);},[onClose,active]);
   useEffect(()=>{if(!active)return;const controller=new AbortController();setLoading(true);setError('');setResult(null);
    const timer=window.setTimeout(()=>{void fetch(`${API}/api/installments/plans?year=${year}&month=${month}&offset=${offset}&q=${encodeURIComponent(query)}`,{headers:installmentHeaders(currentUser),signal:controller.signal}).then(async response=>{const data=await response.json();if(!response.ok)throw new Error(data.error||'Não foi possível listar parcelamentos.');if(!controller.signal.aborted)setResult(data);}).catch(cause=>{if(!controller.signal.aborted)setError(cause.message);}).finally(()=>{if(!controller.signal.aborted)setLoading(false);});},250);
@@ -40,15 +53,16 @@ export function AllInstallmentsModal({year,month,currentUser,onClose,onSelect,ac
         { header: 'Status', key: 'status' },
         { header: 'Responsável', key: 'responsible' },
         { header: 'Pagas/Total', key: 'paidStatus' },
-        { header: 'Parcela do Mês', key: 'monthInstallment' },
+        { header: 'Parcela a Enviar', key: 'monthInstallment' },
         { header: 'Vencimento', key: 'dueDate' },
         { header: 'Situação da Parcela', key: 'monthStatus' },
-        { header: 'Atrasos Anteriores', key: 'priorOverdue' }
+        { header: 'Atrasos Anteriores', key: 'priorOverdue' },
+        { header: 'Observação do Parcelamento', key: 'notes' }
       ];
 
       const csvData = data.plans.map((plan: any) => {
-        const item=plan.schedule.find((entry:any)=>new Date(entry.period).getTime()===Date.UTC(year,month-1,1));
-        const prior=plan.schedule.filter((entry:any)=>new Date(entry.period)<new Date(Date.UTC(year,month-1,1))&&entry.status==='OVERDUE').length;
+        const item=getItem(plan);
+        const prior=getPrior(plan);
 
         return {
           companyName: plan.company.name || '',
@@ -62,7 +76,8 @@ export function AllInstallmentsModal({year,month,currentUser,onClose,onSelect,ac
           monthInstallment: item ? `${item.number}/${plan.installmentCount} · ${formatMoney(item.amount)}` : 'Sem parcela no mês',
           dueDate: item ? formatFlexibleDateBr(item.dueDate, '—') : '—',
           monthStatus: item ? labels[item.status] : 'Sem parcela no mês',
-          priorOverdue: prior > 0 ? `${prior} atraso(s)` : '0 atrasos'
+          priorOverdue: prior > 0 ? `${prior} atraso(s)` : '0 atrasos',
+          notes: plan.notes || ''
         };
       });
 
@@ -84,7 +99,7 @@ export function AllInstallmentsModal({year,month,currentUser,onClose,onSelect,ac
       if (responsibleFilter === '__NONE__' ? !!respName : respName !== responsibleFilter) return false;
     }
     if (situationFilter !== 'ALL') {
-      const item = plan.schedule?.find((entry: any) => new Date(entry.period).getTime() === Date.UTC(year, month - 1, 1));
+      const item = getItem(plan);
       const sitStr = item ? (labels[item.status] || item.status) : 'Sem parcela no mês';
       if (sitStr !== situationFilter) return false;
     }
@@ -139,7 +154,7 @@ export function AllInstallmentsModal({year,month,currentUser,onClose,onSelect,ac
     </div>
   </th>
   <th>Pagas / total</th>
-  <th>Parcela do mês</th>
+  <th>Parcela a enviar</th>
   <th>Vencimento</th>
   <th>Ações</th>
   <th>
@@ -153,15 +168,15 @@ export function AllInstallmentsModal({year,month,currentUser,onClose,onSelect,ac
         openHeaderFilter={openHeaderFilter}
         setOpenHeaderFilter={setOpenHeaderFilter}
         options={computeColumnFilterOptions(rawPlans, p => {
-          const item = p.schedule?.find((entry: any) => new Date(entry.period).getTime() === Date.UTC(year, month - 1, 1));
+          const item = getItem(p);
           return item ? (labels[item.status] || item.status) : 'Sem parcela no mês';
         }, { allLabel: 'Todas as situações' })}
       />
     </div>
   </th>
 </tr></thead><tbody>{filteredPlans.map((plan:any)=>{
-  const item=plan.schedule?.find((entry:any)=>new Date(entry.period).getTime()===Date.UTC(year,month-1,1));const prior=plan.schedule?.filter((entry:any)=>new Date(entry.period)<new Date(Date.UTC(year,month-1,1))&&entry.status==='OVERDUE').length || 0;
-  return <tr key={plan.id}><td><strong>{plan.company.name}</strong><small>Código: {plan.company.code||'—'} · {formatCnpj(plan.company.cnpj)}</small>{isExternalInstallmentCompany(plan.company)&&<small>Externa · somente parcelamento</small>}</td><td>{plan.typeName}</td><td>{formatMoney(plan.totalAmount)}</td><td><span className={`installment-badge ${plan.effectiveStatus.toLowerCase()}`}>{labels[plan.effectiveStatus]}</span></td><td>{plan.responsible?.name||plan.responsible?.email||'Não atribuído'}</td><td>{plan.paid}/{plan.installmentCount}</td><td>{item?`${item.number}/${plan.installmentCount} · ${formatMoney(item.amount)}`:'Sem parcela no mês'}</td><td>{item?formatFlexibleDateBr(item.dueDate, '—'):'—'}</td><td><div className="installment-row-actions"><button onClick={()=>onSelect(plan.company,plan.id,'VIEW')}><Eye size={14}/>Ver parcelas</button>{(plan.canEdit ?? result.access.edit)&&<button onClick={()=>onSelect(plan.company,plan.id,'EDIT')}><Edit2 size={14}/>Editar</button>}</div></td><td><span className={`installment-badge ${(item?.status||'na').toLowerCase()}`}>{item?labels[item.status]:'Sem parcela no mês'}</span>{prior>0&&<small className="all-installments-overdue">{prior} atraso(s) anterior(es)</small>}</td></tr>;
+  const item=getItem(plan);const prior=getPrior(plan);
+  return <tr key={plan.id}><td><strong>{plan.company.name}</strong><small>Código: {plan.company.code||'—'} · {formatCnpj(plan.company.cnpj)}</small>{isExternalInstallmentCompany(plan.company)&&<small>Externa · somente parcelamento</small>}</td><td><strong>{plan.typeName}</strong>{plan.notes&&<small className="installment-row-note" title={plan.notes}><FileText size={11} style={{marginRight:3,verticalAlign:'middle'}}/>{plan.notes}</small>}</td><td>{formatMoney(plan.totalAmount)}</td><td><span className={`installment-badge ${plan.effectiveStatus.toLowerCase()}`}>{labels[plan.effectiveStatus]}</span></td><td>{plan.responsible?.name||plan.responsible?.email||'Não atribuído'}</td><td>{plan.paid}/{plan.installmentCount}</td><td>{item?`${item.number}/${plan.installmentCount} · ${formatMoney(item.amount)}`:'Sem parcela no mês'}</td><td>{item?formatFlexibleDateBr(item.dueDate, '—'):'—'}</td><td><div className="installment-row-actions"><button onClick={()=>onSelect(plan.company,plan.id,'VIEW')}><Eye size={14}/>Ver parcelas</button>{(plan.canEdit ?? result.access.edit)&&<button onClick={()=>onSelect(plan.company,plan.id,'EDIT')}><Edit2 size={14}/>Editar</button>}</div></td><td><span className={`installment-badge ${(item?.status||'na').toLowerCase()}`}>{item?labels[item.status]:'Sem parcela no mês'}</span>{prior>0&&<small className="all-installments-overdue">{prior} atraso(s) anterior(es)</small>}</td></tr>;
  })}</tbody></table></div></>}
  <div className="installment-company-pagination"><button className="btn-secondary-light" disabled={loading||offset===0} onClick={()=>setOffset(value=>Math.max(0,value-25))}><ChevronLeft size={16}/>Anterior</button><span>Página {Math.floor(offset/25)+1}</span><button className="btn-secondary-light" disabled={loading||!result?.hasMore} onClick={()=>setOffset(value=>value+25)}>Próxima<ChevronRight size={16}/></button></div>
  </div></section></div>;

@@ -1,8 +1,8 @@
 import {latestOpenPeriod} from './competenceCalendar';
 import {canUserEditCompany, canUserViewCompany} from './companyPermissions';
 
-export type InstallmentRules={lateMode:'MONTH_TURN'|'DUE_DATE';lateMonthOffset:number;dueDay:number;dueMonthOffset:number};
-export const DEFAULT_INSTALLMENT_RULES:InstallmentRules={lateMode:'MONTH_TURN',lateMonthOffset:2,dueDay:20,dueMonthOffset:1};
+export type InstallmentRules={lateMode:'MONTH_TURN'|'DUE_DATE';lateMonthOffset:number;dueDay:number;dueMonthOffset:number;closingLinkMode?:'DUE_NEXT_MONTH'|'COMPETENCE'|'DUE_SAME_MONTH'};
+export const DEFAULT_INSTALLMENT_RULES:InstallmentRules={lateMode:'MONTH_TURN',lateMonthOffset:2,dueDay:20,dueMonthOffset:1,closingLinkMode:'DUE_NEXT_MONTH'};
 
 export function installmentAccess(user:any,edit=false):boolean {
   if(!user)return false;
@@ -47,7 +47,7 @@ export function inputMoney(value:string):string {const text=value.trim().replace
 export function formatMoney(value:any):string {return Number(value||0).toLocaleString('pt-BR',{style:'currency',currency:'BRL'});}
 export function validDate(value:any):Date|null {if(typeof value!=='string'||!/^\d{4}-\d{2}-\d{2}$/.test(value))return null;const date=new Date(`${value}T00:00:00Z`);return Number.isFinite(date.getTime())&&date.toISOString().slice(0,10)===value?date:null;}
 export function endOfPlan(start:Date,count:number):Date {const year=start.getUTCFullYear();const month=start.getUTCMonth()+count-1;const last=new Date(Date.UTC(year,month+1,0)).getUTCDate();return new Date(Date.UTC(year,month,Math.min(start.getUTCDate(),last)));}
-export function validateRules(rules:any):string|null {if(!rules||!['MONTH_TURN','DUE_DATE'].includes(rules.lateMode))return 'Escolha a regra de atraso.';if(!Number.isInteger(rules.lateMonthOffset)||rules.lateMonthOffset<1||rules.lateMonthOffset>12)return 'Informe de 1 a 12 meses para a virada de atraso.';if(!Number.isInteger(rules.dueDay)||rules.dueDay<1||rules.dueDay>31)return 'O dia de vencimento deve ser de 1 a 31.';if(!Number.isInteger(rules.dueMonthOffset)||rules.dueMonthOffset<0||rules.dueMonthOffset>12)return 'Informe de 0 a 12 meses para o vencimento.';return null;}
+export function validateRules(rules:any):string|null {if(!rules||!['MONTH_TURN','DUE_DATE'].includes(rules.lateMode))return 'Escolha a regra de atraso.';if(!Number.isInteger(rules.lateMonthOffset)||rules.lateMonthOffset<1||rules.lateMonthOffset>12)return 'Informe de 1 a 12 meses para a virada de atraso.';if(!Number.isInteger(rules.dueDay)||rules.dueDay<1||rules.dueDay>31)return 'O dia de vencimento deve ser de 1 a 31.';if(!Number.isInteger(rules.dueMonthOffset)||rules.dueMonthOffset<0||rules.dueMonthOffset>12)return 'Informe de 0 a 12 meses para o vencimento.';if(rules.closingLinkMode&&!['DUE_NEXT_MONTH','COMPETENCE','DUE_SAME_MONTH'].includes(rules.closingLinkMode))return 'Escolha o vínculo do parcelamento com o fechamento.';return null;}
 export function dayInBrasilia(now=new Date()):string {const parts=new Intl.DateTimeFormat('en-US',{timeZone:'America/Sao_Paulo',year:'numeric',month:'2-digit',day:'2-digit'}).formatToParts(now);return ['year','month','day'].map(type=>parts.find(part=>part.type===type)!.value).join('-');}
 export function scheduleItem(plan:any,number:number,rules:InstallmentRules,now=new Date(),payment?:any){
   const start=new Date(plan.startsAt);const period=new Date(Date.UTC(start.getUTCFullYear(),start.getUTCMonth()+number-1,1));
@@ -67,14 +67,44 @@ export function planOverview(plan:any,payments:any[],rules:InstallmentRules,now=
   const effectiveStatus=plan.status==='QUITADO'||paid===plan.installmentCount?'QUITADO':plan.status==='ATRASADO'||overdue?'ATRASADO':'ATIVO';
   return {schedule,paid,overdue,pending:schedule.length-paid-overdue,effectiveStatus};
 }
-export function companySituation(plans:any[],period:Date):{status:string;label:string;count:number} {
-  const current=plans.flatMap(plan=>plan.schedule.filter((item:any)=>{
+export function filterInstallmentsForClosing(schedule:any[],period:Date,rules?:Partial<InstallmentRules>):any[] {
+  const mode=rules?.closingLinkMode||'DUE_NEXT_MONTH';
+  const py=period.getUTCFullYear();
+  const pm=period.getUTCMonth();
+  if(mode==='COMPETENCE'){
+    return schedule.filter((item:any)=>{
+      const p=new Date(item.period);
+      return p.getUTCFullYear()===py&&p.getUTCMonth()===pm;
+    });
+  }
+  if(mode==='DUE_SAME_MONTH'){
+    return schedule.filter((item:any)=>{
+      const d=new Date(item.dueDate);
+      return d.getUTCFullYear()===py&&d.getUTCMonth()===pm;
+    });
+  }
+  // DUE_NEXT_MONTH (Regime Caixa padrão): No fechamento do mês M (ex: 10/outubro), exibe parcela que vence no mês M+1 (ex: 11/novembro)
+  const targetDate=new Date(Date.UTC(py,pm+1,1));
+  const ty=targetDate.getUTCFullYear();
+  const tm=targetDate.getUTCMonth();
+  return schedule.filter((item:any)=>{
     const d=new Date(item.dueDate);
-    return d.getUTCFullYear()===period.getUTCFullYear()&&d.getUTCMonth()===period.getUTCMonth();
-  }));
+    return d.getUTCFullYear()===ty&&d.getUTCMonth()===tm;
+  });
+}
+
+export function companySituation(plans:any[],period:Date,rules?:Partial<InstallmentRules>):{status:string;label:string;count:number} {
   if(!plans.length)return {status:'NA',label:'N/A',count:0};
-  const previousLate=plans.flatMap(plan=>plan.schedule).filter((item:any)=>new Date(item.period)<period&&item.status==='OVERDUE').length;
-  if(previousLate)return {status:'OVERDUE',label:'Atrasos anteriores',count:current.length};
+  const current=plans.flatMap(plan=>filterInstallmentsForClosing(plan.schedule,period,rules));
+  const mode=rules?.closingLinkMode||'DUE_NEXT_MONTH';
+  const cutoffDate=mode==='DUE_NEXT_MONTH'
+    ? new Date(Date.UTC(period.getUTCFullYear(),period.getUTCMonth()+1,1))
+    : period;
+  const previousLate=plans.flatMap(plan=>plan.schedule).filter((item:any)=>{
+    const d=mode==='COMPETENCE'?new Date(item.period):new Date(item.dueDate);
+    return d<cutoffDate&&item.status==='OVERDUE';
+  }).length;
+  if(previousLate)return {status:'OVERDUE',label:`Atrasos anteriores (${previousLate})`,count:current.length};
   const late=current.filter((item:any)=>item.status==='OVERDUE').length;
   if(late)return {status:'OVERDUE',label:`Atrasado${late>1?` (${late})`:''}`,count:current.length};
   if(!current.length)return {status:'NO_INSTALLMENT',label:'Sem parcela no mês',count:0};
@@ -99,10 +129,8 @@ export function computeInstallmentsProgress(
     ...(typeof rawSetting?.lateMonthOffset === 'number' ? { lateMonthOffset: rawSetting.lateMonthOffset } : {}),
     ...(typeof rawSetting?.dueDay === 'number' ? { dueDay: rawSetting.dueDay } : {}),
     ...(typeof rawSetting?.dueMonthOffset === 'number' ? { dueMonthOffset: rawSetting.dueMonthOffset } : {}),
+    ...(rawSetting?.closingLinkMode ? { closingLinkMode: rawSetting.closingLinkMode } : {}),
   };
-
-  const y = monthStart.getUTCFullYear();
-  const m = monthStart.getUTCMonth();
 
   const byCompany = new Map<string, any[]>();
   let totalFields = 0;
@@ -118,12 +146,10 @@ export function computeInstallmentsProgress(
     if (list) list.push(enriched);
     else byCompany.set(rawPlan.companyId, [enriched]);
 
-    for (const item of overview.schedule) {
-      const d = new Date(item.dueDate);
-      if (d.getUTCFullYear() === y && d.getUTCMonth() === m) {
-        totalFields++;
-        if (item.status === 'PAID') completedFields++;
-      }
+    const matchingItems = filterInstallmentsForClosing(overview.schedule, monthStart, rules);
+    for (const item of matchingItems) {
+      totalFields++;
+      if (item.status === 'PAID') completedFields++;
     }
   }
 
@@ -132,15 +158,12 @@ export function computeInstallmentsProgress(
   let inProgress = 0;
 
   for (const [, companyPlans] of byCompany.entries()) {
-    const sit = companySituation(companyPlans, monthStart);
+    const sit = companySituation(companyPlans, monthStart, rules);
     if (sit.status === 'NA' || sit.status === 'NO_INSTALLMENT') continue;
     total++;
 
     const monthItems = companyPlans.flatMap((p: any) =>
-      p.schedule.filter((item: any) => {
-        const d = new Date(item.dueDate);
-        return d.getUTCFullYear() === y && d.getUTCMonth() === m;
-      })
+      filterInstallmentsForClosing(p.schedule, monthStart, rules)
     );
 
     if (sit.status === 'PAID') {

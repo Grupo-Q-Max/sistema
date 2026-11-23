@@ -309,6 +309,7 @@ model InstallmentPlan {
   lateMonthOffset  Int?
   dueDay           Int?
   dueMonthOffset   Int?
+  notes            String?              @db.Text
   createdById      String?
   createdAt        DateTime             @default(now())
   updatedAt        DateTime             @updatedAt
@@ -353,6 +354,7 @@ model InstallmentSetting {
   lateMonthOffset Int      @default(2)
   dueDay          Int      @default(20)
   dueMonthOffset  Int      @default(1)
+  closingLinkMode String   @default("DUE_NEXT_MONTH")
   updatedAt       DateTime @updatedAt
 }
 
