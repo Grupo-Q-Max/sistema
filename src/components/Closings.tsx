@@ -321,6 +321,7 @@ export function Closings({ currentView, onNavigate, currentUser, onLogout }: Clo
         if (data.fiscalRegimeRules) setActiveFiscalRegimeRules(data.fiscalRegimeRules);
         const normalizedRows = (data.rows || []).map((r: any) => ({
           ...r,
+          id: r.closingId || r.company?.id,
           columnsData: applyFiscalRegimeRules(r.company?.taxRegime, r.columnsData || {}),
         }));
         setRows(normalizedRows);
@@ -915,34 +916,34 @@ export function Closings({ currentView, onNavigate, currentUser, onLogout }: Clo
     return filteredRows.filter(r => isPrivileged || canEditFiscal || isRowEditable(r));
   }, [filteredRows, isPrivileged, canEditFiscal]);
 
-  const allFilteredSelected = selectableFilteredRows.length > 0 && selectableFilteredRows.every(r => selectedClosingIds.has(r.id));
+  const allFilteredSelected = selectableFilteredRows.length > 0 && selectableFilteredRows.every(r => selectedClosingIds.has(r.company?.id));
 
   const handleToggleSelectAll = () => {
     if (allFilteredSelected) {
       setSelectedClosingIds(new Set());
     } else {
-      setSelectedClosingIds(new Set(selectableFilteredRows.map(r => r.id)));
+      setSelectedClosingIds(new Set(selectableFilteredRows.map(r => r.company?.id).filter(Boolean)));
     }
   };
 
-  const handleToggleSelectRow = (closingId: string) => {
+  const handleToggleSelectRow = (companyId: string) => {
     setSelectedClosingIds(prev => {
       const next = new Set(prev);
-      if (next.has(closingId)) next.delete(closingId);
-      else next.add(closingId);
+      if (next.has(companyId)) next.delete(companyId);
+      else next.add(companyId);
       return next;
     });
   };
 
   const selectedRowsList = useMemo(() => {
-    return rows.filter(r => selectedClosingIds.has(r.id));
+    return rows.filter(r => selectedClosingIds.has(r.company?.id));
   }, [rows, selectedClosingIds]);
 
   const handleBulkSuccess = (updatedResults: any[], message: string) => {
     if (Array.isArray(updatedResults) && updatedResults.length > 0) {
       const byId = new Map(updatedResults.map(u => [u.id, u]));
       setRows(prevRows => prevRows.map(row => {
-        const upd = byId.get(row.id);
+        const upd = byId.get(row.closingId) || byId.get(row.id) || byId.get(row.company?.id);
         if (!upd) return row;
         return {
           ...row,
@@ -1777,8 +1778,8 @@ export function Closings({ currentView, onNavigate, currentUser, onLogout }: Clo
                               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                                 <input
                                   type="checkbox"
-                                  checked={selectedClosingIds.has(r.id)}
-                                  onChange={() => handleToggleSelectRow(r.id)}
+                                  checked={selectedClosingIds.has(c.id)}
+                                  onChange={() => handleToggleSelectRow(c.id)}
                                   disabled={!(isPrivileged || canEditFiscal || isRowEditable(r))}
                                   title={(isPrivileged || canEditFiscal || isRowEditable(r)) ? 'Selecionar para ação em massa' : 'Empresa somente leitura'}
                                   className="bulk-row-checkbox"
@@ -1836,7 +1837,7 @@ export function Closings({ currentView, onNavigate, currentUser, onLogout }: Clo
                                     className="focus-trigger-row-btn"
                                     onClick={(e) => {
                                       e.stopPropagation();
-                                      const idx = filteredRows.findIndex(item => item.id === r.id);
+                                      const idx = filteredRows.findIndex(item => item.company?.id === c.id);
                                       if (idx !== -1) setFocusModeIndex(idx);
                                     }}
                                     title="Abrir no Modo Foco (Preenchimento Rápido Vertical)"
