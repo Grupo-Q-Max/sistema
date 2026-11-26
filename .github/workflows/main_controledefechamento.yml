@@ -11,7 +11,7 @@ on:
 
 concurrency:
   group: azure-deploy-controledefechamento
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   build-and-deploy:
@@ -27,11 +27,19 @@ jobs:
           node-version: '24.x'
           cache: 'npm'
 
-      - name: Install dependencies, generate Prisma and build Vite
+      - name: Install dependencies, generate Prisma and build
         run: |
           npm ci
           npx prisma generate
           npm run build
+
+      - name: Prune devDependencies for production
+        run: |
+          npm prune --omit=dev
+
+      - name: Package production release zip
+        run: |
+          zip -r release.zip dist dist-server node_modules prisma package.json package-lock.json
 
       - name: 'Deploy to Azure Web App'
         uses: azure/webapps-deploy@v3
@@ -39,5 +47,5 @@ jobs:
         with:
           app-name: 'controledefechamento'
           slot-name: 'Production'
-          package: .
+          package: 'release.zip'
           publish-profile: ${{ secrets.AZUREAPPSERVICE_PUBLISHPROFILE_363E514B297F47A1ACD7ABC3AF1471A7 }}
