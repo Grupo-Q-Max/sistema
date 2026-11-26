@@ -39,7 +39,8 @@ jobs:
 
       - name: Package production release zip
         run: |
-          zip -r release.zip dist dist-server node_modules prisma package.json package-lock.json
+          zip -rq release.zip dist dist-server node_modules prisma package.json package-lock.json
+          ls -lh release.zip
 
       - name: 'Deploy to Azure Web App'
         uses: azure/webapps-deploy@v3
