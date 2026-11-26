@@ -911,17 +911,17 @@ export function Closings({ currentView, onNavigate, currentUser, onLogout }: Clo
   const [isFocusModeOpen, setIsFocusModeOpen] = useState(false);
   const [deliveryReportCompanyId, setDeliveryReportCompanyId] = useState<string | null>(null);
 
-  const editableFilteredRows = useMemo(() => {
-    return filteredRows.filter(r => isRowEditable(r));
-  }, [filteredRows]);
+  const selectableFilteredRows = useMemo(() => {
+    return filteredRows.filter(r => isPrivileged || canEditFiscal || isRowEditable(r));
+  }, [filteredRows, isPrivileged, canEditFiscal]);
 
-  const allFilteredSelected = editableFilteredRows.length > 0 && editableFilteredRows.every(r => selectedClosingIds.has(r.id));
+  const allFilteredSelected = selectableFilteredRows.length > 0 && selectableFilteredRows.every(r => selectedClosingIds.has(r.id));
 
   const handleToggleSelectAll = () => {
     if (allFilteredSelected) {
       setSelectedClosingIds(new Set());
     } else {
-      setSelectedClosingIds(new Set(editableFilteredRows.map(r => r.id)));
+      setSelectedClosingIds(new Set(selectableFilteredRows.map(r => r.id)));
     }
   };
 
@@ -1413,20 +1413,20 @@ export function Closings({ currentView, onNavigate, currentUser, onLogout }: Clo
                 <option value="MEI">MEI</option>
               </select>
 
-              {isPrivileged && (
-                <select
-                  className="closings-select"
-                  value={responsibleFilter}
-                  onChange={(e) => setResponsibleFilter(e.target.value)}
-                >
-                  <option value="ALL">Responsável: Todos</option>
-                  {fiscalUsers.map((u) => (
-                    <option key={u.id} value={u.id}>
-                      {u.name || u.email}
-                    </option>
-                  ))}
-                </select>
-              )}
+              <select
+                className="closings-select"
+                aria-label="Filtrar responsável"
+                value={responsibleFilter}
+                onChange={(e) => setResponsibleFilter(e.target.value)}
+              >
+                <option value="ALL">Responsável: Todos</option>
+                <option value="UNASSIGNED">Não atribuído</option>
+                {fiscalUsers.map((u) => (
+                  <option key={u.id} value={u.id}>
+                    {u.name || u.email}
+                  </option>
+                ))}
+              </select>
 
               <select
                 className="closings-select"
@@ -1624,29 +1624,27 @@ export function Closings({ currentView, onNavigate, currentUser, onLogout }: Clo
                       </th>
 
                       {/* 5. Responsável com Ícone de Filtro */}
-                      {isPrivileged && (
-                        <th style={{ minWidth: '130px' }}>
-                          <div className="th-header-cell">
-                            <span>Responsável</span>
-                            <ColumnHeaderFilter
-                              columnKey="responsible"
-                              label="Responsável"
-                              activeFilter={responsibleFilter}
-                              onFilterChange={setResponsibleFilter}
-                              openHeaderFilter={openHeaderFilter}
-                              setOpenHeaderFilter={setOpenHeaderFilter}
-                              options={computeColumnFilterOptions(scopedRows, r => {
-                                const resp = getFiscalResponsible(r.company);
-                                return resp?.userId || resp?.user?.id || null;
-                              }, {
-                                allLabel: 'Todos os Responsáveis',
-                                noneLabel: 'Não atribuído',
-                                valueLabels: Object.fromEntries(fiscalUsers.map(u => [u.id, u.name || u.email]))
-                              })}
-                            />
-                          </div>
-                        </th>
-                      )}
+                      <th style={{ minWidth: '130px' }}>
+                        <div className="th-header-cell">
+                          <span>Responsável</span>
+                          <ColumnHeaderFilter
+                            columnKey="responsible"
+                            label="Responsável"
+                            activeFilter={responsibleFilter}
+                            onFilterChange={setResponsibleFilter}
+                            openHeaderFilter={openHeaderFilter}
+                            setOpenHeaderFilter={setOpenHeaderFilter}
+                            options={computeColumnFilterOptions(scopedRows, r => {
+                              const resp = getFiscalResponsible(r.company);
+                              return resp?.userId || resp?.user?.id || null;
+                            }, {
+                              allLabel: 'Todos os Responsáveis',
+                              noneLabel: 'Não atribuído',
+                              valueLabels: Object.fromEntries(fiscalUsers.map(u => [u.id, u.name || u.email]))
+                            })}
+                          />
+                        </div>
+                      </th>
 
                       <th>CNPJ</th>
                       <th>Observações</th>
@@ -1759,7 +1757,7 @@ export function Closings({ currentView, onNavigate, currentUser, onLogout }: Clo
                   <tbody>
                     {filteredRows.length === 0 ? (
                       <tr>
-                        <td colSpan={(isPrivileged ? 7 : 6) + popupColumns.length + (viewInstallments ? 1 : 0)} style={{ textAlign: 'center', padding: '40px', color: '#94a3b8' }}>
+                        <td colSpan={7 + popupColumns.length + (viewInstallments ? 1 : 0)} style={{ textAlign: 'center', padding: '40px', color: '#94a3b8' }}>
                           Nenhuma empresa encontrada com os filtros selecionados.
                         </td>
                       </tr>
@@ -1781,8 +1779,8 @@ export function Closings({ currentView, onNavigate, currentUser, onLogout }: Clo
                                   type="checkbox"
                                   checked={selectedClosingIds.has(r.id)}
                                   onChange={() => handleToggleSelectRow(r.id)}
-                                  disabled={!isRowEditable(r)}
-                                  title={isRowEditable(r) ? 'Selecionar para ação em massa' : 'Empresa somente leitura'}
+                                  disabled={!(isPrivileged || canEditFiscal || isRowEditable(r))}
+                                  title={(isPrivileged || canEditFiscal || isRowEditable(r)) ? 'Selecionar para ação em massa' : 'Empresa somente leitura'}
                                   className="bulk-row-checkbox"
                                 />
                                 <span style={{ fontWeight: 600, color: '#94a3b8' }}>{formatCompanyCode(c.code) || '—'}</span>
@@ -2035,9 +2033,9 @@ export function Closings({ currentView, onNavigate, currentUser, onLogout }: Clo
                               </span>
                             </td>
 
-                            {/* 5. Responsável (Select editável) */}
-                            {isPrivileged && (
-                              <td>
+                            {/* 5. Responsável (Select editável para admins/sócios, visualização somente leitura para demais) */}
+                            <td>
+                              {isPrivileged ? (
                                 <select
                                   className="table-user-select"
                                   disabled={!isRowEditable(r)}
@@ -2051,8 +2049,15 @@ export function Closings({ currentView, onNavigate, currentUser, onLogout }: Clo
                                     </option>
                                   ))}
                                 </select>
-                              </td>
-                            )}
+                              ) : (
+                                <span
+                                  className={`table-user-readonly ${currentRespId ? 'assigned' : 'unassigned'}`}
+                                  title={fiscalUsers.find(u => u.id === currentRespId)?.name || fiscalUsers.find(u => u.id === currentRespId)?.email || 'Não atribuído'}
+                                >
+                                  {fiscalUsers.find(u => u.id === currentRespId)?.name || fiscalUsers.find(u => u.id === currentRespId)?.email || 'Não atribuído'}
+                                </span>
+                              )}
+                            </td>
 
                             {/* 6. CNPJ com Copiar */}
                             <td>
@@ -2547,14 +2552,14 @@ export function Closings({ currentView, onNavigate, currentUser, onLogout }: Clo
               >
                 Desmarcar
               </button>
-              {isPrivileged && (
+              {(isPrivileged || canEditFiscal) && (
                 <button
                   type="button"
                   className="bulk-btn-assign"
                   onClick={() => setBulkAssignOpen(true)}
                 >
                   <Users size={15} />
-                  Atribuir Responsável
+                  Transferir Responsável
                 </button>
               )}
               <button

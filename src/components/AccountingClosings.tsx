@@ -549,13 +549,11 @@ export function AccountingClosings({currentView,onNavigate,currentUser,onLogout}
         <select className="closings-select" aria-label="Filtrar situação" value={situation} onChange={event=>setSituation(event.target.value)}><option value="ALL">Situação: Todas</option><option value="ACTIVE">Ativas</option><option value="LEFT">Saíram no ano</option></select>
         <select className="closings-select" aria-label="Filtrar tributação" value={regime} onChange={event=>setRegime(event.target.value)}><option value="ALL">Tributação: Todas</option>{regimes.map(value=><option key={value} value={value}>{formatRegimeLabel(value)}</option>)}</select>
         <select className="closings-select" aria-label="Filtrar grupo" value={groupFilter} onChange={event=>setGroupFilter(event.target.value)}><option value="ALL">Grupo: Todos</option>{groups.map(value=><option key={value} value={value}>{value}</option>)}</select>
-        {isPrivileged && (
-          <select className="closings-select" aria-label="Filtrar responsável" value={responsibleFilter} onChange={event=>setResponsibleFilter(event.target.value)}>
-            <option value="ALL">Responsável: Todos</option>
-            <option value="UNASSIGNED">Não atribuído</option>
-            {contabilUsers.map(user=><option key={user.id} value={user.id}>{user.name||user.email}</option>)}
-          </select>
-        )}
+        <select className="closings-select" aria-label="Filtrar responsável" value={responsibleFilter} onChange={event=>setResponsibleFilter(event.target.value)}>
+          <option value="ALL">Responsável: Todos</option>
+          <option value="UNASSIGNED">Não atribuído</option>
+          {contabilUsers.map(user=><option key={user.id} value={user.id}>{user.name||user.email}</option>)}
+        </select>
         <select className="closings-select" aria-label="Filtrar certificado digital" value={certFilter} onChange={event=>setCertFilter(event.target.value)}>
           <option value="ALL">Certificados: Todos</option>
           <option value="EXPIRING">Vencendo ou Vencidos</option>
@@ -633,7 +631,7 @@ export function AccountingClosings({currentView,onNavigate,currentUser,onLogout}
       <div className="payroll-table-meta"><span>{loading?'Carregando...':`${filtered.length} de ${scopedRows.length} empresas`} · Ano {year}</span><span className="payroll-save-status" aria-live="polite">{pending>0?<><ButtonSpinner/>Salvando alterações...</>:<><CheckCircle2 size={14}/>Salvamento automático</>}</span></div>
       {error&&<p className="payroll-error" role="alert">{error}<button onClick={()=>{void load();}}>Tentar novamente</button></p>}
       <div className="closings-table-card">{loading?<div className="payroll-loading"><TableSkeleton count={6}/></div>:<><div className="payroll-scroll-top" ref={upperScroll} onScroll={event=>syncScroll(event.currentTarget,tableScroll.current)}><div style={{width:scrollWidth||4200,height:1}}/></div><div className="closings-table-wrapper payroll-table-scroll" ref={tableScroll} onScroll={event=>syncScroll(event.currentTarget,upperScroll.current)}><table className="closings-table payroll-table accounting-table" style={{minWidth:1400+visibleColumns.length*170}}><thead><tr>
-        {(isPrivileged ? ACCOUNTING_HEADERS : ACCOUNTING_HEADERS.filter(h => h !== 'Responsável')).map((label,index)=>{
+        {ACCOUNTING_HEADERS.map((label,index)=>{
           const isCode = index === 0;
           const isCompany = index === 1;
           const isGroup = label === 'Grupo';
@@ -820,7 +818,7 @@ export function AccountingClosings({currentView,onNavigate,currentUser,onLogout}
             </th>
           );
         })}
-      </tr></thead><tbody>{!filtered.length?<tr><td colSpan={(isPrivileged ? 7 : 6) + visibleColumns.length} className="payroll-empty">Nenhuma empresa encontrada neste ano.</td></tr>:filtered.map(row=>{const company=row.company;const certificate=company.hasClientCertificate?getCertificateStatus(company.certificateExpiration):null;return <tr key={row.closingId}>
+      </tr></thead><tbody>{!filtered.length?<tr><td colSpan={7 + visibleColumns.length} className="payroll-empty">Nenhuma empresa encontrada neste ano.</td></tr>:filtered.map(row=>{const company=row.company;const certificate=company.hasClientCertificate?getCertificateStatus(company.certificateExpiration):null;return <tr key={row.closingId}>
         <td className="sticky-col-code">
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <input
@@ -840,9 +838,18 @@ export function AccountingClosings({currentView,onNavigate,currentUser,onLogout}
         </td>
         <td className="sticky-col-company"><div className="company-cell-wrapper"><button className="company-interactive-link" onClick={()=>setCompanyDetails(company)}><div className="company-link-left"><Building2 size={16} color="#818cf8"/><span>{company.name}</span></div><div className="company-link-icon-chip"><span>Ver Dados</span><ExternalLink size={10}/></div></button>{company.tradeName&&<div className="company-cell-trade">{company.tradeName}</div>}{certificate&&<button className={`cert-warning-tag ${certificate.status==='EXPIRED'?'expired':''}`} onClick={()=>setCompanyDetails(company)}><AlertTriangle size={12}/>{certificate.label}</button>}</div></td>
         <td>{company.groupName ? <span className="group-badge" style={{ padding: '2px 8px', borderRadius: '4px', background: 'rgba(99, 102, 241, 0.1)', color: '#a5b4fc', fontSize: '12px', fontWeight: 500, whiteSpace: 'nowrap' }}>{company.groupName}</span> : <span style={{ color: '#64748b' }}>—</span>}</td>
-        {isPrivileged && (
-          <td><select className="table-user-select" aria-label={`Responsável Contábil de ${company.name}`} value={responsible(company)?.userId||''} disabled={!isRowEditable(row)||pending>0} onChange={event=>{void changeResponsible(row,event.target.value);}}><option value="">Não atribuído</option>{users.map(user=><option key={user.id} value={user.id} disabled={user.active===false}>{user.name||user.email}</option>)}</select></td>
-        )}
+        <td>
+          {isPrivileged ? (
+            <select className="table-user-select" aria-label={`Responsável Contábil de ${company.name}`} value={responsible(company)?.userId||''} disabled={!isRowEditable(row)||pending>0} onChange={event=>{void changeResponsible(row,event.target.value);}}><option value="">Não atribuído</option>{users.map(user=><option key={user.id} value={user.id} disabled={user.active===false}>{user.name||user.email}</option>)}</select>
+          ) : (
+            <span
+              className={`table-user-readonly ${responsible(company)?.userId ? 'assigned' : 'unassigned'}`}
+              title={responsible(company)?.user?.name || responsible(company)?.user?.email || 'Não atribuído'}
+            >
+              {responsible(company)?.user?.name || responsible(company)?.user?.email || 'Não atribuído'}
+            </span>
+          )}
+        </td>
         <td><button className="copy-badge-btn" title="Copiar CNPJ" onClick={()=>{void navigator.clipboard.writeText(company.cnpj||'').then(()=>setCopied('CNPJ copiado!')).catch(()=>setError('Não foi possível copiar.'));}}>{formatCnpj(company.cnpj||'')}<Copy size={12}/></button></td>
         <td><span className={`status-badge ${left(company)?'pending':'completed'}`}>{left(company)?`Saiu em ${new Date(company.exitDate).toLocaleDateString('pt-BR',{timeZone:'UTC'})}`:'Ativa'}</span></td>
         <td><span className={`tax-regime-pill ${company.taxRegime==='SIMPLES_NACIONAL'?'simples':company.taxRegime?.includes('PRESUMIDO')?'presumido':company.taxRegime?.includes('REAL')?'real':company.taxRegime==='MEI'?'mei':''}`}>{formatRegimeLabel(company.taxRegime||'')}</span></td>
@@ -893,14 +900,14 @@ export function AccountingClosings({currentView,onNavigate,currentUser,onLogout}
         </span>
       </div>
       <div className="bulk-bar-actions">
-        {isPrivileged && (
+        {(isPrivileged || canEdit) && (
           <button
             type="button"
             className="bulk-btn-assign"
             onClick={() => setBulkAssignOpen(true)}
           >
             <Users size={16} />
-            <span>Atribuir Responsável em Massa</span>
+            <span>Transferir Responsável em Massa</span>
           </button>
         )}
         <button

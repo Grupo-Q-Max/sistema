@@ -653,6 +653,29 @@
   color: #ffffff;
 }
 
+/* Responsible Read-only Badge for regular sector users */
+.table-user-readonly {
+  display: inline-flex;
+  align-items: center;
+  font-size: 0.8rem;
+  font-weight: 500;
+  padding: 5px 10px;
+  border-radius: 6px;
+  max-width: 150px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.table-user-readonly.assigned {
+  background: rgba(99, 102, 241, 0.12);
+  border: 1px solid rgba(99, 102, 241, 0.25);
+  color: #c7d2fe;
+}
+.table-user-readonly.unassigned {
+  color: #64748b;
+  font-style: italic;
+}
+
 /* Copy CNPJ / Password Buttons */
 .copy-badge-btn {
   display: inline-flex;
