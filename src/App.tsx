@@ -14,6 +14,7 @@ const Closings = lazy(() => import('./components/Closings').then(m => ({ default
 const PayrollClosings = lazy(() => import('./components/PayrollClosings').then(m => ({ default: m.PayrollClosings })));
 const AccountingClosings = lazy(() => import('./components/AccountingClosings').then(m => ({ default: m.AccountingClosings })));
 const CushmanClosings = lazy(() => import('./components/CushmanClosings').then(m => ({ default: m.CushmanClosings })));
+const BpoClosings = lazy(() => import('./components/BpoClosings').then(m => ({ default: m.BpoClosings })));
 const Companies = lazy(() => import('./components/Companies').then(m => ({ default: m.Companies })));
 const Analytics = lazy(() => import('./components/Analytics').then(m => ({ default: m.Analytics })));
 const Settings = lazy(() => import('./components/Settings').then(m => ({ default: m.Settings })));
@@ -134,9 +135,11 @@ function App() {
     if (user.role === 'ADMIN' || user.role === 'SOCIO') return 'dashboard';
     if (user.role === 'CADASTRO') return 'companies';
     if (user.role === 'CUSHMAN') return 'closings-cushman';
+    if (user.role === 'FINANCEIRO') return 'closings-bpo';
     if (hasSectorAccess(user, 'FISCAL')) return 'closings';
     if (hasSectorAccess(user, 'DP')) return 'closings-dp';
     if (hasSectorAccess(user, 'CONTABIL')) return 'closings-accounting';
+    if (hasSectorAccess(user, 'BPO')) return 'closings-bpo';
     if (hasSectorAccess(user, 'CUSHMAN')) return 'closings-cushman';
     return 'companies';
   };
@@ -157,6 +160,12 @@ function App() {
     } else if (target === 'closings-accounting' && !hasSectorAccess(currentUser, 'CONTABIL')) {
       target = hasSectorAccess(currentUser, 'FISCAL') ? 'closings'
         : hasSectorAccess(currentUser, 'DP') ? 'closings-dp'
+        : hasSectorAccess(currentUser, 'CUSHMAN') ? 'closings-cushman'
+        : fallbackView;
+    } else if (target === 'closings-bpo' && !hasSectorAccess(currentUser, 'BPO')) {
+      target = hasSectorAccess(currentUser, 'FISCAL') ? 'closings'
+        : hasSectorAccess(currentUser, 'DP') ? 'closings-dp'
+        : hasSectorAccess(currentUser, 'CONTABIL') ? 'closings-accounting'
         : hasSectorAccess(currentUser, 'CUSHMAN') ? 'closings-cushman'
         : fallbackView;
     } else if (target === 'closings-cushman' && !hasSectorAccess(currentUser, 'CUSHMAN')) {
@@ -298,6 +307,8 @@ function App() {
     if (currentView === 'analytics') return <Analytics currentView={currentView} onNavigate={handleNavigate} currentUser={currentUser} onLogout={handleLogout} />;
 
     if (currentView === 'closings-cushman') return <CushmanClosings currentView={currentView} onNavigate={handleNavigate} currentUser={currentUser} onLogout={handleLogout}/>;
+
+    if (currentView === 'closings-bpo') return <BpoClosings currentView={currentView} onNavigate={handleNavigate} currentUser={currentUser} onLogout={handleLogout} />;
 
     if (currentView === 'closings-accounting') return <AccountingClosings currentView={currentView} onNavigate={handleNavigate} currentUser={currentUser} onLogout={handleLogout} />;
 

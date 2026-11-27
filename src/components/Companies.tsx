@@ -33,6 +33,8 @@ import {
   FileSpreadsheet,
   Download,
   ArrowUpDown,
+  DollarSign,
+  Trash2,
   SlidersHorizontal,
 } from 'lucide-react';
 import { Sidebar } from './Sidebar';
@@ -99,6 +101,8 @@ interface Company {
   isSuspended?: boolean;
   suspendedAt?: string | null;
   suspendedReason?: string | null;
+  hasBpo?: boolean;
+  bpoConfig?: any;
   responsibles?: Array<{
     id: string;
     sector?: string | null;
@@ -146,6 +150,7 @@ const SECTOR_OPTIONS = [
   { key: 'FISCAL', label: 'Fiscal' },
   { key: 'DP', label: 'DP' },
   { key: 'CONTABIL', label: 'Contábil' },
+  { key: 'BPO', label: 'BPO Financeiro' },
   { key: 'CUSHMAN', label: 'Cushman' },
 ];
 
@@ -191,7 +196,7 @@ export function Companies({ currentView, onNavigate, currentUser, onLogout }: Co
   const [filterRegime, setFilterRegime] = useState('ALL');
   const [filterType, setFilterType] = useState('ALL');
   const [filterCert, setFilterCert] = useState('ALL');
-  const [filterSituation, setFilterSituation] = useState<'ACTIVE' | 'SUSPENDED' | 'INACTIVE' | 'EXTERNAL' | 'ALL'>('ACTIVE');
+  const [filterSituation, setFilterSituation] = useState<'ACTIVE' | 'BPO' | 'SUSPENDED' | 'INACTIVE' | 'EXTERNAL' | 'ALL'>('ACTIVE');
 
   // Modal State
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -265,6 +270,14 @@ export function Companies({ currentView, onNavigate, currentUser, onLogout }: Co
   const [notesScope, setNotesScope] = useState('GERAL');
   const [isSuspended, setIsSuspended] = useState(false);
   const [suspendedReason, setSuspendedReason] = useState('');
+  const [hasBpo, setHasBpo] = useState(false);
+  const [bpoSystemName, setBpoSystemName] = useState('');
+  const [bpoSystemUser, setBpoSystemUser] = useState('');
+  const [bpoSystemPass, setBpoSystemPass] = useState('');
+  const [bpoBankPhone, setBpoBankPhone] = useState('');
+  const [bpoImplementation, setBpoImplementation] = useState('SIM');
+  const [bpoCostCenter, setBpoCostCenter] = useState('SIM');
+  const [bpoBanks, setBpoBanks] = useState<any[]>([]);
 
   // Password visibility toggles
   const [showCertPwd, setShowCertPwd] = useState(false);
@@ -412,6 +425,14 @@ export function Companies({ currentView, onNavigate, currentUser, onLogout }: Co
     setNotesScope('GERAL');
     setIsSuspended(false);
     setSuspendedReason('');
+    setHasBpo(false);
+    setBpoSystemName('');
+    setBpoSystemUser('');
+    setBpoSystemPass('');
+    setBpoBankPhone('');
+    setBpoImplementation('SIM');
+    setBpoCostCenter('SIM');
+    setBpoBanks([]);
 
     setModalError(null);
     setModalSuccess(null);
@@ -477,6 +498,15 @@ export function Companies({ currentView, onNavigate, currentUser, onLogout }: Co
     setNotesScope(company.notesScope || 'GERAL');
     setIsSuspended(Boolean(company.isSuspended));
     setSuspendedReason(company.suspendedReason || '');
+    setHasBpo(Boolean(company.hasBpo));
+    const cfg = company.bpoConfig || {};
+    setBpoSystemName(cfg.system?.name || '');
+    setBpoSystemUser(cfg.system?.user || '');
+    setBpoSystemPass(cfg.system?.pass || '');
+    setBpoBankPhone(cfg.bankPhone || '');
+    setBpoImplementation(cfg.implementation || 'SIM');
+    setBpoCostCenter(cfg.costCenter || 'SIM');
+    setBpoBanks(Array.isArray(cfg.banks) ? cfg.banks : []);
 
     setModalError(null);
     setModalSuccess(null);
@@ -627,6 +657,16 @@ export function Companies({ currentView, onNavigate, currentUser, onLogout }: Co
       notesScope,
       isSuspended,
       suspendedReason: isSuspended ? suspendedReason.trim() : null,
+      hasBpo,
+      bpoConfig: hasBpo
+        ? {
+            system: { name: bpoSystemName.trim(), user: bpoSystemUser.trim(), pass: bpoSystemPass },
+            bankPhone: bpoBankPhone.trim(),
+            implementation: bpoImplementation,
+            costCenter: bpoCostCenter,
+            banks: bpoBanks,
+          }
+        : null,
       transitionStrategy,
       userId: currentUser?.id,
       userName: currentUser?.name,
@@ -792,11 +832,13 @@ export function Companies({ currentView, onNavigate, currentUser, onLogout }: Co
           ? true
           : filterSituation === 'ACTIVE'
             ? isCompanyActive && !c.isSuspended
-            : filterSituation === 'SUSPENDED'
-              ? Boolean(c.isSuspended)
-              : filterSituation === 'INACTIVE'
-                ? !isCompanyActive && !isExternal
-                : isExternal;
+            : filterSituation === 'BPO'
+              ? Boolean(c.hasBpo) && !c.exitDate
+              : filterSituation === 'SUSPENDED'
+                ? Boolean(c.isSuspended)
+                : filterSituation === 'INACTIVE'
+                  ? !isCompanyActive && !isExternal
+                  : isExternal;
 
       const matchRegime = filterRegime === 'ALL' || c.taxRegime === filterRegime;
       const matchType = filterType === 'ALL' || c.companyType === filterType;
@@ -813,10 +855,11 @@ export function Companies({ currentView, onNavigate, currentUser, onLogout }: Co
     const total = companies.length;
     const active = companies.filter((c) => !c.exitDate && !isExternalInstallmentCompany(c) && !c.isSuspended).length;
     const suspended = companies.filter((c) => c.isSuspended).length;
+    const bpo = companies.filter((c) => c.hasBpo && !c.exitDate).length;
     const external = companies.filter((c) => isExternalInstallmentCompany(c)).length;
     const withCert = companies.filter((c) => c.hasClientCertificate).length;
     const simples = companies.filter((c) => c.taxRegime === 'SIMPLES_NACIONAL' || c.taxRegime === 'SIMPLES_NACIONAL_HIBRIDO').length;
-    return { total, active, suspended, external, withCert, simples };
+    return { total, active, suspended, bpo, external, withCert, simples };
   }, [companies]);
 
   const getRegimeLabel = (val: string) => {
@@ -1106,6 +1149,21 @@ export function Companies({ currentView, onNavigate, currentUser, onLogout }: Co
                   <span>Simples Nacional</span>
                 </div>
               </div>
+
+              <div
+                className="companies-stat-card"
+                onClick={() => setFilterSituation(filterSituation === 'BPO' ? 'ALL' : 'BPO')}
+                style={{ cursor: 'pointer' }}
+                title="Clique para filtrar apenas empresas com BPO Financeiro"
+              >
+                <div className="companies-stat-icon" style={{ background: 'rgba(6, 182, 212, 0.15)', color: '#06b6d4' }}>
+                  <DollarSign size={22} />
+                </div>
+                <div className="companies-stat-info">
+                  <strong>{stats.bpo}</strong>
+                  <span>BPO Financeiro</span>
+                </div>
+              </div>
             </div>
 
             {/* Toolbar de Pesquisa & Filtros */}
@@ -1141,6 +1199,7 @@ export function Companies({ currentView, onNavigate, currentUser, onLogout }: Co
                   }}
                 >
                   <option value="ACTIVE">Situação: Apenas Ativas ({stats.active})</option>
+                  <option value="BPO">Situação: BPO Financeiro ({stats.bpo})</option>
                   <option value="SUSPENDED">Situação: Suspensos ({stats.suspended})</option>
                   <option value="INACTIVE">Situação: Inativas (Saíram)</option>
                   <option value="EXTERNAL">Situação: Externas (Parcelamento)</option>
@@ -2163,6 +2222,185 @@ export function Companies({ currentView, onNavigate, currentUser, onLogout }: Co
                       </div>
                     )}
                   </div>
+                </div>
+
+                {/* SEÇÃO 7: BPO FINANCEIRO */}
+                <div className="form-section">
+                  <div className="form-section-title" style={{ color: '#22d3ee' }}>
+                    <DollarSign size={15} />
+                    <span>7. BPO Financeiro</span>
+                  </div>
+
+                  <div style={{ padding: '12px', background: 'rgba(6, 182, 212, 0.08)', borderRadius: '8px', border: '1px solid rgba(6, 182, 212, 0.25)', marginBottom: '14px' }}>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontWeight: 600, color: '#67e8f9' }}>
+                      <input
+                        type="checkbox"
+                        checked={hasBpo}
+                        onChange={(e) => setHasBpo(e.target.checked)}
+                        style={{ accentColor: '#06b6d4', width: 16, height: 16 }}
+                      />
+                      <span>Cliente possui contratação de BPO Financeiro</span>
+                    </label>
+                  </div>
+
+                  {hasBpo && (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                      <div className="grid-3">
+                        <div className="input-field">
+                          <label>Sistema Financeiro</label>
+                          <input
+                            type="text"
+                            placeholder="Ex: Conta Azul, Omie, Bling..."
+                            value={bpoSystemName}
+                            onChange={(e) => setBpoSystemName(e.target.value)}
+                          />
+                        </div>
+
+                        <div className="input-field">
+                          <label>Usuário Sistema</label>
+                          <input
+                            type="text"
+                            placeholder="Login / E-mail de acesso"
+                            value={bpoSystemUser}
+                            onChange={(e) => setBpoSystemUser(e.target.value)}
+                          />
+                        </div>
+
+                        <div className="input-field">
+                          <label>Senha Sistema</label>
+                          <input
+                            type="password"
+                            placeholder="Senha de acesso"
+                            value={bpoSystemPass}
+                            onChange={(e) => setBpoSystemPass(e.target.value)}
+                          />
+                        </div>
+                      </div>
+
+                      <div className="grid-3">
+                        <div className="input-field">
+                          <label>Cel Banco (Aparelho)</label>
+                          <input
+                            type="text"
+                            placeholder="Ex: (11) 99999-9999 - Cel 01"
+                            value={bpoBankPhone}
+                            onChange={(e) => setBpoBankPhone(e.target.value)}
+                          />
+                        </div>
+
+                        <div className="input-field">
+                          <label>Implantação</label>
+                          <select
+                            value={bpoImplementation}
+                            onChange={(e) => setBpoImplementation(e.target.value)}
+                          >
+                            <option value="SIM">SIM</option>
+                            <option value="NÃO">NÃO</option>
+                            <option value="OBSERVAÇÃO">OBSERVAÇÃO</option>
+                          </select>
+                        </div>
+
+                        <div className="input-field">
+                          <label>Centro de Custo</label>
+                          <select
+                            value={bpoCostCenter}
+                            onChange={(e) => setBpoCostCenter(e.target.value)}
+                          >
+                            <option value="SIM">SIM</option>
+                            <option value="N/A">N/A</option>
+                          </select>
+                        </div>
+                      </div>
+
+                      {/* Lista de Bancos */}
+                      <div style={{ background: 'rgba(30, 41, 59, 0.5)', padding: '12px', borderRadius: '8px', border: '1px solid rgba(255, 255, 255, 0.08)' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
+                          <span style={{ fontSize: '13px', fontWeight: 600, color: '#38bdf8' }}>
+                            Contas Bancárias ({bpoBanks.length})
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setBpoBanks([
+                                ...bpoBanks,
+                                { id: String(Date.now()), bank: '', agency: '', account: '', user: '', pass: '' }
+                              ])
+                            }
+                            style={{ background: 'none', border: 'none', color: '#38bdf8', cursor: 'pointer', fontSize: '12px', display: 'flex', alignItems: 'center', gap: '4px' }}
+                          >
+                            <Plus size={14} /> Adicionar Banco
+                          </button>
+                        </div>
+
+                        {bpoBanks.map((b, idx) => (
+                          <div key={b.id || idx} style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr 1fr 1fr auto', gap: '6px', marginBottom: '6px', alignItems: 'center' }}>
+                            <input
+                              type="text"
+                              placeholder="Banco"
+                              value={b.bank}
+                              onChange={(e) => {
+                                const list = [...bpoBanks];
+                                list[idx].bank = e.target.value;
+                                setBpoBanks(list);
+                              }}
+                              style={{ padding: '4px 6px', fontSize: '11px' }}
+                            />
+                            <input
+                              type="text"
+                              placeholder="Agência"
+                              value={b.agency}
+                              onChange={(e) => {
+                                const list = [...bpoBanks];
+                                list[idx].agency = e.target.value;
+                                setBpoBanks(list);
+                              }}
+                              style={{ padding: '4px 6px', fontSize: '11px' }}
+                            />
+                            <input
+                              type="text"
+                              placeholder="C.C"
+                              value={b.account}
+                              onChange={(e) => {
+                                const list = [...bpoBanks];
+                                list[idx].account = e.target.value;
+                                setBpoBanks(list);
+                              }}
+                              style={{ padding: '4px 6px', fontSize: '11px' }}
+                            />
+                            <input
+                              type="text"
+                              placeholder="Usuário"
+                              value={b.user}
+                              onChange={(e) => {
+                                const list = [...bpoBanks];
+                                list[idx].user = e.target.value;
+                                setBpoBanks(list);
+                              }}
+                              style={{ padding: '4px 6px', fontSize: '11px' }}
+                            />
+                            <input
+                              type="password"
+                              placeholder="Senha"
+                              value={b.pass}
+                              onChange={(e) => {
+                                const list = [...bpoBanks];
+                                list[idx].pass = e.target.value;
+                                setBpoBanks(list);
+                              }}
+                              style={{ padding: '4px 6px', fontSize: '11px' }}
+                            />
+                            <button
+                              type="button"
+                              onClick={() => setBpoBanks(bpoBanks.filter((_, i) => i !== idx))}
+                              style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer' }}
+                            >
+                              <Trash2 size={14} />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 <div className="modal-footer">

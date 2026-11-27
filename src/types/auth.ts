@@ -1,7 +1,7 @@
 export interface UserSectorPermission {
   id?: string;
   userId?: string;
-  sector: 'CONTABIL' | 'FISCAL' | 'PARCELAMENTO' | 'DP' | 'CUSHMAN';
+  sector: 'CONTABIL' | 'FISCAL' | 'PARCELAMENTO' | 'DP' | 'CUSHMAN' | 'BPO';
   access: 'NONE' | 'VIEW' | 'EDIT';
 }
 

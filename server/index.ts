@@ -1,6 +1,7 @@
 import {companyExitWhere,companyExitAllowsPeriod,exitDecisionError,exitDecisionValue} from '../src/config/companyExit';
 import {registerCompanyQuality,invalidateCompanyQualityCache} from './companyQuality';
 import {registerCushman} from './cushman';
+import {registerBpo} from './bpo';
 import {registerAnalytics,invalidateAnalyticsCache} from './analytics';
 import {registerRiskRadar,invalidateRiskRadarCache} from './riskRadar';
 import {registerWorkloadAndHistory} from './workloadAndHistory';
@@ -1133,6 +1134,19 @@ registerCushman(app,prisma,{
   onClosingUpdated: () => {
     invalidateDashboardCache();
     broadcastRealtimeEvent('CUSHMAN_CLOSING_UPDATED', {});
+  },
+});
+registerBpo(app, prisma, {
+  pool,
+  encrypt: encryptPassword,
+  decrypt: decryptPassword,
+  onCompanyUpdated: () => {
+    invalidateAllDataCaches();
+    broadcastRealtimeEvent('COMPANY_UPDATED', {});
+  },
+  onClosingUpdated: () => {
+    invalidateDashboardCache();
+    broadcastRealtimeEvent('BPO_CLOSING_UPDATED', {});
   },
 });
 let lastCompetenceBgSync = 0;
@@ -2691,6 +2705,8 @@ app.post('/api/companies', async (req, res) => {
       dissidioMonthYear,
       notes,
       notesScope = 'GERAL',
+      hasBpo = false,
+      bpoConfig,
       userId,
     } = req.body;
 
@@ -2770,6 +2786,8 @@ app.post('/api/companies', async (req, res) => {
         dissidioMonthYear: dissidioMonthYear ? dissidioMonthYear.trim() : null,
         notes: notes ? notes.trim() : null,
         notesScope: notesScope || 'GERAL',
+        hasBpo: Boolean(hasBpo),
+        bpoConfig: bpoConfig || null,
       },
     });
 
@@ -2943,6 +2961,8 @@ app.put('/api/companies/:id', async (req, res) => {
       dissidioMonthYear,
       notes,
       notesScope,
+      hasBpo,
+      bpoConfig,
       isSuspended,
       suspendedAt,
       suspendedReason,
@@ -3048,6 +3068,8 @@ app.put('/api/companies/:id', async (req, res) => {
     if (dissidioMonthYear !== undefined) updateData.dissidioMonthYear = dissidioMonthYear ? dissidioMonthYear.trim() : null;
     if (notes !== undefined) updateData.notes = notes ? notes.trim() : null;
     if (notesScope !== undefined) updateData.notesScope = notesScope || 'GERAL';
+    if (hasBpo !== undefined) updateData.hasBpo = Boolean(hasBpo);
+    if (bpoConfig !== undefined) updateData.bpoConfig = bpoConfig;
 
     if (isSuspended !== undefined) {
       updateData.isSuspended = Boolean(isSuspended);

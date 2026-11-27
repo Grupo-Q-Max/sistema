@@ -42,6 +42,7 @@ enum ClosingType {
   CUSHMAN
   CONTABIL
   PARCELAMENTO
+  BPO
 }
 
 enum ClosingStatus {
@@ -209,6 +210,10 @@ model Company {
   isSuspended     Boolean   @default(false)
   suspendedAt     DateTime?
   suspendedReason String?   @db.Text
+
+  // BPO Financeiro
+  hasBpo    Boolean @default(false)
+  bpoConfig Json?
 
   legacyData Json? // Origem e pendências da importação, sem inventar datas
 

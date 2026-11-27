@@ -1,4 +1,4 @@
-export type SectorKey = 'FISCAL' | 'DP' | 'CONTABIL' | 'CUSHMAN' | 'PARCELAMENTO';
+export type SectorKey = 'FISCAL' | 'DP' | 'CONTABIL' | 'CUSHMAN' | 'PARCELAMENTO' | 'BPO';
 
 export function isPrivilegedUser(user: any): boolean {
   return Boolean(user && (user.role === 'ADMIN' || user.role === 'SOCIO'));
@@ -7,6 +7,7 @@ export function isPrivilegedUser(user: any): boolean {
 export function hasSectorPermission(user: any, sector: SectorKey, requireEdit = false): boolean {
   if (!user || user.active === false) return false;
   if (isPrivilegedUser(user)) return true;
+  if (sector === 'BPO' && user.role === 'FINANCEIRO') return true;
   const perm = user.sectorPermissions?.find((p: any) => p.sector === sector);
   if (!perm) {
     if (user.role === sector) return true;

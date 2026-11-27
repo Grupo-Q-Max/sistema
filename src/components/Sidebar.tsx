@@ -24,6 +24,7 @@ import {
   Sparkles,
   Search,
   PauseCircle,
+  DollarSign,
 } from 'lucide-react';
 import type { CurrentUser } from '../types/auth';
 import { ChangePasswordModal } from './ChangePasswordModal';
@@ -111,7 +112,7 @@ export function Sidebar({ currentView, onNavigate, currentUser, onLogout }: Side
     setMobileOpen(false);
     onNavigate(view);
   };
-  const isClosingsActive = ['closings','closings-dp','closings-accounting','closings-cushman'].includes(currentView);
+  const isClosingsActive = ['closings','closings-dp','closings-accounting','closings-bpo','closings-cushman'].includes(currentView);
   const [isClosingsOpen,setIsClosingsOpen] = useState(isClosingsActive);
   const isSettingsActive = currentView.startsWith('settings');
   const [isSettingsOpen, setIsSettingsOpen] = useState(isSettingsActive);
@@ -190,6 +191,7 @@ export function Sidebar({ currentView, onNavigate, currentUser, onLogout }: Side
     {view:'closings',label:'Fiscal',sector:'FISCAL' as const,Icon:FileCheck},
     {view:'closings-dp',label:'DP',sector:'DP' as const,Icon:Users},
     {view:'closings-accounting',label:'Contábil',sector:'CONTABIL' as const,Icon:FileCheck},
+    {view:'closings-bpo',label:'BPO Financeiro',sector:'BPO' as const,Icon:DollarSign},
     {view:'closings-cushman',label:'Cushman',sector:'CUSHMAN' as const,Icon:Building2},
   ].filter(item => showClosings && hasSectorAccess(currentUser,item.sector));
   const showCompanies = canAccessScreen('companies');

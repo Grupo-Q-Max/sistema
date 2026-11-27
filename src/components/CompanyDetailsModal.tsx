@@ -700,6 +700,55 @@ export function CompanyDetailsModal({
                         )}
                       </div>
                     </div>
+
+                    {/* Bloco 5: BPO Financeiro */}
+                    {c.hasBpo && (
+                      <div className="info-card-block" style={{ borderLeft: '3px solid #06b6d4', marginTop: '12px' }}>
+                        <h4 style={{ color: '#06b6d4' }}>BPO Financeiro</h4>
+                        <div className="info-item-row">
+                          <span className="label">Possui BPO:</span>
+                          <span className="value" style={{ color: '#0891b2', fontWeight: 700 }}>SIM</span>
+                        </div>
+                        {c.bpoConfig?.system?.name && (
+                          <div className="info-item-row">
+                            <span className="label">Sistema Financeiro:</span>
+                            <span className="value">{c.bpoConfig.system.name}</span>
+                          </div>
+                        )}
+                        {c.bpoConfig?.system?.user && (
+                          <div className="info-item-row">
+                            <span className="label">Usuário Sistema:</span>
+                            <span className="value">{c.bpoConfig.system.user}</span>
+                          </div>
+                        )}
+                        {c.bpoConfig?.bankPhone && (
+                          <div className="info-item-row">
+                            <span className="label">Cel Banco:</span>
+                            <span className="value">{c.bpoConfig.bankPhone}</span>
+                          </div>
+                        )}
+                        {c.bpoConfig?.implementation && (
+                          <div className="info-item-row">
+                            <span className="label">Implantação:</span>
+                            <span className="value">{c.bpoConfig.implementation}</span>
+                          </div>
+                        )}
+                        {c.bpoConfig?.costCenter && (
+                          <div className="info-item-row">
+                            <span className="label">Centro de Custo:</span>
+                            <span className="value">{c.bpoConfig.costCenter}</span>
+                          </div>
+                        )}
+                        {Array.isArray(c.bpoConfig?.banks) && c.bpoConfig.banks.length > 0 && (
+                          <div className="info-item-row">
+                            <span className="label">Bancos Cadastrados:</span>
+                            <span className="value">
+                              {c.bpoConfig.banks.map((b: any) => b.bank).filter(Boolean).join(', ') || `${c.bpoConfig.banks.length} banco(s)`}
+                            </span>
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </div>
 
                   <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '16px' }}>

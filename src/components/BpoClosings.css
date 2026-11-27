@@ -1,0 +1,465 @@
+/* ==========================================================================
+   BPO CLOSINGS STYLES (Fechamento BPO Financeiro)
+   ========================================================================== */
+
+.bpo-closings-page {
+  display: flex;
+  min-height: 100vh;
+  background: var(--bg-main, #0b0f17);
+  color: #f1f5f9;
+}
+
+.bpo-closings-container {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  overflow-x: auto;
+}
+
+/* Header & Toolbar */
+.bpo-header {
+  padding: 20px 28px 12px;
+  background: rgba(15, 23, 42, 0.7);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  backdrop-filter: blur(12px);
+  position: sticky;
+  top: 0;
+  z-index: 20;
+}
+
+.bpo-header-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.bpo-title-group {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.bpo-title-icon {
+  width: 42px;
+  height: 42px;
+  border-radius: 10px;
+  background: linear-gradient(135deg, #06b6d4, #0891b2);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 4px 14px rgba(6, 182, 212, 0.3);
+}
+
+.bpo-title-group h1 {
+  font-size: 20px;
+  font-weight: 700;
+  color: #f8fafc;
+  margin: 0;
+}
+
+.bpo-title-group p {
+  font-size: 13px;
+  color: #94a3b8;
+  margin: 2px 0 0;
+}
+
+/* Competence Selector */
+.bpo-competence-selector {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(30, 41, 59, 0.8);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  padding: 4px 8px;
+  border-radius: 8px;
+}
+
+.bpo-competence-btn {
+  background: transparent;
+  border: none;
+  color: #cbd5e1;
+  padding: 6px;
+  border-radius: 6px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  transition: all 0.2s;
+}
+
+.bpo-competence-btn:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.1);
+  color: #fff;
+}
+
+.bpo-competence-text {
+  font-size: 14px;
+  font-weight: 700;
+  color: #f8fafc;
+  padding: 0 8px;
+  min-width: 140px;
+  text-align: center;
+}
+
+.bpo-current-month-badge {
+  font-size: 11px;
+  background: rgba(6, 182, 212, 0.2);
+  color: #22d3ee;
+  border: 1px solid rgba(6, 182, 212, 0.4);
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-weight: 600;
+  margin-left: 6px;
+}
+
+/* KPI Cards */
+.bpo-kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.bpo-kpi-card {
+  background: rgba(30, 41, 59, 0.6);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 10px;
+  padding: 12px 16px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.bpo-kpi-icon {
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.bpo-kpi-info strong {
+  display: block;
+  font-size: 18px;
+  font-weight: 700;
+  color: #f8fafc;
+}
+
+.bpo-kpi-info span {
+  font-size: 12px;
+  color: #94a3b8;
+}
+
+/* Toolbar Controls */
+.bpo-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.bpo-search-box {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(30, 41, 59, 0.8);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  padding: 8px 14px;
+  border-radius: 8px;
+  flex: 1;
+  max-width: 420px;
+}
+
+.bpo-search-box input {
+  background: transparent;
+  border: none;
+  outline: none;
+  color: #fff;
+  font-size: 13px;
+  width: 100%;
+}
+
+.bpo-search-box input::placeholder {
+  color: #64748b;
+}
+
+/* Table */
+.bpo-table-wrapper {
+  flex: 1;
+  padding: 16px 28px 40px;
+  overflow-x: auto;
+}
+
+.bpo-table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  font-size: 13px;
+  background: rgba(15, 23, 42, 0.5);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 12px;
+}
+
+.bpo-table th {
+  background: #1e293b;
+  color: #94a3b8;
+  font-weight: 600;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  padding: 12px 14px;
+  text-align: left;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  white-space: nowrap;
+}
+
+.bpo-table td {
+  padding: 12px 14px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  color: #e2e8f0;
+  vertical-align: middle;
+}
+
+.bpo-table tr:last-child td {
+  border-bottom: none;
+}
+
+.bpo-table tr:hover td {
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.bpo-row-suspended td {
+  opacity: 0.65;
+  background: rgba(239, 68, 68, 0.03);
+}
+
+/* Selection Floating Bar */
+.bpo-selection-bar {
+  position: fixed;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: #1e293b;
+  border: 1px solid #3b82f6;
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.5), 0 8px 10px -6px rgba(0, 0, 0, 0.5);
+  border-radius: 9999px;
+  padding: 8px 20px;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  z-index: 100;
+  animation: slideUp 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes slideUp {
+  from {
+    transform: translate(-50%, 40px);
+    opacity: 0;
+  }
+  to {
+    transform: translate(-50%, 0);
+    opacity: 1;
+  }
+}
+
+.bpo-badge-count {
+  background: #3b82f6;
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 9999px;
+}
+
+/* Modals */
+.bpo-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.75);
+  backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 150;
+  padding: 20px;
+}
+
+.bpo-modal-card {
+  background: #0f172a;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 14px;
+  width: 100%;
+  max-width: 620px;
+  max-height: 90vh;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.6);
+  animation: modalScale 0.2s ease-out;
+}
+
+@keyframes modalScale {
+  from {
+    opacity: 0;
+    transform: scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.bpo-modal-header {
+  padding: 16px 20px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.bpo-modal-header h3 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 700;
+  color: #f8fafc;
+}
+
+.bpo-modal-body {
+  padding: 20px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.bpo-modal-footer {
+  padding: 14px 20px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+/* Calendar Modal Grid */
+.bpo-calendar-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.bpo-calendar-day-header {
+  text-align: center;
+  font-size: 11px;
+  font-weight: 700;
+  color: #94a3b8;
+  padding: 6px 0;
+  text-transform: uppercase;
+}
+
+.bpo-calendar-day-cell {
+  background: rgba(30, 41, 59, 0.5);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 8px;
+  min-height: 72px;
+  padding: 6px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.bpo-calendar-day-cell:hover {
+  background: rgba(30, 41, 59, 0.9);
+  border-color: rgba(6, 182, 212, 0.5);
+}
+
+.bpo-calendar-day-cell.is-selected {
+  border-color: #06b6d4;
+  background: rgba(6, 182, 212, 0.15);
+}
+
+.bpo-calendar-day-cell.is-today {
+  border-color: #3b82f6;
+}
+
+.bpo-calendar-day-num {
+  font-size: 12px;
+  font-weight: 700;
+  color: #cbd5e1;
+}
+
+.bpo-calendar-tasks-badge {
+  font-size: 10px;
+  padding: 2px 4px;
+  border-radius: 4px;
+  font-weight: 600;
+  text-align: center;
+  margin-top: 4px;
+}
+
+.bpo-calendar-tasks-badge.all-done {
+  background: rgba(16, 185, 129, 0.2);
+  color: #34d399;
+}
+
+.bpo-calendar-tasks-badge.has-pending {
+  background: rgba(245, 158, 11, 0.2);
+  color: #fbbf24;
+}
+
+/* Action Buttons and Tags */
+.bpo-btn-icon {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: #cbd5e1;
+  padding: 6px 10px;
+  border-radius: 6px;
+  font-size: 12px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.bpo-btn-icon:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.12);
+  color: #fff;
+}
+
+.bpo-tag-sim {
+  background: rgba(16, 185, 129, 0.15);
+  color: #34d399;
+  border: 1px solid rgba(16, 185, 129, 0.3);
+  padding: 3px 8px;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.bpo-tag-na {
+  background: rgba(148, 163, 184, 0.15);
+  color: #94a3b8;
+  border: 1px solid rgba(148, 163, 184, 0.3);
+  padding: 3px 8px;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.bpo-tag-nao {
+  background: rgba(239, 68, 68, 0.15);
+  color: #f87171;
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  padding: 3px 8px;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 700;
+}

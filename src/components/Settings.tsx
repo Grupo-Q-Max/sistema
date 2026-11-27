@@ -21,6 +21,7 @@ import {
   Search,
   AlertCircle,
   Check,
+  DollarSign,
   LayoutDashboard,
   FileCheck,
   TrendingUp,
@@ -63,11 +64,12 @@ interface SettingsProps {
   onLogout?: () => void;
 }
 
-const SECTORS: { key: 'CONTABIL' | 'FISCAL' | 'PARCELAMENTO' | 'DP' | 'CUSHMAN'; label: string; color: string }[] = [
+const SECTORS: { key: 'CONTABIL' | 'FISCAL' | 'PARCELAMENTO' | 'DP' | 'BPO' | 'CUSHMAN'; label: string; color: string }[] = [
   { key: 'CONTABIL', label: 'Contábil', color: '#8b5cf6' },
   { key: 'FISCAL', label: 'Fiscal', color: '#10b981' },
   { key: 'PARCELAMENTO', label: 'Parcelamento', color: '#f59e0b' },
   { key: 'DP', label: 'DP', color: '#3b82f6' },
+  { key: 'BPO', label: 'BPO Financeiro', color: '#06b6d4' },
   { key: 'CUSHMAN', label: 'Cushman', color: '#ef4444' },
 ];
 
@@ -89,7 +91,7 @@ const ROLE_LABEL_MAP: Record<string, string> = {
   FISCAL: 'Fiscal',
   DP: 'DP',
   CONTABIL: 'Contábil',
-  FINANCEIRO: 'Financeiro',
+  FINANCEIRO: 'Financeiro / BPO',
   CADASTRO: 'Cadastro de Empresas',
   CUSHMAN: 'Cushman',
 };
@@ -100,7 +102,7 @@ const ROLES = [
   { value: 'FISCAL', label: 'Setor Fiscal' },
   { value: 'DP', label: 'Setor DP' },
   { value: 'CONTABIL', label: 'Setor Contábil' },
-  { value: 'FINANCEIRO', label: 'Setor Financeiro' },
+  { value: 'FINANCEIRO', label: 'Setor Financeiro / BPO' },
   { value: 'CADASTRO', label: 'Cadastro de Empresas (Criar e Editar)' },
   { value: 'CUSHMAN', label: 'Cushman (Empresas + Fechamento Cushman)' },
 ];
@@ -109,6 +111,7 @@ const SCREENS = [
   { id: 'dashboard', label: 'Visão Geral (Dashboard)', icon: LayoutDashboard },
   { id: 'analytics', label: 'Gráficos e Indicadores', icon: BarChart3 },
   { id: 'closings', label: 'Fechamentos Mensais', icon: FileCheck },
+  { id: 'closings-bpo', label: 'Fechamento BPO Financeiro', icon: DollarSign },
   { id: 'companies', label: 'Empresas', icon: Building2 },
   { id: 'certificates', label: 'Certificados e Procurações', icon: ShieldCheck },
   { id: 'installments-create', label: 'Criar parcelamentos no Fiscal (exige Parcelamento: Editar)', icon: FileCheck },

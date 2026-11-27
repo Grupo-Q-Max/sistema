@@ -20,6 +20,7 @@ const SECTOR_OPTIONS = [
   { value: 'FISCAL', label: 'Fiscal' },
   { value: 'DP', label: 'Departamento Pessoal (DP)' },
   { value: 'CONTABIL', label: 'Contábil' },
+  { value: 'BPO', label: 'BPO Financeiro' },
   { value: '', label: 'Geral (Todos os Setores)' },
 ];
 
