@@ -96,6 +96,9 @@ interface Company {
   dissidioMonthYear?: string | null;
   notes?: string | null;
   notesScope?: string | null;
+  isSuspended?: boolean;
+  suspendedAt?: string | null;
+  suspendedReason?: string | null;
   responsibles?: Array<{
     id: string;
     sector?: string | null;
@@ -188,7 +191,7 @@ export function Companies({ currentView, onNavigate, currentUser, onLogout }: Co
   const [filterRegime, setFilterRegime] = useState('ALL');
   const [filterType, setFilterType] = useState('ALL');
   const [filterCert, setFilterCert] = useState('ALL');
-  const [filterSituation, setFilterSituation] = useState<'ACTIVE' | 'INACTIVE' | 'EXTERNAL' | 'ALL'>('ACTIVE');
+  const [filterSituation, setFilterSituation] = useState<'ACTIVE' | 'SUSPENDED' | 'INACTIVE' | 'EXTERNAL' | 'ALL'>('ACTIVE');
 
   // Modal State
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -260,6 +263,8 @@ export function Companies({ currentView, onNavigate, currentUser, onLogout }: Co
   const [dissidioMonthYear, setDissidioMonthYear] = useState('');
   const [notes, setNotes] = useState('');
   const [notesScope, setNotesScope] = useState('GERAL');
+  const [isSuspended, setIsSuspended] = useState(false);
+  const [suspendedReason, setSuspendedReason] = useState('');
 
   // Password visibility toggles
   const [showCertPwd, setShowCertPwd] = useState(false);
@@ -405,6 +410,8 @@ export function Companies({ currentView, onNavigate, currentUser, onLogout }: Co
     setDissidioMonthYear('');
     setNotes('');
     setNotesScope('GERAL');
+    setIsSuspended(false);
+    setSuspendedReason('');
 
     setModalError(null);
     setModalSuccess(null);
@@ -468,6 +475,8 @@ export function Companies({ currentView, onNavigate, currentUser, onLogout }: Co
     setDissidioMonthYear(company.dissidioMonthYear || '');
     setNotes(company.notes || '');
     setNotesScope(company.notesScope || 'GERAL');
+    setIsSuspended(Boolean(company.isSuspended));
+    setSuspendedReason(company.suspendedReason || '');
 
     setModalError(null);
     setModalSuccess(null);
@@ -616,6 +625,8 @@ export function Companies({ currentView, onNavigate, currentUser, onLogout }: Co
       dissidioMonthYear: dissidioMonthYear.trim() || null,
       notes: notes.trim() || null,
       notesScope,
+      isSuspended,
+      suspendedReason: isSuspended ? suspendedReason.trim() : null,
       transitionStrategy,
       userId: currentUser?.id,
       userName: currentUser?.name,
@@ -780,10 +791,12 @@ export function Companies({ currentView, onNavigate, currentUser, onLogout }: Co
         search.length > 0 || filterSituation === 'ALL'
           ? true
           : filterSituation === 'ACTIVE'
-            ? isCompanyActive
-            : filterSituation === 'INACTIVE'
-              ? !isCompanyActive && !isExternal
-              : isExternal;
+            ? isCompanyActive && !c.isSuspended
+            : filterSituation === 'SUSPENDED'
+              ? Boolean(c.isSuspended)
+              : filterSituation === 'INACTIVE'
+                ? !isCompanyActive && !isExternal
+                : isExternal;
 
       const matchRegime = filterRegime === 'ALL' || c.taxRegime === filterRegime;
       const matchType = filterType === 'ALL' || c.companyType === filterType;
@@ -798,11 +811,12 @@ export function Companies({ currentView, onNavigate, currentUser, onLogout }: Co
 
   const stats = useMemo(() => {
     const total = companies.length;
-    const active = companies.filter((c) => !c.exitDate && !isExternalInstallmentCompany(c)).length;
+    const active = companies.filter((c) => !c.exitDate && !isExternalInstallmentCompany(c) && !c.isSuspended).length;
+    const suspended = companies.filter((c) => c.isSuspended).length;
     const external = companies.filter((c) => isExternalInstallmentCompany(c)).length;
     const withCert = companies.filter((c) => c.hasClientCertificate).length;
-    const simples = companies.filter((c) => c.taxRegime === 'SIMPLES_NACIONAL').length;
-    return { total, active, external, withCert, simples };
+    const simples = companies.filter((c) => c.taxRegime === 'SIMPLES_NACIONAL' || c.taxRegime === 'SIMPLES_NACIONAL_HIBRIDO').length;
+    return { total, active, suspended, external, withCert, simples };
   }, [companies]);
 
   const getRegimeLabel = (val: string) => {
@@ -1123,10 +1137,11 @@ export function Companies({ currentView, onNavigate, currentUser, onLogout }: Co
                   onChange={(e) => setFilterSituation(e.target.value as any)}
                   style={{
                     fontWeight: 600,
-                    color: filterSituation === 'ACTIVE' ? '#34d399' : filterSituation === 'INACTIVE' ? '#f87171' : filterSituation === 'EXTERNAL' ? '#c084fc' : undefined
+                    color: filterSituation === 'ACTIVE' ? '#34d399' : filterSituation === 'SUSPENDED' ? '#f59e0b' : filterSituation === 'INACTIVE' ? '#f87171' : filterSituation === 'EXTERNAL' ? '#c084fc' : undefined
                   }}
                 >
-                  <option value="ACTIVE">Situação: Apenas Ativas</option>
+                  <option value="ACTIVE">Situação: Apenas Ativas ({stats.active})</option>
+                  <option value="SUSPENDED">Situação: Suspensos ({stats.suspended})</option>
                   <option value="INACTIVE">Situação: Inativas (Saíram)</option>
                   <option value="EXTERNAL">Situação: Externas (Parcelamento)</option>
                   <option value="ALL">Situação: Todas as Empresas</option>
@@ -1249,6 +1264,11 @@ export function Companies({ currentView, onNavigate, currentUser, onLogout }: Co
                               <div className="comp-name-group">
                                 <span className="comp-name-title">
                                   {comp.name}
+                                  {comp.isSuspended && (
+                                    <span style={{ fontSize: '10px', padding: '1px 6px', borderRadius: '4px', background: 'rgba(245,158,11,0.2)', color: '#f59e0b', border: '1px solid rgba(245,158,11,0.4)', fontWeight: 600 }} title={`Serviços Suspensos: ${comp.suspendedReason || ''}`}>
+                                      SUSPENSO
+                                    </span>
+                                  )}
                                   {comp.exitDate && (
                                     <span style={{ fontSize: '10px', padding: '1px 5px', borderRadius: '4px', background: 'rgba(239,68,68,0.2)', color: '#f87171' }}>
                                       Inativa
@@ -2116,6 +2136,32 @@ export function Companies({ currentView, onNavigate, currentUser, onLogout }: Co
                       value={notes}
                       onChange={(e) => setNotes(e.target.value)}
                     />
+                  </div>
+
+                  <div className="input-field" style={{ marginTop: '16px', padding: '12px', background: 'rgba(245, 158, 11, 0.08)', borderRadius: '8px', border: '1px solid rgba(245, 158, 11, 0.25)' }}>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontWeight: 600, color: '#fde68a' }}>
+                      <input
+                        type="checkbox"
+                        checked={isSuspended}
+                        onChange={(e) => setIsSuspended(e.target.checked)}
+                        style={{ accentColor: '#f59e0b', width: 16, height: 16 }}
+                      />
+                      <span>Prestação de serviços suspensa (bloqueia preenchimento nos fechamentos)</span>
+                    </label>
+                    {isSuspended && (
+                      <div style={{ marginTop: '10px' }}>
+                        <label htmlFor="modal-suspended-reason" style={{ fontSize: '12px', color: '#cbd5e1' }}>Motivo da suspensão</label>
+                        <input
+                          id="modal-suspended-reason"
+                          type="text"
+                          className="modal-input"
+                          style={{ width: '100%', marginTop: '4px' }}
+                          placeholder="Ex: Inadimplência, Solicitação do cliente, Bloqueio cadastral..."
+                          value={suspendedReason}
+                          onChange={(e) => setSuspendedReason(e.target.value)}
+                        />
+                      </div>
+                    )}
                   </div>
                 </div>
 

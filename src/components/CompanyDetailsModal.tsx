@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Building2, AlertTriangle, Copy, Eye, EyeOff, ExternalLink, CheckCircle2 } from 'lucide-react';
+import { Building2, AlertTriangle, Copy, Eye, EyeOff, ExternalLink, CheckCircle2, PauseCircle } from 'lucide-react';
 import { formatCompanyCode } from '../utils/codeSort';
 import { formatFlexibleDateBr, getCertificateExpirationStatus } from '../config/dateUtils';
 import './Closings.css';
@@ -162,6 +162,16 @@ export function CompanyDetailsModal({
                             ? `Atenção: Vence em ${certInfo.days} dias (${formatFlexibleDateBr(c.certificateExpiration)})! Menos de 30 dias para expirar.`
                             : `Certificado válido (${certInfo.days} dias restantes até ${formatFlexibleDateBr(c.certificateExpiration)}).`}
                         </span>
+                      </div>
+                    </div>
+                  )}
+
+                  {c.isSuspended && (
+                    <div style={{ background: 'rgba(245, 158, 11, 0.15)', border: '1px solid rgba(245, 158, 11, 0.4)', borderRadius: 8, padding: '10px 14px', marginBottom: 16, display: 'flex', alignItems: 'center', gap: 10, color: '#fde68a' }}>
+                      <PauseCircle size={20} color="#f59e0b" style={{ flexShrink: 0 }} />
+                      <div>
+                        <strong style={{ display: 'block', color: '#f59e0b' }}>Cliente com Serviços Suspensos</strong>
+                        <span style={{ fontSize: 12 }}>{c.suspendedReason ? `Motivo: ${c.suspendedReason}` : 'Prestação de serviços suspensa temporariamente (fechamento bloqueado).'}</span>
                       </div>
                     </div>
                   )}

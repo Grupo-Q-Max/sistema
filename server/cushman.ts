@@ -150,7 +150,7 @@ export function registerCushman(app:any,prisma:any,options:{sync:(period:Date)=>
     }
   }
   if(!closing||closing.type!=='CUSHMAN')fail(404,'Fechamento Cushman não encontrado.');
-  const company=await companyAllowed(user,closing.companyId);if(!cushmanCompanyEditable(user,company))fail(403,'Você só pode editar empresas sob sua responsabilidade.');const period=new Date(closing.referencePeriod);if(!periodIsOpen(period))fail(423,blockedPeriodMessage(period));if(!companyExitAllowsPeriod(company,period)||(!cushmanCompanyEligible(company,period)&&!closing.columnsData?._legacy))fail(403,'Esta empresa não tem obrigação Cushman nesta competência.');
+  const company=await companyAllowed(user,closing.companyId);if(company.isSuspended)fail(403,'Esta empresa está com os serviços suspensos e seu fechamento está bloqueado.');if(!cushmanCompanyEditable(user,company))fail(403,'Você só pode editar empresas sob sua responsabilidade.');const period=new Date(closing.referencePeriod);if(!periodIsOpen(period))fail(423,blockedPeriodMessage(period));if(!companyExitAllowsPeriod(company,period)||(!cushmanCompanyEligible(company,period)&&!closing.columnsData?._legacy))fail(403,'Esta empresa não tem obrigação Cushman nesta competência.');
   const {columnKey,columnValue,expectedUpdatedAt}=req.body;const columns=await prisma.departmentColumn.findMany({where:{department:'CUSHMAN'}});const column=columns.find((item:any)=>resolveCushmanKey(item)===columnKey);
   if(!column||!isColumnActive(column,period)||column.isEditable===false||column.inputType==='READONLY')fail(403,'Coluna indisponível para edição.');
   if(expectedUpdatedAt){

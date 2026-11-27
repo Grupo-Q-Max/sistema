@@ -20,6 +20,7 @@ const Settings = lazy(() => import('./components/Settings').then(m => ({ default
 const Certificates = lazy(() => import('./components/Certificates').then(m => ({ default: m.Certificates })));
 const SystemLogs = lazy(() => import('./components/SystemLogs').then(m => ({ default: m.SystemLogs })));
 const CompanyQuality = lazy(() => import('./components/CompanyQuality').then(m => ({ default: m.CompanyQuality })));
+const SuspendedClients = lazy(() => import('./components/SuspendedClients').then(m => ({ default: m.SuspendedClients })));
 const InstallmentSettings = lazy(() => import('./components/InstallmentSettings').then(m => ({ default: m.InstallmentSettings })));
 const SpotlightSearch = lazy(() => import('./components/SpotlightSearch').then(m => ({ default: m.SpotlightSearch })));
 const Company360Modal = lazy(() => import('./components/Company360Modal').then(m => ({ default: m.Company360Modal })));
@@ -316,6 +317,17 @@ function App() {
     if (currentView === 'companies') {
       return (
         <Companies
+          currentView={currentView}
+          onNavigate={handleNavigate}
+          currentUser={currentUser}
+          onLogout={handleLogout}
+        />
+      );
+    }
+
+    if (currentView === 'suspended-clients') {
+      return (
+        <SuspendedClients
           currentView={currentView}
           onNavigate={handleNavigate}
           currentUser={currentUser}

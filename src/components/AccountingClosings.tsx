@@ -2,7 +2,7 @@ import {AccountingMonthsModal} from './AccountingMonthsModal';
 import {ClosingProgressDetails} from './ClosingProgressDetails';
 import {groupAccountingColumns,buildClosingProgress,summarizeClosingProgress} from '../config/closingProgress';
 import {useEffect,useMemo,useRef,useState,useDeferredValue} from 'react';
-import {Building2,FileCheck,CheckCircle2,Clock,AlertCircle,Sparkles,Search,ChevronLeft,ChevronRight,ExternalLink,AlertTriangle,Copy,RefreshCw,LockKeyhole,X,Users,BarChart3,Calendar} from 'lucide-react';
+import {Building2,FileCheck,CheckCircle2,Clock,AlertCircle,Sparkles,Search,ChevronLeft,ChevronRight,ExternalLink,AlertTriangle,Copy,RefreshCw,LockKeyhole,X,Users,BarChart3,Calendar,PauseCircle} from 'lucide-react';
 import {Sidebar} from './Sidebar';
 import {CompanyDetailsModal,getCertificateStatus,formatCnpj,formatRegimeLabel} from './CompanyDetailsModal';
 import {BulkAssignResponsibleModal} from './BulkAssignResponsibleModal';
@@ -59,7 +59,7 @@ export function AccountingClosings({currentView,onNavigate,currentUser,onLogout}
   const syncScroll=(source:HTMLDivElement,target:HTMLDivElement|null)=>{if(!target||syncingScroll.current)return;syncingScroll.current=true;target.scrollLeft=source.scrollLeft;requestAnimationFrame(()=>{syncingScroll.current=false;});};
   const canView=hasSectorAccess(currentUser,'CONTABIL');const canEdit=hasSectorAccess(currentUser,'CONTABIL',true);
   const isPrivileged=currentUser?.role==='ADMIN'||currentUser?.role==='SOCIO';
-  const isRowEditable=(row:Row)=>canEdit&&(isPrivileged||canUserEditCompany(currentUser,row.company,'CONTABIL'));
+  const isRowEditable=(row:Row)=>!row.company?.isSuspended&&canEdit&&(isPrivileged||canUserEditCompany(currentUser,row.company,'CONTABIL'));
   const responsible=(company:any)=>company.responsibles?.find((entry:any)=>entry.sector==='CONTABIL')||null;
   const left=(company:any)=>!!company.exitDate&&new Date(company.exitDate)<new Date(Date.UTC(year+1,0,1))&&new Date(company.exitDate)<=new Date();
   async function load(){
@@ -819,7 +819,7 @@ export function AccountingClosings({currentView,onNavigate,currentUser,onLogout}
             </th>
           );
         })}
-      </tr></thead><tbody>{!filtered.length?<tr><td colSpan={7 + visibleColumns.length} className="payroll-empty">Nenhuma empresa encontrada neste ano.</td></tr>:filtered.map(row=>{const company=row.company;const certificate=company.hasClientCertificate?getCertificateStatus(company.certificateExpiration):null;return <tr key={row.closingId}>
+      </tr></thead><tbody>{!filtered.length?<tr><td colSpan={7 + visibleColumns.length} className="payroll-empty">Nenhuma empresa encontrada neste ano.</td></tr>:filtered.map(row=>{const company=row.company;const certificate=company.hasClientCertificate?getCertificateStatus(company.certificateExpiration):null;return <tr key={row.closingId} className={company.isSuspended ? 'closing-row-suspended' : ''}>
         <td className="sticky-col-code">
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <input
@@ -837,7 +837,7 @@ export function AccountingClosings({currentView,onNavigate,currentUser,onLogout}
             <span style={{fontWeight:600,color:'#94a3b8'}}>{formatCompanyCode(company.code)||'—'}</span>
           </div>
         </td>
-        <td className="sticky-col-company"><div className="company-cell-wrapper"><button className="company-interactive-link" onClick={()=>setCompanyDetails(company)}><div className="company-link-left"><Building2 size={16} color="#818cf8"/><span>{company.name}</span></div><div className="company-link-icon-chip"><span>Ver Dados</span><ExternalLink size={10}/></div></button>{company.tradeName&&<div className="company-cell-trade">{company.tradeName}</div>}{certificate&&<button className={`cert-warning-tag ${certificate.status==='EXPIRED'?'expired':''}`} onClick={()=>setCompanyDetails(company)}><AlertTriangle size={12}/>{certificate.label}</button>}</div></td>
+        <td className="sticky-col-company"><div className="company-cell-wrapper"><button className="company-interactive-link" onClick={()=>setCompanyDetails(company)}><div className="company-link-left"><Building2 size={16} color="#818cf8"/><span>{company.name}</span>{company.isSuspended&&<span className="badge-suspended" title={`Serviços Suspensos: ${company.suspendedReason||'Sem motivo informado'}`}><PauseCircle size={10} style={{marginRight:3}}/>SUSPENSO</span>}</div><div className="company-link-icon-chip"><span>Ver Dados</span><ExternalLink size={10}/></div></button>{company.tradeName&&<div className="company-cell-trade">{company.tradeName}</div>}{certificate&&<button className={`cert-warning-tag ${certificate.status==='EXPIRED'?'expired':''}`} onClick={()=>setCompanyDetails(company)}><AlertTriangle size={12}/>{certificate.label}</button>}</div></td>
         <td>{company.groupName ? <span className="group-badge" style={{ padding: '2px 8px', borderRadius: '4px', background: 'rgba(99, 102, 241, 0.1)', color: '#a5b4fc', fontSize: '12px', fontWeight: 500, whiteSpace: 'nowrap' }}>{company.groupName}</span> : <span style={{ color: '#64748b' }}>—</span>}</td>
         <td>
           {isPrivileged ? (

@@ -35,6 +35,7 @@ import {
   Award,
   ShieldAlert,
   DollarSign,
+  PauseCircle,
 } from 'lucide-react';
 import type { CurrentUser } from '../types/auth';
 import { API, authHeaders } from '../api';
@@ -129,6 +130,7 @@ export function Closings({ currentView, onNavigate, currentUser, onLogout }: Clo
   const [onlyMyCompanies, setOnlyMyCompanies] = useState(false);
 
   const isRowEditable = (row: any) => {
+    if (row?.company?.isSuspended) return false;
     if (!canEditFiscal) return false;
     if (isPrivileged) return true;
     return canUserEditCompany(currentUser, row?.company, 'FISCAL');
@@ -1774,7 +1776,7 @@ export function Closings({ currentView, onNavigate, currentUser, onLogout }: Clo
                           : null;
 
                         return (
-                          <tr key={c.id}>
+                          <tr key={c.id} className={c.isSuspended ? 'closing-row-suspended' : ''}>
                             {/* 1. Código com Checkbox de Seleção */}
                             <td className="sticky-col-code">
                               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -1802,6 +1804,12 @@ export function Closings({ currentView, onNavigate, currentUser, onLogout }: Clo
                                     <div className="company-link-left">
                                       <Building2 size={16} color="#818cf8" style={{ flexShrink: 0 }} />
                                       <span>{c.name}</span>
+                                      {c.isSuspended && (
+                                        <span className="badge-suspended" title={`Serviços Suspensos: ${c.suspendedReason || 'Sem motivo informado'}`}>
+                                          <PauseCircle size={10} style={{ marginRight: 3 }} />
+                                          SUSPENSO
+                                        </span>
+                                      )}
                                       {(() => {
                                         const editors = getEditorsForCompany(c.id);
                                         if (!editors.length) return null;

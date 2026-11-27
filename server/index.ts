@@ -1300,6 +1300,7 @@ async function saveAccountingColumn(existing:any,columnKey:string,columnValue:an
   if(new Date(existing.referencePeriod).getUTCMonth()!==0)return res.status(400).json({error:'Este registro antigo é mensal. Use a tela Contábil anual.'});
   if(year>accountingYear())return res.status(423).json({error:'Este ano contábil ainda não foi liberado.'});
   const company=await prisma.company.findUnique({where:{id:existing.companyId},include:{responsibles:true}});
+  if(company?.isSuspended) return res.status(403).json({error:'Esta empresa está com os serviços suspensos e seu fechamento está bloqueado.'});
   if(req){
     const actor=await resolveAuthenticatedUser(prisma,req);
     if(actor&&!canUserEditCompany(actor,company,'CONTABIL')){
@@ -1655,6 +1656,7 @@ app.put('/api/closings/:id/column', async (req, res) => {
       resolveAuthenticatedUser(prisma, req),
     ]);
     if (!closingCompany || !companyExitAllowsPeriod(closingCompany, new Date(existing.referencePeriod))) return res.status(403).json({error:'A empresa não tem obrigações nesta competência conforme sua saída.'});
+    if (closingCompany.isSuspended) return res.status(403).json({ error: 'Esta empresa está com os serviços suspensos e seu fechamento está bloqueado.' });
     if (actor && !canUserEditCompany(actor, closingCompany, existing.type as any)) {
       return res.status(403).json({ error: 'Você só pode editar fechamentos das empresas em que é responsável.' });
     }
@@ -2188,6 +2190,9 @@ async function computeDashboardPayload(monthStart: Date, userId?: string): Promi
           obligationStartDate: true,
           exitDate: true,
           activeSectors: true,
+          isSuspended: true,
+          suspendedAt: true,
+          suspendedReason: true,
           responsibles: {
             select: {
               id: true,
@@ -2367,6 +2372,9 @@ async function computeDashboardPayload(monthStart: Date, userId?: string): Promi
 
 app.get('/api/dashboard', async (req, res) => {
   try {
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+    res.setHeader('Pragma', 'no-cache');
+    res.setHeader('Expires', '0');
     const monthStart = getTargetReferencePeriod(req.query);
     if (!requireOpenPeriod(monthStart, res)) return;
 
@@ -2781,6 +2789,115 @@ app.post('/api/companies', async (req, res) => {
   }
 });
 
+// ========================
+// CLIENTES COM SERVIÇOS SUSPENSOS
+// ========================
+app.get('/api/companies/suspended', async (req, res) => {
+  try {
+    const list = await prisma.company.findMany({
+      where: { isSuspended: true, deletedAt: null },
+      select: {
+        id: true,
+        code: true,
+        name: true,
+        tradeName: true,
+        cnpj: true,
+        taxRegime: true,
+        city: true,
+        groupName: true,
+        isSuspended: true,
+        suspendedAt: true,
+        suspendedReason: true,
+        responsibles: {
+          include: {
+            user: { select: { id: true, name: true, email: true, role: true } },
+          },
+        },
+      },
+      orderBy: { suspendedAt: 'desc' },
+    });
+    res.json(list);
+  } catch (error: any) {
+    console.error('Erro ao listar empresas suspensas:', error);
+    res.status(500).json({ error: 'Erro ao listar empresas suspensas.' });
+  }
+});
+
+app.post('/api/companies/:id/suspend', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { reason, date, userId, userName, userEmail } = req.body;
+    const existing = await prisma.company.findUnique({ where: { id } });
+    if (!existing) return res.status(404).json({ error: 'Empresa não encontrada.' });
+
+    const suspendedAt = date ? new Date(date) : new Date();
+    const updated = await prisma.company.update({
+      where: { id },
+      data: {
+        isSuspended: true,
+        suspendedAt,
+        suspendedReason: reason ? String(reason).trim() : 'Serviços suspensos',
+      },
+    });
+
+    invalidateAllDataCaches();
+    if (userId) {
+      void logAction(
+        userId,
+        userEmail || '',
+        userName || 'Usuário',
+        'SUSPENDEU_EMPRESA',
+        'EMPRESA',
+        id,
+        { name: existing.name, cnpj: existing.cnpj, reason: reason || 'Serviços suspensos' },
+        req.ip
+      );
+    }
+    broadcastRealtimeEvent('COMPANY_UPDATED', { companyId: id });
+    res.json({ success: true, company: updated });
+  } catch (error: any) {
+    console.error('Erro ao suspender empresa:', error);
+    res.status(500).json({ error: error.message || 'Erro ao suspender empresa.' });
+  }
+});
+
+app.post('/api/companies/:id/unsuspend', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { userId, userName, userEmail } = req.body;
+    const existing = await prisma.company.findUnique({ where: { id } });
+    if (!existing) return res.status(404).json({ error: 'Empresa não encontrada.' });
+
+    const updated = await prisma.company.update({
+      where: { id },
+      data: {
+        isSuspended: false,
+        suspendedAt: null,
+        suspendedReason: null,
+      },
+    });
+
+    invalidateAllDataCaches();
+    if (userId) {
+      void logAction(
+        userId,
+        userEmail || '',
+        userName || 'Usuário',
+        'REATIVOU_EMPRESA',
+        'EMPRESA',
+        id,
+        { name: existing.name, cnpj: existing.cnpj },
+        req.ip
+      );
+    }
+    broadcastRealtimeEvent('COMPANY_UPDATED', { companyId: id });
+    res.json({ success: true, company: updated });
+  } catch (error: any) {
+    console.error('Erro ao reativar empresa:', error);
+    res.status(500).json({ error: error.message || 'Erro ao reativar empresa.' });
+  }
+});
+
 // Atualizar empresa existente
 app.put('/api/companies/:id', async (req, res) => {
   try {
@@ -2826,6 +2943,9 @@ app.put('/api/companies/:id', async (req, res) => {
       dissidioMonthYear,
       notes,
       notesScope,
+      isSuspended,
+      suspendedAt,
+      suspendedReason,
       userId,
     } = req.body;
 
@@ -2928,6 +3048,17 @@ app.put('/api/companies/:id', async (req, res) => {
     if (dissidioMonthYear !== undefined) updateData.dissidioMonthYear = dissidioMonthYear ? dissidioMonthYear.trim() : null;
     if (notes !== undefined) updateData.notes = notes ? notes.trim() : null;
     if (notesScope !== undefined) updateData.notesScope = notesScope || 'GERAL';
+
+    if (isSuspended !== undefined) {
+      updateData.isSuspended = Boolean(isSuspended);
+      if (updateData.isSuspended) {
+        updateData.suspendedAt = suspendedAt ? new Date(suspendedAt) : (existingCompany.suspendedAt || new Date());
+        if (suspendedReason !== undefined) updateData.suspendedReason = suspendedReason ? String(suspendedReason).trim() : null;
+      } else {
+        updateData.suspendedAt = null;
+        updateData.suspendedReason = null;
+      }
+    }
 
     if(contractDate && !updateData.contractDate)return res.status(400).json({error:'Data de contrato inválida.'});
     if(obligationStartDate && !updateData.obligationStartDate)return res.status(400).json({error:'Data de obrigação inválida.'});

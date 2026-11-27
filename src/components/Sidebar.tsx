@@ -23,6 +23,7 @@ import {
   ListChecks,
   Sparkles,
   Search,
+  PauseCircle,
 } from 'lucide-react';
 import type { CurrentUser } from '../types/auth';
 import { ChangePasswordModal } from './ChangePasswordModal';
@@ -138,14 +139,34 @@ export function Sidebar({ currentView, onNavigate, currentUser, onLogout }: Side
     } catch {}
   };
 
+  const [suspendedCount, setSuspendedCount] = useState(0);
+  const fetchSuspendedCount = async () => {
+    try {
+      const res = await fetch(`${API}/api/companies/suspended`);
+      if (res.ok) {
+        const data = await res.json();
+        setSuspendedCount(Array.isArray(data) ? data.length : 0);
+      }
+    } catch {}
+  };
+
   useEffect(() => {
     fetchDominioSummary();
-    const interval = setInterval(fetchDominioSummary, 30000);
-    const handleUpdate = () => fetchDominioSummary();
+    fetchSuspendedCount();
+    const interval = setInterval(() => {
+      fetchDominioSummary();
+      fetchSuspendedCount();
+    }, 30000);
+    const handleUpdate = () => {
+      fetchDominioSummary();
+      fetchSuspendedCount();
+    };
     window.addEventListener('dominio-staging-updated', handleUpdate);
+    window.addEventListener('company-suspended-updated', handleUpdate);
     return () => {
       clearInterval(interval);
       window.removeEventListener('dominio-staging-updated', handleUpdate);
+      window.removeEventListener('company-suspended-updated', handleUpdate);
     };
   }, []);
   useEffect(()=>{
@@ -318,6 +339,26 @@ export function Sidebar({ currentView, onNavigate, currentUser, onLogout }: Side
           >
             <Building2 size={20} />
             <span className="nav-item-label">Empresas</span>
+          </a>
+        )}
+
+        {showCompanies && (
+          <a
+            href="#"
+            className={`nav-item ${currentView === 'suspended-clients' ? 'active' : ''}`}
+            title="Clientes com Serviços Suspensos"
+            onClick={(e) => {
+              e.preventDefault();
+              navigate('suspended-clients');
+            }}
+          >
+            <PauseCircle size={20} />
+            <span className="nav-item-label">Clientes Suspensos</span>
+            {suspendedCount > 0 && (
+              <span className="quality-nav-count" style={{ background: '#f59e0b', color: '#0f172a' }}>
+                {suspendedCount}
+              </span>
+            )}
           </a>
         )}
 

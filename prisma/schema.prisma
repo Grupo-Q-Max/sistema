@@ -205,6 +205,11 @@ model Company {
   notes             String? @db.Text
   notesScope        String? @default("GERAL") // GERAL, FISCAL, DP, CONTABIL, CUSHMAN
 
+  // Suspensão de serviços (aparece nos fechamentos, mas fica bloqueado/somente leitura)
+  isSuspended     Boolean   @default(false)
+  suspendedAt     DateTime?
+  suspendedReason String?   @db.Text
+
   legacyData Json? // Origem e pendências da importação, sem inventar datas
 
   // Relacionamentos

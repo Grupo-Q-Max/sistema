@@ -1,7 +1,7 @@
 import { latestOpenPeriod } from '../config/competenceCalendar';
 import { useCompetenceCalendar } from './useCompetenceCalendar';
 import { memo, useEffect, useMemo, useRef, useState, useDeferredValue } from 'react';
-import { Building2, CheckCircle2, ChevronLeft, ChevronRight, Eye, EyeOff, RefreshCw, Users, X, ExternalLink, AlertTriangle, Copy, Search, AlertCircle, Check, Calendar, FileText, Clock, Sparkles, History, BarChart3, Zap } from 'lucide-react';
+import { Building2, CheckCircle2, ChevronLeft, ChevronRight, Eye, EyeOff, RefreshCw, Users, X, ExternalLink, AlertTriangle, Copy, Search, AlertCircle, Check, Calendar, FileText, Clock, Sparkles, History, BarChart3, Zap, PauseCircle } from 'lucide-react';
 import { CompanyDetailsModal, getCertificateStatus, formatCnpj, formatRegimeLabel } from './CompanyDetailsModal';
 import { Sidebar } from './Sidebar';
 import { ClosingSectorTabs, hasSectorAccess } from './ClosingSectorTabs';
@@ -333,6 +333,7 @@ export function PayrollClosings({ currentView, onNavigate, currentUser, onLogout
   const getResponsible = (company: any) => company.responsibles?.find((r: any) => r.sector === 'DP') || null;
 
   const isRowEditable = (row: PayrollRow) => {
+    if (row.company?.isSuspended) return false;
     if (!canEdit) return false;
     if (isPrivileged) return true;
     return canUserEditCompany(currentUser, row.company, 'DP');
@@ -1115,7 +1116,7 @@ export function PayrollClosings({ currentView, onNavigate, currentUser, onLogout
                               const c = row.company;
                               const certInfo = c.hasClientCertificate ? getCertificateStatus(c.certificateExpiration) : null;
                               return (
-                                <tr key={row.closingId || c.id}>
+                                <tr key={row.closingId || c.id} className={c.isSuspended ? 'closing-row-suspended' : ''}>
                                   <td className="sticky-col-code">
                                     <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                                       <input
@@ -1139,6 +1140,12 @@ export function PayrollClosings({ currentView, onNavigate, currentUser, onLogout
                                         <div className="company-link-left">
                                           <Building2 size={16} color="#818cf8" style={{ flexShrink: 0 }} />
                                           <span>{c.name}</span>
+                                          {c.isSuspended && (
+                                            <span className="badge-suspended" title={`Serviços Suspensos: ${c.suspendedReason || 'Sem motivo informado'}`}>
+                                              <PauseCircle size={10} style={{ marginRight: 3 }} />
+                                              SUSPENSO
+                                            </span>
+                                          )}
                                           {(() => {
                                             const editors = getEditorsForCompany(c.id);
                                             if (!editors.length) return null;
