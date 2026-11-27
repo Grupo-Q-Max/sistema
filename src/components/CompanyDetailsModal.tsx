@@ -45,6 +45,7 @@ export function formatCnpj(cnpj: string) {
 export function formatRegimeLabel(regime: string) {
     const map: Record<string, string> = {
       SIMPLES_NACIONAL: 'Simples Nacional',
+      SIMPLES_NACIONAL_HIBRIDO: 'Simples Nacional Híbrido',
       LUCRO_PRESUMIDO: 'Lucro Presumido',
       LUCRO_REAL_TRIMESTRAL: 'L. Real Trimestral',
       LUCRO_REAL_ESTIMATIVA: 'L. Real Estimativa',

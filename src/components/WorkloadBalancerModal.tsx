@@ -292,6 +292,7 @@ export function WorkloadBalancerModal({
                 <select value={regimeFilter} onChange={(e) => setRegimeFilter(e.target.value)}>
                   <option value="ALL">Todos os Regimes</option>
                   <option value="SIMPLES_NACIONAL">Simples Nacional</option>
+                  <option value="SIMPLES_NACIONAL_HIBRIDO">Simples Nacional Híbrido</option>
                   <option value="LUCRO_PRESUMIDO">Lucro Presumido</option>
                   <option value="LUCRO_REAL_TRIMESTRAL">Lucro Real / Trimestral</option>
                   <option value="LUCRO_REAL_ESTIMATIVA">Lucro Real / Estimativa</option>

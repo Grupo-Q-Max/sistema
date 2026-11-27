@@ -17,6 +17,7 @@ export const ALL_FISCAL_KEYS = [
 export const ALL_TAX_REGIMES = [
   { key: 'MEI', label: 'MEI' },
   { key: 'SIMPLES_NACIONAL', label: 'Simples Nacional' },
+  { key: 'SIMPLES_NACIONAL_HIBRIDO', label: 'Simples Nacional Híbrido' },
   { key: 'LUCRO_PRESUMIDO', label: 'Lucro Presumido' },
   { key: 'LUCRO_REAL_TRIMESTRAL', label: 'Lucro Real / Trimestral' },
   { key: 'LUCRO_REAL_ESTIMATIVA', label: 'Lucro Real / Estimativa' },
@@ -37,6 +38,7 @@ export const DEFAULT_FISCAL_REGIME_NA_RULES: FiscalRegimeNaMap = {
   LUCRO_REAL_ESTIMATIVA: ['carne_leao'],
   LUCRO_REAL_ANUAL: ['carne_leao'],
   SIMPLES_NACIONAL: ['carne_leao', 'sped_contribuicao', 'mit'],
+  SIMPLES_NACIONAL_HIBRIDO: ['carne_leao', 'sped_contribuicao', 'mit'],
   MEI: ['carne_leao', 'reinf', 'iss', 'mit', 'sped_fiscal', 'sped_contribuicao', 'destda'],
   PESSOA_FISICA: ['reinf', 'impostos', 'iss', 'mit', 'sped_fiscal', 'sped_contribuicao', 'destda'],
   CONDOMINIOS: [],
@@ -99,6 +101,11 @@ export function normalizeRegimeKey(regime: string | null | undefined): string {
     case 'SIMPLES_NACIONAL':
     case 'SIMPLES NACIONAL':
       return 'SIMPLES_NACIONAL';
+    case 'SIMPLES_NACIONAL_HIBRIDO':
+    case 'SIMPLES NACIONAL HIBRIDO':
+    case 'SIMPLES NACIONAL HÍBRIDO':
+    case 'SIMPLES NACIONAL HIDRIDO':
+      return 'SIMPLES_NACIONAL_HIBRIDO';
     case 'MEI':
       return 'MEI';
     case 'PESSOA_FISICA':

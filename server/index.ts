@@ -2342,6 +2342,7 @@ async function computeDashboardPayload(monthStart: Date, userId?: string): Promi
       regimes: {
         MEI: regimesMap['MEI'] || 0,
         SIMPLES_NACIONAL: regimesMap['SIMPLES_NACIONAL'] || 0,
+        SIMPLES_NACIONAL_HIBRIDO: regimesMap['SIMPLES_NACIONAL_HIBRIDO'] || 0,
         LUCRO_PRESUMIDO: regimesMap['LUCRO_PRESUMIDO'] || 0,
         LUCRO_REAL_TRIMESTRAL: regimesMap['LUCRO_REAL_TRIMESTRAL'] || 0,
         LUCRO_REAL_ESTIMATIVA: regimesMap['LUCRO_REAL_ESTIMATIVA'] || 0,

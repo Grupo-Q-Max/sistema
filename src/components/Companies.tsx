@@ -123,6 +123,7 @@ const TAX_REGIME_OPTIONS = [
   { value: 'LUCRO_REAL_ANUAL', label: 'Lucro Real/Anual' },
   { value: 'MEI', label: 'MEI' },
   { value: 'SIMPLES_NACIONAL', label: 'Simples Nacional' },
+  { value: 'SIMPLES_NACIONAL_HIBRIDO', label: 'Simples Nacional Híbrido' },
   { value: 'PESSOA_FISICA', label: 'Pessoa Física' },
 ];
 
@@ -810,7 +811,7 @@ export function Companies({ currentView, onNavigate, currentUser, onLogout }: Co
   };
 
   const getRegimeClass = (val: string) => {
-    if (val === 'SIMPLES_NACIONAL') return 'badge-regime--simples';
+    if (val === 'SIMPLES_NACIONAL' || val === 'SIMPLES_NACIONAL_HIBRIDO') return 'badge-regime--simples';
     if (val === 'LUCRO_PRESUMIDO') return 'badge-regime--lucro-presumido';
     if (val?.startsWith('LUCRO_REAL')) return 'badge-regime--lucro-real';
     if (val === 'MEI') return 'badge-regime--mei';

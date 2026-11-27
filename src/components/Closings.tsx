@@ -93,7 +93,7 @@ interface ClosingsProps {
 // Utilitário para formatar classe de cor do regime tributário
 function getRegimeClass(regime?: string | null) {
   if (!regime) return '';
-  if (regime === 'SIMPLES_NACIONAL') return 'simples';
+  if (regime === 'SIMPLES_NACIONAL' || regime === 'SIMPLES_NACIONAL_HIBRIDO') return 'simples';
   if (regime.includes('PRESUMIDO')) return 'presumido';
   if (regime.includes('REAL')) return 'real';
   if (regime === 'MEI') return 'mei';
@@ -1408,6 +1408,7 @@ export function Closings({ currentView, onNavigate, currentUser, onLogout }: Clo
               >
                 <option value="ALL">Tributação: Todas</option>
                 <option value="SIMPLES_NACIONAL">Simples Nacional</option>
+                <option value="SIMPLES_NACIONAL_HIBRIDO">Simples Nacional Híbrido</option>
                 <option value="LUCRO_PRESUMIDO">Lucro Presumido</option>
                 <option value="LUCRO_REAL_TRIMESTRAL">Lucro Real Trimestral</option>
                 <option value="LUCRO_REAL_ESTIMATIVA">Lucro Real Estimativa</option>
@@ -1582,6 +1583,7 @@ export function Closings({ currentView, onNavigate, currentUser, onLogout }: Clo
                               allLabel: 'Todas as Tributações',
                               valueLabels: {
                                 SIMPLES_NACIONAL: 'Simples Nacional',
+                                SIMPLES_NACIONAL_HIBRIDO: 'Simples Nacional Híbrido',
                                 LUCRO_PRESUMIDO: 'Lucro Presumido',
                                 LUCRO_REAL_TRIMESTRAL: 'Lucro Real Trim.',
                                 LUCRO_REAL_ESTIMATIVA: 'Lucro Real Est.',

@@ -8,7 +8,7 @@ export const externalCompaniesExcluded = {
 };
 export function isExternalInstallmentCompany(company:any):boolean{return company?.activeSectors===EXTERNAL_INSTALLMENT_SECTOR;}
 export const INSTALLMENT_COMPANY_REGIMES=[
- {value:'MEI',label:'MEI'},{value:'SIMPLES_NACIONAL',label:'Simples Nacional'},{value:'LUCRO_PRESUMIDO',label:'Lucro Presumido'},
+ {value:'MEI',label:'MEI'},{value:'SIMPLES_NACIONAL',label:'Simples Nacional'},{value:'SIMPLES_NACIONAL_HIBRIDO',label:'Simples Nacional Híbrido'},{value:'LUCRO_PRESUMIDO',label:'Lucro Presumido'},
  {value:'LUCRO_REAL_TRIMESTRAL',label:'Lucro Real Trimestral'},{value:'LUCRO_REAL_ESTIMATIVA',label:'Lucro Real Estimativa'},{value:'LUCRO_REAL_ANUAL',label:'Lucro Real Anual'},
  {value:'IMUNE_IRPJ',label:'Imune IRPJ'},{value:'CONDOMINIOS',label:'Condomínio'},{value:'DOMESTICA',label:'Doméstica'},{value:'ASSOCIACOES',label:'Associação'},{value:'PESSOA_FISICA',label:'Pessoa Física'},
 ];

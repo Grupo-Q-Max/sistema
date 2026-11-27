@@ -38,12 +38,12 @@ interface AnalyticsData {
 interface SectorProgress { type: string; total: number; completed: number; inProgress: number; percent: number; totalFields?: number; completedFields?: number }
 
 const REGIME_LABEL: Record<string, string> = {
-  MEI: 'MEI', SIMPLES_NACIONAL: 'Simples Nacional', LUCRO_PRESUMIDO: 'Lucro Presumido', LUCRO_REAL_TRIMESTRAL: 'Real Trimestral',
+  MEI: 'MEI', SIMPLES_NACIONAL: 'Simples Nacional', SIMPLES_NACIONAL_HIBRIDO: 'Simples Nacional Híbrido', LUCRO_PRESUMIDO: 'Lucro Presumido', LUCRO_REAL_TRIMESTRAL: 'Real Trimestral',
   LUCRO_REAL_ESTIMATIVA: 'Real Estimativa', LUCRO_REAL_ANUAL: 'Real Anual', IMUNE_IRPJ: 'Imune IRPJ', CONDOMINIOS: 'Condomínios',
   DOMESTICA: 'Doméstica', ASSOCIACOES: 'Associações', PESSOA_FISICA: 'Pessoa Física',
 };
 const REGIME_COLOR: Record<string, string> = {
-  MEI: '#38bdf8', SIMPLES_NACIONAL: '#10b981', LUCRO_PRESUMIDO: '#8b5cf6', LUCRO_REAL_TRIMESTRAL: '#f59e0b',
+  MEI: '#38bdf8', SIMPLES_NACIONAL: '#10b981', SIMPLES_NACIONAL_HIBRIDO: '#0d9488', LUCRO_PRESUMIDO: '#8b5cf6', LUCRO_REAL_TRIMESTRAL: '#f59e0b',
   LUCRO_REAL_ESTIMATIVA: '#f97316', LUCRO_REAL_ANUAL: '#ef4444', IMUNE_IRPJ: '#14b8a6', CONDOMINIOS: '#d90f81',
   DOMESTICA: '#eab308', ASSOCIACOES: '#6366f1', PESSOA_FISICA: '#94a3b8',
 };

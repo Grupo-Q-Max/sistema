@@ -620,6 +620,7 @@ export function PayrollClosings({ currentView, onNavigate, currentUser, onLogout
                 noneLabel: 'Sem tributação',
                 valueLabels: {
                   SIMPLES_NACIONAL: 'Simples Nacional',
+                  SIMPLES_NACIONAL_HIBRIDO: 'Simples Nacional Híbrido',
                   LUCRO_PRESUMIDO: 'Lucro Presumido',
                   LUCRO_REAL_TRIMESTRAL: 'Lucro Real Trim.',
                   LUCRO_REAL_ESTIMATIVA: 'Lucro Real Est.',
@@ -1184,7 +1185,7 @@ export function PayrollClosings({ currentView, onNavigate, currentUser, onLogout
                                       <span style={{ color: '#64748b', fontSize: '0.8rem' }}>—</span>
                                     )}
                                   </td>
-                                  <td><span className={`tax-regime-pill ${c.taxRegime === 'SIMPLES_NACIONAL' ? 'simples' : c.taxRegime?.includes('PRESUMIDO') ? 'presumido' : c.taxRegime?.includes('REAL') ? 'real' : c.taxRegime === 'MEI' ? 'mei' : ''}`}>{formatRegimeLabel(c.taxRegime || '')}</span></td>
+                                  <td><span className={`tax-regime-pill ${c.taxRegime === 'SIMPLES_NACIONAL' || c.taxRegime === 'SIMPLES_NACIONAL_HIBRIDO' ? 'simples' : c.taxRegime?.includes('PRESUMIDO') ? 'presumido' : c.taxRegime?.includes('REAL') ? 'real' : c.taxRegime === 'MEI' ? 'mei' : ''}`}>{formatRegimeLabel(c.taxRegime || '')}</span></td>
                                   <td title={`Progresso: ${row.progressPercent}%`}><span className={`status-badge ${row.calculatedStatus === 'COMPLETED' ? 'completed' : row.calculatedStatus === 'IN_PROGRESS' ? 'in-progress' : 'pending'}`}>{STATUS_LABELS[row.calculatedStatus] || row.calculatedStatus}</span></td>
                                   <td>
                                     {isPrivileged ? (

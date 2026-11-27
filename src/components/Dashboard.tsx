@@ -156,6 +156,7 @@ const MOVEMENT_GROUPS = [
 const REGIME_CONFIG: { key: string; name: string; class: string }[] = [
   { key: 'MEI', name: 'MEI', class: 'card-mei' },
   { key: 'SIMPLES_NACIONAL', name: 'Simples Nacional', class: 'card-simples' },
+  { key: 'SIMPLES_NACIONAL_HIBRIDO', name: 'Simples Nacional Híbrido', class: 'card-simples-hibrido' },
   { key: 'LUCRO_PRESUMIDO', name: 'Lucro Presumido', class: 'card-presumido' },
   { key: 'LUCRO_REAL_TRIMESTRAL', name: 'Lucro Real / Trimestral', class: 'card-real-trimestral' },
   { key: 'LUCRO_REAL_ESTIMATIVA', name: 'Lucro Real / Estimativa', class: 'card-real-estimativa' },
@@ -170,6 +171,7 @@ const REGIME_CONFIG: { key: string; name: string; class: string }[] = [
 const REGIME_LABEL: Record<string, string> = {
   MEI: 'MEI',
   SIMPLES_NACIONAL: 'Simples Nacional',
+  SIMPLES_NACIONAL_HIBRIDO: 'Simples Nacional Híbrido',
   LUCRO_PRESUMIDO: 'Lucro Presumido',
   LUCRO_REAL_TRIMESTRAL: 'Lucro Real / Trimestral',
   LUCRO_REAL_ESTIMATIVA: 'Lucro Real / Estimativa',
@@ -592,7 +594,7 @@ export function Dashboard({ currentView, onNavigate, currentUser, onLogout }: Da
           setStats({
             totalActive: 0,
             totalEmployees: 0,
-            regimes: { MEI: 0, SIMPLES_NACIONAL: 0, LUCRO_PRESUMIDO: 0, LUCRO_REAL_TRIMESTRAL: 0, LUCRO_REAL_ESTIMATIVA: 0, LUCRO_REAL_ANUAL: 0, IMUNE_IRPJ: 0, CONDOMINIOS: 0, DOMESTICA: 0, ASSOCIACOES: 0, PESSOA_FISICA: 0 },
+            regimes: { MEI: 0, SIMPLES_NACIONAL: 0, SIMPLES_NACIONAL_HIBRIDO: 0, LUCRO_PRESUMIDO: 0, LUCRO_REAL_TRIMESTRAL: 0, LUCRO_REAL_ESTIMATIVA: 0, LUCRO_REAL_ANUAL: 0, IMUNE_IRPJ: 0, CONDOMINIOS: 0, DOMESTICA: 0, ASSOCIACOES: 0, PESSOA_FISICA: 0 },
             companies: [],
             availableMonths: []
           });
